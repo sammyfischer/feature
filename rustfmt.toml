@@ -1,0 +1,17 @@
+edition = "2024"
+
+tab_spaces = 2
+newline_style = "Unix"
+
+imports_granularity = "Module"
+imports_layout = "HorizontalVertical"
+group_imports = "StdExternalCrate"
+
+condense_wildcard_suffixes = true
+hex_literal_case = "Upper"
+
+overflow_delimited_expr = true
+
+comment_width = 100
+wrap_comments = true
+normalize_comments = true
