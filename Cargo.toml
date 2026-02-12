@@ -5,3 +5,9 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
+
+[dev-dependencies]
+assert_cmd = "2.1.2"
+git2 = "0.20.4"
+predicates = "3.1.4"
+tempfile = "3.25.0"
