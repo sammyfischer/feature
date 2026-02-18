@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 
 use crate::cli_error::{CliError, CliResult};
-use crate::commands::{commit, list, log, merge, prune, start, update};
+use crate::commands::{commit, graph, list, log, merge, prune, start, update};
 
 mod cli_error;
 mod commands;
@@ -43,6 +43,14 @@ enum Action {
 
   /// View git log with pretty settings by default
   Log,
+
+  /// View git graph with pretty settings by default
+  Graph {
+    #[arg(short = 'i', long = "interactive")]
+    interactive: bool,
+    #[arg(short = 'p', long = "pager", default_value = "less")]
+    pager: String,
+  },
 }
 
 fn main() -> CliResult {
@@ -56,6 +64,7 @@ fn main() -> CliResult {
     Action::Prune => prune(),
     Action::List => list(),
     Action::Log => log(),
+    Action::Graph { interactive, pager } => graph(interactive, &pager),
   }
 }
 

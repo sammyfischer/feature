@@ -7,10 +7,10 @@ pub enum CliError {
   GitProcFailed,
 }
 
-/// Treat any io error as a git process failure
+// Convert io errors
 impl From<std::io::Error> for CliError {
   fn from(_value: std::io::Error) -> Self {
-    CliError::GitProcFailed
+    CliError::Generic
   }
 }
 

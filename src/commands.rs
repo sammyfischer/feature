@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::process::Child;
+use std::process::{Child, Command, Stdio};
 
 use crate::cli_error::{CliError, CliResult};
 use crate::validate_branch_name;
@@ -59,20 +59,21 @@ pub fn merge() -> CliResult {
 }
 
 pub fn prune() -> CliResult {
+  // get list of merged branches
   let child = git!("branch", "--merged")?;
-  let Some(mut stdout) = child.stdout else {
-    return Err(CliError::GitProcFailed);
-  };
+  let mut stdout = child.stdout.ok_or(CliError::GitProcFailed)?;
 
   let mut output = String::new();
   stdout.read_to_string(&mut output)?;
 
+  // current state of the process (might use this for better error messages later)
   enum Status {
     Started,
     FailedStart,
     FailedExec,
   }
 
+  // metadata about each process (and the process itself)
   struct ProcInfo<'branch> {
     status: Status,
     proc: Option<Child>,
@@ -81,8 +82,10 @@ pub fn prune() -> CliResult {
 
   let mut children: Vec<ProcInfo> = Vec::new();
   for line in output.lines() {
+    // clean up line to just get the branch name
     let branch_name = line.trim_prefix("* ").trim();
 
+    // start process to delete branch
     let child = git!("branch", "-d", branch_name);
     let proc_info = if let Ok(child) = child {
       ProcInfo {
@@ -102,10 +105,13 @@ pub fn prune() -> CliResult {
 
   // whether at least 1 proc failed
   let mut proc_failed = false;
+
+  // await each process and check status
   for mut proc_info in children {
     if let Some(mut child) = proc_info.proc
       && await_child!(child).is_err()
     {
+      // if proc failed
       proc_info.status = Status::FailedExec;
       proc_failed = true;
       println!("Failed to delete branch {}", proc_info.branch);
@@ -113,6 +119,7 @@ pub fn prune() -> CliResult {
   }
 
   if proc_failed {
+    // if at least 1 proc failed
     Err(CliError::GitProcFailed)
   } else {
     Ok(())
@@ -125,6 +132,36 @@ pub fn list() -> CliResult {
 }
 
 pub fn log() -> CliResult {
-  let mut child = git!("log", "--oneline", "--decorate", "--all", "--color=always")?;
+  let mut child = git!("log", "--oneline", "--decorate", "--all")?;
   await_child!(child)
+}
+
+pub fn graph(interactive: bool, pager: &str) -> CliResult {
+  let mut children: Vec<Child> = Vec::new();
+
+  if interactive {
+    // get git log output
+    let mut git_graph = Command::new("git")
+      .args(["log", "--graph", "--oneline", "--decorate", "--all"])
+      .stdout(Stdio::piped())
+      .spawn()?;
+
+    let graph_stdout = git_graph.stdout.take().ok_or(CliError::GitProcFailed)?;
+
+    // pipe into less to view interactively
+    let pager = Command::new(pager).stdin(graph_stdout).spawn()?;
+
+    children.push(pager);
+    children.push(git_graph);
+  } else {
+    let child = git!("log", "--graph", "--oneline", "--decorate", "--all")?;
+    children.push(child);
+  }
+
+  // await all procs
+  for mut child in children {
+    child.wait()?;
+  }
+
+  Ok(())
 }
