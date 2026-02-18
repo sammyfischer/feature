@@ -9,7 +9,7 @@ macro_rules! await_child {
   ($child:expr) => {
     match $child.wait() {
       Ok(ok) if ok.success() => Ok(()),
-      _ => Err(CliError::GitProcFailed),
+      _ => Err(CliError::SubprocessFailed),
     }
   };
 }
@@ -58,10 +58,13 @@ pub fn merge() -> CliResult {
   Ok(())
 }
 
-pub fn prune() -> CliResult {
+pub fn prune(dry_run: bool) -> CliResult {
   // get list of merged branches
-  let child = git!("branch", "--merged")?;
-  let mut stdout = child.stdout.ok_or(CliError::GitProcFailed)?;
+  let child = Command::new("git")
+    .args(["branch", "--merged"])
+    .stdout(Stdio::piped())
+    .spawn()?;
+  let mut stdout = child.stdout.ok_or(CliError::Generic)?;
 
   let mut output = String::new();
   stdout.read_to_string(&mut output)?;
@@ -80,10 +83,30 @@ pub fn prune() -> CliResult {
     branch: &'branch str,
   }
 
+  if dry_run {
+    println!("Deletion candidates:")
+  }
+
   let mut children: Vec<ProcInfo> = Vec::new();
   for line in output.lines() {
+    if line.starts_with("*") {
+      // skip current branch
+      continue;
+    }
+
     // clean up line to just get the branch name
-    let branch_name = line.trim_prefix("* ").trim();
+    let branch_name = line.trim();
+
+    if branch_name == "main" || branch_name == "master" {
+      // skip protected branches
+      continue;
+    }
+
+    if dry_run {
+      // print branch name, skip over branch deletion
+      println!("{}", branch_name);
+      continue;
+    }
 
     // start process to delete branch
     let child = git!("branch", "-d", branch_name);
@@ -103,6 +126,11 @@ pub fn prune() -> CliResult {
     children.push(proc_info);
   }
 
+  // exit early, all branch candidates have been printed
+  if dry_run {
+    return Ok(());
+  }
+
   // whether at least 1 proc failed
   let mut proc_failed = false;
 
@@ -120,7 +148,7 @@ pub fn prune() -> CliResult {
 
   if proc_failed {
     // if at least 1 proc failed
-    Err(CliError::GitProcFailed)
+    Err(CliError::SubprocessFailed)
   } else {
     Ok(())
   }
@@ -146,7 +174,7 @@ pub fn graph(interactive: bool, pager: &str) -> CliResult {
       .stdout(Stdio::piped())
       .spawn()?;
 
-    let graph_stdout = git_graph.stdout.take().ok_or(CliError::GitProcFailed)?;
+    let graph_stdout = git_graph.stdout.take().ok_or(CliError::SubprocessFailed)?;
 
     // pipe into less to view interactively
     let pager = Command::new(pager).stdin(graph_stdout).spawn()?;

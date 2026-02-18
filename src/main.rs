@@ -36,9 +36,13 @@ enum Action {
   Merge,
 
   /// Clean up merged branches
-  Prune,
+  Prune {
+    #[arg(long = "dry-run")]
+    dry_run: bool,
+  },
 
   /// List branches
+  #[command(alias = "ls")]
   List,
 
   /// View git log with pretty settings by default
@@ -61,7 +65,7 @@ fn main() -> CliResult {
     Action::Commit { words } => commit(&words),
     Action::Update => update(),
     Action::Merge => merge(),
-    Action::Prune => prune(),
+    Action::Prune { dry_run } => prune(dry_run),
     Action::List => list(),
     Action::Log => log(),
     Action::Graph { interactive, pager } => graph(interactive, &pager),

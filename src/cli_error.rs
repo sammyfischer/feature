@@ -4,7 +4,8 @@ pub enum CliError {
   /// Generic/unknown error
   Generic = 1,
   BadBranchName,
-  GitProcFailed,
+  /// A process that was spawned failed to complete or returned an error
+  SubprocessFailed,
 }
 
 // Convert io errors
@@ -14,4 +15,4 @@ impl From<std::io::Error> for CliError {
   }
 }
 
-pub type CliResult = Result<(), CliError>;
+pub type CliResult<T = ()> = Result<T, CliError>;
