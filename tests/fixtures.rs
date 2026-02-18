@@ -27,9 +27,11 @@ pub fn init_commit(dir: &TempDir) {
 }
 
 pub fn run_feature(args: &[&str], cwd: &Path) -> Assert {
-  let mut cmd = Command::cargo_bin("feature").unwrap();
-  cmd.current_dir(cwd).args(args);
-  cmd.assert()
+  Command::cargo_bin("feature")
+    .unwrap()
+    .current_dir(cwd)
+    .args(args)
+    .assert()
 }
 
 pub fn run_git(args: &[&str], cwd: &Path) -> Assert {
