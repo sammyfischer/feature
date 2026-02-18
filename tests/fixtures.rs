@@ -2,44 +2,36 @@ use std::fs::write;
 use std::path::Path;
 
 use assert_cmd::Command;
-use git2::Repository;
-use tempfile::{Builder, TempDir};
+use assert_cmd::assert::Assert;
+use tempfile::TempDir;
 
 /// Creates a temp dir and initializes a git repo and commit signature
-pub fn init_repo() -> (TempDir, Repository) {
-  let dir = Builder::new()
-    .tempdir_in(std::env::current_dir().unwrap())
-    .unwrap();
-  let repo = Repository::init(dir.path()).unwrap();
+pub fn init_repo() -> TempDir {
+  let dir = TempDir::new().unwrap();
+  run_git(&["init", dir.path().to_str().unwrap()], dir.path()).success();
 
-  let mut config = repo.config().unwrap();
-  config.set_str("user.name", "test").unwrap();
-  config.set_str("user.email", "test@test.net").unwrap();
+  run_git(&["config", "user.name", "test"], dir.path()).success();
+  run_git(&["config", "user.email", "test@test.net"], dir.path()).success();
 
-  (dir, repo)
+  dir
 }
 
 /// Creates a file, stages it, then commits to HEAD
-pub fn init_commit(dir: &TempDir, repo: &Repository) {
+pub fn init_commit(dir: &TempDir) {
   let file_name = "file.txt";
 
   write(dir.path().join(&file_name), "hello world").unwrap();
 
-  let mut index = repo.index().unwrap();
-  index.add_path(Path::new(&file_name)).unwrap();
-  index.write().unwrap();
-
-  let tree_id = index.write_tree().unwrap();
-  let tree = repo.find_tree(tree_id).unwrap();
-  let sig = repo.signature().unwrap();
-
-  repo
-    .commit(Some("HEAD"), &sig, &sig, "initial commit", &tree, &[])
-    .unwrap();
+  run_git(&["add", &file_name], dir.path()).success();
+  run_git(&["commit", "-m", "initial commit"], dir.path()).success();
 }
 
-pub fn run(args: &[&str], cwd: &Path) -> Command {
+pub fn run_feature(args: &[&str], cwd: &Path) -> Assert {
   let mut cmd = Command::cargo_bin("feature").unwrap();
   cmd.current_dir(cwd).args(args);
-  cmd
+  cmd.assert()
+}
+
+pub fn run_git(args: &[&str], cwd: &Path) -> Assert {
+  Command::new("git").current_dir(cwd).args(args).assert()
 }
