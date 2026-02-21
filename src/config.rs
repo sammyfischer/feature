@@ -1,7 +1,9 @@
-use std::fs;
-use std::path::Path;
+use std::fs::{self, File};
 
 use serde::{Deserialize, Serialize};
+
+use crate::cli::def::ConfigSetArgs;
+
 
 const FILENAME: &str = ".feature.toml";
 
@@ -9,19 +11,15 @@ pub type ConfigResult<T = ()> = Result<T, ConfigError>;
 
 #[derive(Debug)]
 pub enum ConfigError {
-  Serialize,
-  Deserialize,
-  Read,
-  Write,
+  Serialize(String),
+  Io(String),
 }
 
 impl std::fmt::Display for ConfigError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", match self {
-      ConfigError::Serialize => "Error serializing config file",
-      ConfigError::Deserialize => "Error deserializing config file",
-      ConfigError::Read => "Error reading config file",
-      ConfigError::Write => "Error writing config file",
+      ConfigError::Serialize(msg) => msg,
+      ConfigError::Io(msg) => msg,
     })
   }
 }
@@ -49,50 +47,24 @@ impl Default for Config {
 }
 
 impl Config {
-  pub fn set(&mut self, key: &str, value: &str) -> ConfigResult {
-    let clean_key: &str = &key.replace("-", "_");
-    match clean_key {
-      "protected_branches" => {
-        let branches = value.split(",");
-        let mut clean_branches: Vec<String> = Vec::new();
+  pub fn set(&mut self, args: &ConfigSetArgs) -> ConfigResult {
+    let file = File::create(FILENAME)
+      .map_err(|_| ConfigError::Io("Couldn't create/open config file".to_string()))?;
 
-        for b in branches {
-          // consider validating branch names
-          clean_branches.push(b.trim().to_string());
-        }
+    file
+      .lock()
+      .map_err(|_| ConfigError::Io("Couldn't acquire config file lock".to_string()))?;
 
-        self.protected_branches = clean_branches;
-      }
-
-      "interactive" => {
-        self.interactive = value.parse().map_err(|_| ConfigError::Serialize)?;
-      }
-
-      "pager" => {
-        self.pager = value.to_string();
-      }
-
-      _ => {
-        eprintln!("Unknown config key: {}", clean_key);
-        return Err(ConfigError::Serialize);
-      }
+    if let Some(protected_branches) = &args.protected_branches {
+      self.protected_branches = protected_branches.clone();
     };
 
-    Ok(())
-  }
+    if let Some(interactive) = args.interactive {
+      self.interactive = interactive;
+    };
 
-  pub fn reset(&mut self, key: &str) -> ConfigResult {
-    let clean_key: &str = &key.replace("-", "_");
-    let default = Config::default();
-
-    match clean_key {
-      "protected_branches" => self.protected_branches = default.protected_branches,
-      "interactive" => self.interactive = default.interactive,
-      "pager" => self.pager = default.pager,
-      _ => {
-        eprintln!("Unknown config key: {}", clean_key);
-        return Err(ConfigError::Serialize);
-      }
+    if let Some(pager) = &args.pager {
+      self.pager = pager.clone();
     };
 
     Ok(())
@@ -101,24 +73,22 @@ impl Config {
 
 /// Reads and deserializes the config file
 pub fn read_config() -> ConfigResult<Config> {
-  let text = fs::read_to_string(FILENAME).map_err(|_| ConfigError::Read)?;
-  let config = toml::from_str(&text).map_err(|_| ConfigError::Deserialize)?;
+  let text = fs::read_to_string(FILENAME)
+    .map_err(|_| ConfigError::Io("Couldn't read file contents".to_string()))?;
+
+  let config = toml::from_str(&text)
+    .map_err(|_| ConfigError::Serialize("Couldn't parse config file".to_string()))?;
+
   Ok(config)
 }
 
 /// Serializes and overwrites the config file
 pub fn write_config(config: &Config) -> ConfigResult {
-  let text = toml::to_string_pretty(&config).map_err(|_| ConfigError::Serialize)?;
-  fs::write(FILENAME, text).map_err(|_| ConfigError::Write)?;
-  Ok(())
-}
+  let text = toml::to_string_pretty(&config)
+    .map_err(|_| ConfigError::Serialize("Couldn't seralize config".to_string()))?;
 
-/// Creates an empty config file. Does nothing if file already exists
-pub fn create_config() -> ConfigResult {
-  let path = Path::new(FILENAME);
-  if let Ok(true) = path.try_exists() {
-    return Ok(());
-  }
-  fs::write(path, "").map_err(|_| ConfigError::Write)?;
+  fs::write(FILENAME, text)
+    .map_err(|_| ConfigError::Io("Couldn't write config to config file".to_string()))?;
+
   Ok(())
 }

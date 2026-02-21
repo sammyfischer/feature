@@ -1,9 +1,16 @@
+//! Useful functions, macros, and core command implementation
+
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
-use crate::config::{Config, ConfigError, create_config, write_config};
+use crate::cli::def::{Action, Args, Cli, ConfigCmd};
+use crate::cli::errors::CliError;
+use crate::config::{Config, write_config};
+
+pub mod def;
+mod errors;
 
 /// Waits on the child process, returns result
 macro_rules! await_child {
@@ -30,119 +37,6 @@ macro_rules! git {
 }
 
 pub type CliResult<T = ()> = Result<T, CliError>;
-
-#[derive(Parser, Debug)]
-pub struct Args {
-  #[command(subcommand)]
-  pub action: Action,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum Action {
-  /// Start a new feature branch
-  Start {
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
-    /// Words to join together as branch name
-    words: Vec<String>,
-  },
-
-  Commit {
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
-    /// Words to join together as commit message
-    words: Vec<String>,
-  },
-
-  /// Update the current branch against its base branch
-  Update,
-
-  /// Join the current branch into its base branch
-  Merge,
-
-  /// Clean up merged branches
-  Prune {
-    #[arg(long = "dry-run")]
-    dry_run: bool,
-  },
-
-  /// List branches
-  #[command(alias = "ls")]
-  List,
-
-  /// View git log with pretty settings by default
-  Log,
-
-  /// View git graph with pretty settings by default
-  Graph {
-    #[arg(short = 'i', long = "interactive")]
-    interactive: bool,
-    #[arg(short = 'p', long = "pager", default_value = "less")]
-    pager: String,
-  },
-
-  /// Modify config values or initialize a config file
-  Config {
-    #[command(subcommand)]
-    args: ConfigCmd,
-  },
-}
-
-#[derive(Clone, Debug, Subcommand)]
-pub enum ConfigCmd {
-  Set {
-    key: String,
-    value: String,
-  },
-  #[command(aliases = ["unset", "rm", "delete", "del"])]
-  Reset {
-    key: String,
-  },
-}
-
-#[derive(Debug)]
-#[repr(u8)]
-/// Enumeration of all error types, mapped to a nonzero return code
-pub enum CliError {
-  /// Generic/unknown error
-  Generic(String) = 1,
-
-  /// A poorly formatted branch name was passed to a command that creates a branch
-  BadBranchName(String),
-
-  /// A process that was spawned failed to complete or returned an error
-  SubprocessFailed(String),
-
-  /// An error with the config file
-  ConfigError(ConfigError),
-}
-
-impl std::fmt::Display for CliError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      CliError::Generic(msg) => write!(f, "{}", msg),
-      CliError::BadBranchName(name) => write!(f, "Invalid branch name: {}", name),
-      CliError::SubprocessFailed(msg) => write!(f, "{}", msg),
-      CliError::ConfigError(config_error) => write!(f, "{}", config_error),
-    }
-  }
-}
-
-// Convert io errors
-impl From<std::io::Error> for CliError {
-  fn from(value: std::io::Error) -> Self {
-    CliError::Generic(value.to_string())
-  }
-}
-
-impl From<ConfigError> for CliError {
-  fn from(value: ConfigError) -> Self {
-    CliError::ConfigError(value)
-  }
-}
-
-pub struct Cli {
-  config: Config,
-  args: Args,
-}
 
 impl Cli {
   pub fn new(config: Config) -> Self {
@@ -201,9 +95,9 @@ impl Cli {
       .args(["branch", "--merged"])
       .stdout(Stdio::piped())
       .spawn()?;
-    let mut stdout = child
-      .stdout
-      .ok_or(CliError::Generic("Failed to get merged branches".to_string()))?;
+    let mut stdout = child.stdout.ok_or(CliError::Generic(
+      "Failed to get merged branches".to_string(),
+    ))?;
 
     let mut output = String::new();
     stdout.read_to_string(&mut output)?;
@@ -287,7 +181,9 @@ impl Cli {
 
     if proc_failed {
       // if at least 1 proc failed
-      Err(CliError::SubprocessFailed("Failed to delete all merged branches".to_string()))
+      Err(CliError::SubprocessFailed(
+        "Failed to delete all merged branches".to_string(),
+      ))
     } else {
       Ok(())
     }
@@ -336,12 +232,8 @@ impl Cli {
   }
 
   fn config(&mut self, args: &ConfigCmd) -> CliResult {
-    // create config file if it doesn't exist
-    create_config()?;
-
     match args {
-      ConfigCmd::Set { key, value } => self.config.set(key, value),
-      ConfigCmd::Reset { key } => self.config.reset(key),
+      ConfigCmd::Set(args) => self.config.set(args),
     }?;
 
     write_config(&self.config)?;
