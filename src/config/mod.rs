@@ -2,27 +2,13 @@ use std::fs::{self, File};
 
 use serde::{Deserialize, Serialize};
 
-use crate::cli::def::ConfigSetArgs;
+use crate::{cli::def::ConfigSetArgs, config::errors::ConfigError};
 
+pub mod errors;
 
 const FILENAME: &str = ".feature.toml";
 
 pub type ConfigResult<T = ()> = Result<T, ConfigError>;
-
-#[derive(Debug)]
-pub enum ConfigError {
-  Serialize(String),
-  Io(String),
-}
-
-impl std::fmt::Display for ConfigError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", match self {
-      ConfigError::Serialize(msg) => msg,
-      ConfigError::Io(msg) => msg,
-    })
-  }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]

@@ -1,4 +1,4 @@
-use crate::config::ConfigError;
+use crate::config::errors::ConfigError;
 
 #[derive(Debug)]
 #[repr(u8)]
