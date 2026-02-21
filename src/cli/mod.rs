@@ -50,6 +50,8 @@ impl Cli {
       Action::Commit { words } => self.commit(words),
       Action::Update => self.update(),
       Action::Merge => self.merge(),
+      Action::Protect { branch } => self.protect(branch.clone()),
+      Action::Unprotect { branch } => self.unprotect(branch.clone()),
       Action::Prune { dry_run } => self.prune(*dry_run),
       Action::List => self.list(),
       Action::Log => self.log(),
@@ -86,6 +88,26 @@ impl Cli {
   /// Rebase current branch onto base branch
   fn merge(&self) -> CliResult {
     println!("Merging into base");
+    Ok(())
+  }
+
+  fn protect(&mut self, branch: String) -> CliResult {
+    self.config.protected_branches.push(branch);
+    write_config(&self.config)?;
+    Ok(())
+  }
+
+  fn unprotect(&mut self, branch: String) -> CliResult {
+    if let Some(i) = self
+      .config
+      .protected_branches
+      .iter()
+      .position(|b| *b == branch)
+    {
+      self.config.protected_branches.remove(i);
+    };
+
+    write_config(&self.config)?;
     Ok(())
   }
 

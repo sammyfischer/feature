@@ -31,6 +31,14 @@ pub enum Action {
   /// Join the current branch into its base branch
   Merge,
 
+  /// Add branch to list of protected branches
+  #[command(alias = "prot")]
+  Protect { branch: String },
+
+  /// Remove branch from list of protected branches
+  #[command(alias = "unprot")]
+  Unprotect { branch: String },
+
   /// Clean up merged branches
   Prune {
     #[arg(long = "dry-run")]

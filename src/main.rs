@@ -1,15 +1,11 @@
 use crate::cli::{def::Cli, CliResult};
-use crate::config::{Config, read_config};
+use crate::config::read_config;
 
 mod cli;
 mod config;
 
 fn main() -> CliResult {
-  let config = match read_config() {
-    Ok(config) => config,
-    Err(_) => Config::default(),
-  };
-
+  let config = read_config().unwrap_or_default();
   let mut cli = Cli::new(config);
   cli.run()
 }

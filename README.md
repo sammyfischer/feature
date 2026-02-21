@@ -1,12 +1,8 @@
 Todo list:
 
 - Local config file
-  - feature.toml, feature-config.toml, maybe in a .config subdirectory
-  - delete-protected branches (e.g. main, master, dev)
-    - ignore when pruning, disallow commits
-  - formatting options?
-    - especially for git log
+  - formatting options (e.g. for git log)
+  - in-place editing (only add keys being set, don't serialize entire config), format preservation
+  - unset command to remove a key (will still use default value in cli)
+
 - precommit support?
-- graph cli options
-  - interactive mode (off by default, can be enabled with `-i`)
-  - which pager to use (default is "less")
