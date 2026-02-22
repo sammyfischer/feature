@@ -5,7 +5,7 @@ use std::process::{Child, Command, Stdio};
 
 use clap::Parser;
 
-use crate::cli::def::{Action, Args, Cli, ConfigCmd, GraphArgs};
+use crate::cli::def::{Action, Args, Cli, ConfigCmd};
 use crate::cli::errors::CliError;
 use crate::config::{Config, write_config};
 
@@ -80,7 +80,7 @@ impl Cli {
       Action::Prune { dry_run } => self.prune(*dry_run),
       Action::List => self.list(),
       Action::Log => self.log(),
-      Action::Graph(args) => self.graph(args),
+      Action::Graph(_) => self.graph(),
       Action::Config { args } => self.config(&args.clone()),
     }
   }
@@ -244,45 +244,9 @@ impl Cli {
     await_child!(child, "Failed to call git")
   }
 
-  fn graph(&self, args: &GraphArgs) -> CliResult {
-    let mut children: Vec<Child> = Vec::new();
-
-    let interactive = &default_to_config!(self, args, interactive);
-    let pager_bin = &default_to_config!(self, args, &pager);
-
-    if *interactive {
-      // get git log output
-      let mut graph_proc = Command::new("git")
-        .args(["log", "--graph", "--oneline", "--decorate", "--all"])
-        .stdout(Stdio::piped())
-        .spawn()?;
-
-      let graph_stdout = graph_proc.stdout.take().ok_or(CliError::SubprocessFailed(
-        "Failed to get git log output".to_string(),
-      ))?;
-
-      // pipe into less to view interactively
-      let pager_proc = Command::new(pager_bin).stdin(graph_stdout).spawn()?;
-
-      children.push(pager_proc);
-      children.push(graph_proc);
-    } else {
-      let child = git!("log", "--graph", "--oneline", "--decorate", "--all")?;
-      children.push(child);
-    }
-
-    let mut result: CliResult = Ok(());
-
-    // await all procs
-    for mut child in children {
-      if let Err(_) = child.wait() {
-        result = Err(CliError::SubprocessFailed(
-          "A process failed to complete".to_string(),
-        ));
-      };
-    }
-
-    result
+  fn graph(&self) -> CliResult {
+    let mut child = git!("log", "--graph", "--oneline", "--decorate", "--all")?;
+    await_child!(child, "Failed to call git")
   }
 
   fn config(&mut self, args: &ConfigCmd) -> CliResult {

@@ -64,11 +64,7 @@ pub enum Action {
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct GraphArgs {
-  #[arg(short = 'i', long = "interactive")]
-  pub interactive: Option<bool>,
-
-  #[arg(short = 'p', long = "pager", default_value = "less")]
-  pub pager: Option<String>,
+  // TODO: args for formatting
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -80,12 +76,6 @@ pub enum ConfigCmd {
 pub struct ConfigSetArgs {
   #[arg(long)]
   pub protected_branches: Option<Vec<String>>,
-
-  #[arg(long)]
-  pub interactive: Option<bool>,
-
-  #[arg(long)]
-  pub pager: Option<String>,
 }
 
 pub struct Cli {

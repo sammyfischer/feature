@@ -17,20 +17,12 @@ pub type ConfigResult<T = ()> = Result<T, ConfigError>;
 pub struct Config {
   /// List of protected branches
   pub protected_branches: Vec<String>,
-
-  /// Use interactive mode by default for supported commands
-  pub interactive: bool,
-
-  /// Pager to use to view in interactive mode
-  pub pager: String,
 }
 
 impl Default for Config {
   fn default() -> Self {
     Self {
       protected_branches: vec!["main".to_string(), "master".to_string()],
-      interactive: false,
-      pager: "less".to_string(),
     }
   }
 }
@@ -39,14 +31,6 @@ impl Config {
   pub fn set(&mut self, args: &ConfigSetArgs) -> ConfigResult {
     if let Some(protected_branches) = &args.protected_branches {
       self.protected_branches = protected_branches.clone();
-    };
-
-    if let Some(interactive) = args.interactive {
-      self.interactive = interactive;
-    };
-
-    if let Some(pager) = &args.pager {
-      self.pager = pager.clone();
     };
 
     Ok(())
