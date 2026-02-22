@@ -5,7 +5,7 @@ use std::process::{Child, Command, Stdio};
 
 use clap::Parser;
 
-use crate::cli::def::{Action, Args, Cli, ConfigCmd};
+use crate::cli::def::{Action, Args, Cli, ConfigCmd, GraphArgs};
 use crate::cli::errors::CliError;
 use crate::config::{Config, write_config};
 
@@ -36,6 +36,31 @@ macro_rules! git {
   };
 }
 
+/// Returns an args `Some` value, else gets the value from `self.config`.
+///
+/// # Parameters
+/// - `self` - the `self` instance, which must have the `config` field
+/// - `args` - a struct containing args to use. Must have a field with the same name as `opt` and be
+///   an `Option`
+/// - `opt` - the name of the config option field, defined on `self.config` and `args`. Should be
+///   written as an identifier. Supports borrowing with the usual borrow operator
+macro_rules! default_to_config {
+  ($self:ident, $args:expr, $opt:ident) => {
+    match $args.$opt {
+      Some(it) => it,
+      None => $self.config.$opt,
+    }
+  };
+
+  // separate rule, borrow operator needs to be handled differently
+  ($self:ident, $args:expr, & $opt:ident) => {
+    match &$args.$opt {
+      Some(it) => it,
+      None => &$self.config.$opt,
+    }
+  };
+}
+
 pub type CliResult<T = ()> = Result<T, CliError>;
 
 impl Cli {
@@ -55,7 +80,7 @@ impl Cli {
       Action::Prune { dry_run } => self.prune(*dry_run),
       Action::List => self.list(),
       Action::Log => self.log(),
-      Action::Graph { interactive, pager } => self.graph(*interactive, pager),
+      Action::Graph(args) => self.graph(args),
       Action::Config { args } => self.config(&args.clone()),
     }
   }
@@ -152,7 +177,11 @@ impl Cli {
       // clean up line to just get the branch name
       let branch_name = line.trim();
 
-      if branch_name == "main" || branch_name == "master" {
+      if self
+        .config
+        .protected_branches
+        .contains(&branch_name.to_string())
+      {
         // skip protected branches
         continue;
       }
@@ -186,8 +215,7 @@ impl Cli {
       return Ok(());
     }
 
-    // whether at least 1 proc failed
-    let mut proc_failed = false;
+    let mut result: CliResult = Ok(());
 
     // await each process and check status
     for mut proc_info in children {
@@ -196,19 +224,14 @@ impl Cli {
       {
         // if proc failed
         proc_info.status = Status::FailedExec;
-        proc_failed = true;
+        result = Err(CliError::SubprocessFailed(
+          "Failed to delete all merged branches".to_string(),
+        ));
         println!("Failed to delete branch {}", proc_info.branch);
       };
     }
 
-    if proc_failed {
-      // if at least 1 proc failed
-      Err(CliError::SubprocessFailed(
-        "Failed to delete all merged branches".to_string(),
-      ))
-    } else {
-      Ok(())
-    }
+    result
   }
 
   fn list(&self) -> CliResult {
@@ -221,36 +244,45 @@ impl Cli {
     await_child!(child, "Failed to call git")
   }
 
-  fn graph(&self, interactive: bool, pager: &str) -> CliResult {
+  fn graph(&self, args: &GraphArgs) -> CliResult {
     let mut children: Vec<Child> = Vec::new();
 
-    if interactive {
+    let interactive = &default_to_config!(self, args, interactive);
+    let pager_bin = &default_to_config!(self, args, &pager);
+
+    if *interactive {
       // get git log output
-      let mut git_graph = Command::new("git")
+      let mut graph_proc = Command::new("git")
         .args(["log", "--graph", "--oneline", "--decorate", "--all"])
         .stdout(Stdio::piped())
         .spawn()?;
 
-      let graph_stdout = git_graph.stdout.take().ok_or(CliError::SubprocessFailed(
+      let graph_stdout = graph_proc.stdout.take().ok_or(CliError::SubprocessFailed(
         "Failed to get git log output".to_string(),
       ))?;
 
       // pipe into less to view interactively
-      let pager = Command::new(pager).stdin(graph_stdout).spawn()?;
+      let pager_proc = Command::new(pager_bin).stdin(graph_stdout).spawn()?;
 
-      children.push(pager);
-      children.push(git_graph);
+      children.push(pager_proc);
+      children.push(graph_proc);
     } else {
       let child = git!("log", "--graph", "--oneline", "--decorate", "--all")?;
       children.push(child);
     }
 
+    let mut result: CliResult = Ok(());
+
     // await all procs
     for mut child in children {
-      child.wait()?;
+      if let Err(_) = child.wait() {
+        result = Err(CliError::SubprocessFailed(
+          "A process failed to complete".to_string(),
+        ));
+      };
     }
 
-    Ok(())
+    result
   }
 
   fn config(&mut self, args: &ConfigCmd) -> CliResult {

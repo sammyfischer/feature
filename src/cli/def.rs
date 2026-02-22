@@ -53,18 +53,22 @@ pub enum Action {
   Log,
 
   /// View git graph with pretty settings by default
-  Graph {
-    #[arg(short = 'i', long = "interactive")]
-    interactive: bool,
-    #[arg(short = 'p', long = "pager", default_value = "less")]
-    pager: String,
-  },
+  Graph(GraphArgs),
 
   /// Modify config values or initialize a config file
   Config {
     #[command(subcommand)]
     args: ConfigCmd,
   },
+}
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct GraphArgs {
+  #[arg(short = 'i', long = "interactive")]
+  pub interactive: Option<bool>,
+
+  #[arg(short = 'p', long = "pager", default_value = "less")]
+  pub pager: Option<String>,
 }
 
 #[derive(Clone, Debug, Subcommand)]
