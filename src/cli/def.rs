@@ -19,6 +19,7 @@ pub enum Action {
     words: Vec<String>,
   },
 
+  /// Commit using remaining args as commit message
   Commit {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
     /// Words to join together as commit message
@@ -49,22 +50,18 @@ pub enum Action {
   #[command(alias = "ls")]
   List,
 
-  /// View git log with pretty settings by default
+  /// View git log with entire commit subject line, followed by author name and relative date
   Log,
 
-  /// View git graph with pretty settings by default
-  Graph(GraphArgs),
+  /// View git graph with author name and relative date in noticable colors. Truncates commit
+  /// subject to try to fit it in one line
+  Graph,
 
   /// Modify config values or initialize a config file
   Config {
     #[command(subcommand)]
     args: ConfigCmd,
   },
-}
-
-#[derive(clap::Args, Clone, Debug)]
-pub struct GraphArgs {
-  // TODO: args for formatting
 }
 
 #[derive(Clone, Debug, Subcommand)]

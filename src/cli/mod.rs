@@ -80,7 +80,7 @@ impl Cli {
       Action::Prune { dry_run } => self.prune(*dry_run),
       Action::List => self.list(),
       Action::Log => self.log(),
-      Action::Graph(_) => self.graph(),
+      Action::Graph => self.graph(),
       Action::Config { args } => self.config(&args.clone()),
     }
   }
@@ -240,12 +240,27 @@ impl Cli {
   }
 
   fn log(&self) -> CliResult {
-    let mut child = git!("log", "--oneline", "--decorate", "--all")?;
+    // git pretty format:
+    // %h = hash, %d = decorator (e.g. branch pointing to that commit)
+    // %s = subject (commit description title line)
+    // %an = author name, %ar = author date (relative)
+    let mut child = git!(
+      "log",
+      "--all",
+      "--pretty=format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)"
+    )?;
     await_child!(child, "Failed to call git")
   }
 
   fn graph(&self) -> CliResult {
-    let mut child = git!("log", "--graph", "--oneline", "--decorate", "--all")?;
+    // like log, but author name and date are first, and message is truncated to try and fit in one
+    // line
+    let mut child = git!(
+      "log",
+      "--graph",
+      "--all",
+      "--pretty=format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%<(50,trunc)%s"
+    )?;
     await_child!(child, "Failed to call git")
   }
 
