@@ -271,6 +271,21 @@ impl Cli {
 
         config::write(&doc)?;
       }
+
+      ConfigCmd::Unset(args) => {
+        let mut doc = config::read_doc()?;
+
+        if args.branch_sep {
+          let old_val = doc.remove_entry("branch_sep");
+          if let Some((_, item)) = old_val {
+            println!("Unset branch_sep (was {})", item);
+          } else {
+            println!("branch_sep is already unset");
+          }
+        }
+
+        config::write(&doc)?;
+      }
     };
 
     Ok(())

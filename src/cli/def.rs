@@ -74,12 +74,20 @@ pub struct StartArgs {
 #[derive(Clone, Debug, Subcommand)]
 pub enum ConfigCmd {
   Set(ConfigSetArgs),
+  #[command(aliases = ["del", "delete"])]
+  Unset(ConfigUnsetArgs),
 }
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct ConfigSetArgs {
-  #[arg(long = "branch-sep", aliases = ["branch_sep"])]
+  #[arg(long = "branch-sep", alias = "branch_sep")]
   pub branch_sep: Option<String>,
+}
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct ConfigUnsetArgs {
+  #[arg(long = "branch-sep", alias = "branch_sep")]
+  pub branch_sep: bool,
 }
 
 pub struct Cli {
