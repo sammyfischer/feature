@@ -7,9 +7,6 @@ pub enum CliError {
   /// Generic/unknown error
   Generic(String) = 1,
 
-  /// A poorly formatted branch name was passed to a command that creates a branch
-  BadBranchName(String),
-
   /// A process that was spawned failed to complete or returned an error
   SubprocessFailed(String),
 
@@ -21,7 +18,6 @@ impl std::fmt::Display for CliError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       CliError::Generic(msg) => write!(f, "{}", msg),
-      CliError::BadBranchName(name) => write!(f, "Invalid branch name: {}", name),
       CliError::SubprocessFailed(msg) => write!(f, "{}", msg),
       CliError::ConfigError(config_error) => write!(f, "{}", config_error),
     }

@@ -24,19 +24,41 @@ fn start_creates_branch() {
 }
 
 #[test]
-fn invalid_branch_name_fails() {
+fn empty_branch_name_fails() {
+  let dir = init_repo();
+  init_commit(&dir);
+  // empty string
+  run_feature(&["start", ""], dir.path()).failure();
+}
+
+#[test]
+fn uses_custom_separator() {
   let dir = init_repo();
   init_commit(&dir);
 
-  // entire branch name is invalid
-  run_feature(&["start", "$"], dir.path()).failure();
+  // using `--flag=value` syntax
+  run_feature(&["start", "--sep=_", "new", "branch"], dir.path()).success();
 
-  // invalid char at end
-  run_feature(&["start", "new", "branch$"], dir.path()).failure();
+  let proc = run_git(&["branch", "--show-current"], dir.path()).success();
+  let Ok(stdout) = String::from_utf8(proc.get_output().stdout.clone()) else {
+    panic!("Failed to get stdout as string")
+  };
 
-  // invalid char in middle
-  run_feature(&["start", "br@nch"], dir.path()).failure();
+  assert_eq!(stdout.trim(), "new_branch".to_string());
+}
 
-  // empty string
-  run_feature(&["start", ""], dir.path()).failure();
+#[test]
+fn uses_custom_separator_alt_syntax() {
+  let dir = init_repo();
+  init_commit(&dir);
+
+  // using `--flag value` syntax
+  run_feature(&["start", "--sep", "_", "new", "branch"], dir.path()).success();
+
+  let proc = run_git(&["branch", "--show-current"], dir.path()).success();
+  let Ok(stdout) = String::from_utf8(proc.get_output().stdout.clone()) else {
+    panic!("Failed to get stdout as string")
+  };
+
+  assert_eq!(stdout.trim(), "new_branch".to_string());
 }

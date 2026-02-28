@@ -5,9 +5,9 @@ use std::process::{Child, Command, Stdio};
 
 use clap::Parser;
 
-use crate::cli::def::{Action, Args, Cli, ConfigCmd};
+use crate::cli::def::{Action, Args, Cli, ConfigCmd, StartArgs};
 use crate::cli::errors::CliError;
-use crate::config::{Config, write_config};
+use crate::config::{self, Config};
 
 pub mod def;
 mod errors;
@@ -36,31 +36,6 @@ macro_rules! git {
   };
 }
 
-/// Returns an args `Some` value, else gets the value from `self.config`.
-///
-/// # Parameters
-/// - `self` - the `self` instance, which must have the `config` field
-/// - `args` - a struct containing args to use. Must have a field with the same name as `opt` and be
-///   an `Option`
-/// - `opt` - the name of the config option field, defined on `self.config` and `args`. Should be
-///   written as an identifier. Supports borrowing with the usual borrow operator
-macro_rules! default_to_config {
-  ($self:ident, $args:expr, $opt:ident) => {
-    match $args.$opt {
-      Some(it) => it,
-      None => $self.config.$opt,
-    }
-  };
-
-  // separate rule, borrow operator needs to be handled differently
-  ($self:ident, $args:expr, & $opt:ident) => {
-    match &$args.$opt {
-      Some(it) => it,
-      None => &$self.config.$opt,
-    }
-  };
-}
-
 pub type CliResult<T = ()> = Result<T, CliError>;
 
 impl Cli {
@@ -71,7 +46,7 @@ impl Cli {
 
   pub fn run(&mut self) -> CliResult {
     match &self.args.action {
-      Action::Start { words } => self.start(words),
+      Action::Start(args) => self.start(args),
       Action::Commit { words } => self.commit(words),
       Action::Update => self.update(),
       Action::Merge => self.merge(),
@@ -86,9 +61,10 @@ impl Cli {
   }
 
   /// Start a new feature branch with remaining arguments as branch name
-  fn start(&self, words: &[String]) -> CliResult {
-    let branch_name = words.join("-");
-    validate_branch_name(&branch_name)?;
+  fn start(&self, args: &StartArgs) -> CliResult {
+    let sep = args.sep.as_ref().unwrap_or(&self.config.branch_sep);
+
+    let branch_name = args.words.join(sep);
     println!("Creating branch: {}", branch_name);
 
     let mut child = git!("switch", "-c", branch_name)?;
@@ -117,22 +93,42 @@ impl Cli {
   }
 
   fn protect(&mut self, branch: String) -> CliResult {
-    self.config.protected_branches.push(branch);
-    write_config(&self.config)?;
+    let mut doc = config::read_doc()?;
+    let branches = doc["protected_branches"].as_array();
+
+    let mut branches = if let Some(it) = branches {
+      it.clone()
+    } else {
+      toml_edit::Array::new()
+    };
+
+    branches.push(branch);
+    doc["protected_branches"] = toml_edit::value(branches);
+
+    config::write(&doc)?;
     Ok(())
   }
 
   fn unprotect(&mut self, branch: String) -> CliResult {
-    if let Some(i) = self
-      .config
-      .protected_branches
-      .iter()
-      .position(|b| *b == branch)
-    {
-      self.config.protected_branches.remove(i);
+    let mut doc = config::read_doc()?;
+
+    // if protected_branches is None, then there's nothing to remove, no need to error
+    let Some(branches) = doc["protected_branches"].as_array() else {
+      return Ok(());
     };
 
-    write_config(&self.config)?;
+    let mut branches = branches.clone();
+
+    // find index
+    let i = branches.iter().position(|b| b.as_str() == Some(&branch));
+
+    // modify if found, else leave untouched
+    if let Some(i) = i {
+      branches.remove(i);
+      doc["protected_branches"] = toml_edit::value(branches);
+      config::write(&doc)?;
+    }
+
     Ok(())
   }
 
@@ -264,22 +260,19 @@ impl Cli {
     await_child!(child, "Failed to call git")
   }
 
-  fn config(&mut self, args: &ConfigCmd) -> CliResult {
-    match args {
-      ConfigCmd::Set(args) => self.config.set(args),
-    }?;
+  fn config(&mut self, cmd: &ConfigCmd) -> CliResult {
+    match cmd {
+      ConfigCmd::Set(args) => {
+        let mut doc = config::read_doc()?;
 
-    write_config(&self.config)?;
-    Ok(())
-  }
-}
+        if let Some(it) = &args.branch_sep {
+          doc["branch_sep"] = toml_edit::value(it);
+        }
 
-/// Checks if a branch name is allowed. This is likely more strict than actual git rules for branch
-/// names.
-fn validate_branch_name(name: &str) -> CliResult {
-  if name.contains(|c: char| !(c.is_alphanumeric() || c == '/' || c == '-')) {
-    Err(CliError::BadBranchName(name.to_string()))
-  } else {
+        config::write(&doc)?;
+      }
+    };
+
     Ok(())
   }
 }

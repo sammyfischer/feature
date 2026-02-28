@@ -1,9 +1,9 @@
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use toml_edit::DocumentMut;
 
-use crate::cli::def::ConfigSetArgs;
 use crate::config::errors::ConfigError;
 
 pub mod errors;
@@ -17,28 +17,26 @@ pub type ConfigResult<T = ()> = Result<T, ConfigError>;
 pub struct Config {
   /// List of protected branches
   pub protected_branches: Vec<String>,
+
+  /// Separator used between words in branch names
+  pub branch_sep: String,
 }
 
 impl Default for Config {
   fn default() -> Self {
     Self {
       protected_branches: vec!["main".to_string(), "master".to_string()],
+      branch_sep: "-".to_string(),
     }
   }
 }
 
-impl Config {
-  pub fn set(&mut self, args: &ConfigSetArgs) -> ConfigResult {
-    if let Some(protected_branches) = &args.protected_branches {
-      self.protected_branches = protected_branches.clone();
-    };
-
-    Ok(())
-  }
-}
-
 /// Reads and deserializes the config file
-pub fn read_config() -> ConfigResult<Config> {
+pub fn read() -> ConfigResult<Config> {
+  if !Path::new(FILENAME).exists() {
+    return Ok(Config::default());
+  };
+
   let text = fs::read_to_string(FILENAME)
     .map_err(|_| ConfigError::Io("Couldn't read file contents".to_string()))?;
 
@@ -48,25 +46,28 @@ pub fn read_config() -> ConfigResult<Config> {
   Ok(config)
 }
 
-/// Serializes and overwrites the config file
-pub fn write_config(config: &Config) -> ConfigResult {
-  // get serialized config string
-  let text = toml::to_string_pretty(&config)
-    .map_err(|_| ConfigError::Serialize("Couldn't seralize config".to_string()))?;
+/// Reads the config file and loads a mutable config document
+pub fn read_doc() -> ConfigResult<DocumentMut> {
+  if !Path::new(FILENAME).exists() {
+    return Ok(DocumentMut::new());
+  };
 
-  // open or create file
-  let mut file = File::create(FILENAME)
-    .map_err(|_| ConfigError::Io("Couldn't create/open config file".to_string()))?;
+  let text = fs::read_to_string(FILENAME)
+    .map_err(|_| ConfigError::Io("Couldn't read file contents".to_string()))?;
 
-  // grab lock
-  file
-    .lock()
-    .map_err(|_| ConfigError::Io("Couldn't acquire config file lock".to_string()))?;
+  let doc = text
+    .parse::<DocumentMut>()
+    .map_err(|_| ConfigError::Serialize("Couldn't parse config file".to_string()))?;
 
-  // write config
-  file
-    .write(text.as_bytes())
-    .map_err(|_| ConfigError::Io("Couldn't write config to config file".to_string()))?;
+  Ok(doc)
+}
+
+/// Writes back the config document
+pub fn write(doc: &DocumentMut) -> ConfigResult {
+  let text = doc.to_string();
+
+  fs::write(FILENAME, text)
+    .map_err(|_| ConfigError::Io("Couldn't write config to file".to_string()))?;
 
   Ok(())
 }

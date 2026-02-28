@@ -1,8 +1,8 @@
 use std::fs::write;
 use std::path::Path;
 
-use assert_cmd::Command;
 use assert_cmd::assert::Assert;
+use assert_cmd::{Command, pkg_name};
 use tempfile::TempDir;
 
 /// Creates a temp dir and initializes a git repo and commit signature
@@ -27,7 +27,7 @@ pub fn init_commit(dir: &TempDir) {
 }
 
 pub fn run_feature(args: &[&str], cwd: &Path) -> Assert {
-  Command::cargo_bin("feature")
+  Command::cargo_bin(pkg_name!())
     .unwrap()
     .current_dir(cwd)
     .args(args)

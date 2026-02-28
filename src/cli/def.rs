@@ -13,11 +13,7 @@ pub struct Args {
 #[derive(Debug, Subcommand)]
 pub enum Action {
   /// Start a new feature branch
-  Start {
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
-    /// Words to join together as branch name
-    words: Vec<String>,
-  },
+  Start(StartArgs),
 
   /// Commit using remaining args as commit message
   Commit {
@@ -64,6 +60,17 @@ pub enum Action {
   },
 }
 
+#[derive(clap::Args, Clone, Debug)]
+pub struct StartArgs {
+  #[arg(long, default_value = "-")]
+  /// The separator to use when joining words
+  pub sep: Option<String>,
+
+  #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+  /// Words to join together as branch name
+  pub words: Vec<String>,
+}
+
 #[derive(Clone, Debug, Subcommand)]
 pub enum ConfigCmd {
   Set(ConfigSetArgs),
@@ -71,8 +78,8 @@ pub enum ConfigCmd {
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct ConfigSetArgs {
-  #[arg(long)]
-  pub protected_branches: Option<Vec<String>>,
+  #[arg(long = "branch-sep", aliases = ["branch_sep"])]
+  pub branch_sep: Option<String>,
 }
 
 pub struct Cli {
