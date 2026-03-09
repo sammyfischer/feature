@@ -12,6 +12,7 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
+  // ==== FEATURE BRANCH WORKFLOW / SINGLE BRANCH ACTIONS ====
   /// Start a new feature branch
   Start(StartArgs),
 
@@ -23,18 +24,25 @@ pub enum Action {
   },
 
   /// Update the current branch against its base branch
-  Update,
+  Update {
+    /// The name of the base branch to use. Defaults to the repo's main base
+    base: Option<String>,
+  },
 
-  /// Join the current branch into its base branch
-  Merge,
+  /// Push current branch to remote
+  Push,
 
   /// Add branch to list of protected branches
-  #[command(alias = "prot")]
+  #[command(visible_alias = "prot")]
   Protect { branch: String },
 
   /// Remove branch from list of protected branches
-  #[command(alias = "unprot")]
+  #[command(visible_alias = "unprot")]
   Unprotect { branch: String },
+
+  // ==== REPO / MULTI BRANCH MANAGEMENT ====
+  /// Syncs entire repo with all remotes
+  Sync,
 
   /// Clean up merged branches
   Prune {
@@ -42,8 +50,9 @@ pub enum Action {
     dry_run: bool,
   },
 
+  // ==== DISPLAY / INFO ====
   /// List branches
-  #[command(alias = "ls")]
+  #[command(visible_alias = "ls")]
   List,
 
   /// View git log with entire commit subject line, followed by author name and relative date
@@ -53,6 +62,7 @@ pub enum Action {
   /// subject to try to fit it in one line
   Graph,
 
+  // ==== META / FEATURE COMMANDS ====
   /// Modify config values or initialize a config file
   Config {
     #[command(subcommand)]

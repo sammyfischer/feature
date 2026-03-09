@@ -20,3 +20,9 @@ fmt:
 # lint with clippy
 lint:
   cargo clippy
+
+install:
+  cargo install --path .
+
+uninstall:
+  cargo uninstall feature

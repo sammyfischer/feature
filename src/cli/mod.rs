@@ -1,9 +1,11 @@
 //! Useful functions, macros, and core command implementation
 
 use std::io::Read;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 
 use clap::Parser;
+use regex::Regex;
+use unicode_width::UnicodeWidthChar;
 
 use crate::cli::def::{Action, Args, Cli, ConfigCmd, StartArgs};
 use crate::cli::errors::CliError;
@@ -25,7 +27,7 @@ macro_rules! await_child {
 
 /// Spawns a git command, passing this macros args as command line args
 macro_rules! git {
-  ($($arg:tt),* $(,)?) => {
+  ($($arg:expr),* $(,)?) => {
     {
       let mut cmd = std::process::Command::new("git");
       $(
@@ -48,10 +50,11 @@ impl Cli {
     match &self.args.action {
       Action::Start(args) => self.start(args),
       Action::Commit { words } => self.commit(words),
-      Action::Update => self.update(),
-      Action::Merge => self.merge(),
+      Action::Update { base } => self.update(base),
+      Action::Push => self.push(),
       Action::Protect { branch } => self.protect(branch.clone()),
       Action::Unprotect { branch } => self.unprotect(branch.clone()),
+      Action::Sync => self.sync(),
       Action::Prune { dry_run } => self.prune(*dry_run),
       Action::List => self.list(),
       Action::Log => self.log(),
@@ -67,8 +70,7 @@ impl Cli {
     let branch_name = args.words.join(sep);
     println!("Creating branch: {}", branch_name);
 
-    let mut child = git!("switch", "-c", branch_name)?;
-    await_child!(child, "git failed to execute")
+    await_child!(git!("switch", "-c", branch_name)?, "git failed to execute")
   }
 
   /// Commit with remaining arguments as commit message
@@ -76,20 +78,36 @@ impl Cli {
     let commit_msg = words.join(" ");
     println!("Committing with message: {}", commit_msg);
 
-    let mut child = git!("commit", "-m", commit_msg)?;
-    await_child!(child, "git failed to execute")
+    await_child!(git!("commit", "-m", commit_msg)?, "git failed to execute")
   }
 
   /// Update current branch with base branch (using rebase)
-  fn update(&self) -> CliResult {
-    println!("Updating against base");
-    Ok(())
+  fn update(&self, base: &Option<String>) -> CliResult {
+    let branch = match base {
+      Some(it) => it,
+      None => todo!("Implement config file default"),
+    };
+
+    await_child!(git!("rebase", branch)?, "git failed")
   }
 
-  /// Rebase current branch onto base branch
-  fn merge(&self) -> CliResult {
-    println!("Merging into base");
-    Ok(())
+  fn push(&self) -> CliResult {
+    let branch = get_current_branch()
+      .ok_or_else(|| CliError::SubprocessFailed("Failed to get current branch name".to_string()))?;
+
+    if self.config.protected_branches.contains(&branch) {
+      eprintln!("This is a protected branch, refusing to push");
+      return Ok(());
+    }
+
+    // TODO: configure default remote
+    // -u = set upstream, doesn't hurt to do this every time
+    // --force-with-lease = protects against overwriting others' work, but allows pushing after
+    // rebasing with main (since that changes commit history)
+    await_child!(
+      git!("push", "-u", "--force-with-lease", "origin", branch)?,
+      "git failed"
+    )
   }
 
   fn protect(&mut self, branch: String) -> CliResult {
@@ -132,7 +150,66 @@ impl Cli {
     Ok(())
   }
 
+  fn sync(&self) -> CliResult {
+    fetch_all()?;
+
+    // Outupt looks like: `main origin/main`. Branches w/o a remote won't match. Captures the local
+    // branch name, remote name, and remote branch name, e.g. (local_branch origin/remote_branch).
+    //
+    // Unwrapping is fine here bc this should only error if the pattern doesn't parse, which needs
+    // to be fixed immediately.
+    let regex = Regex::new(r"(\w+) (\w+)/(\w+)").unwrap();
+
+    // gets every branch and its remote tracking branch
+    let output = String::from_utf8(
+      Command::new("git")
+        .args([
+          "for-each-ref",
+          "--format=%(refname:short) %(upstream:short)",
+          "refs/heads",
+        ])
+        .output()?
+        .stdout,
+    )
+    .map_err(|e| CliError::SubprocessFailed(format!("Git output error: {}", e)))?;
+
+    for line in output.lines() {
+      let Some(captures) = regex.captures(line) else {
+        continue;
+      };
+
+      // local branch name match
+      let local_branch = match captures.get(1) {
+        Some(it) => it.as_str(),
+        None => continue,
+      };
+
+      // remote branch name match
+      let remote = match captures.get(2) {
+        Some(it) => it.as_str(),
+        None => continue,
+      };
+
+      // remote branch name match
+      let remote_branch = match captures.get(3) {
+        Some(it) => it.as_str(),
+        None => continue,
+      };
+
+      // `git fetch origin main:main` gets latest origin/main and fast-forwards main to match
+      // origin/main
+      let Ok(mut child) = git!("fetch", remote, format!("{remote_branch}:{local_branch}")) else {
+        continue;
+      };
+      let _ = await_child!(child, "git failed");
+    }
+
+    Ok(())
+  }
+
   fn prune(&self, dry_run: bool) -> CliResult {
+    fetch_all()?;
+
     // get list of merged branches
     let child = Command::new("git")
       .args(["branch", "--merged"])
@@ -145,25 +222,10 @@ impl Cli {
     let mut output = String::new();
     stdout.read_to_string(&mut output)?;
 
-    // current state of the process (might use this for better error messages later)
-    enum Status {
-      Started,
-      FailedStart,
-      FailedExec,
-    }
-
-    // metadata about each process (and the process itself)
-    struct ProcInfo<'branch> {
-      status: Status,
-      proc: Option<Child>,
-      branch: &'branch str,
-    }
-
     if dry_run {
       println!("Deletion candidates:")
     }
 
-    let mut children: Vec<ProcInfo> = Vec::new();
     for line in output.lines() {
       if line.starts_with("*") {
         // skip current branch
@@ -173,12 +235,12 @@ impl Cli {
       // clean up line to just get the branch name
       let branch_name = line.trim();
 
+      // skip protected branches
       if self
         .config
         .protected_branches
         .contains(&branch_name.to_string())
       {
-        // skip protected branches
         continue;
       }
 
@@ -188,51 +250,18 @@ impl Cli {
         continue;
       }
 
-      // start process to delete branch
+      // delete and await 1 by 1 so stdout doesn't get interlaced with all the output
       let child = git!("branch", "-d", branch_name);
-      let proc_info = if let Ok(child) = child {
-        ProcInfo {
-          status: Status::Started,
-          proc: Some(child),
-          branch: branch_name,
-        }
-      } else {
-        ProcInfo {
-          status: Status::FailedStart,
-          proc: None,
-          branch: branch_name,
-        }
-      };
-      children.push(proc_info);
-    }
-
-    // exit early, all branch candidates have been printed
-    if dry_run {
-      return Ok(());
-    }
-
-    let mut result: CliResult = Ok(());
-
-    // await each process and check status
-    for mut proc_info in children {
-      if let Some(mut child) = proc_info.proc
-        && await_child!(child, "Failed to delete branch").is_err()
-      {
-        // if proc failed
-        proc_info.status = Status::FailedExec;
-        result = Err(CliError::SubprocessFailed(
-          "Failed to delete all merged branches".to_string(),
-        ));
-        println!("Failed to delete branch {}", proc_info.branch);
+      if let Ok(mut child) = child {
+        let _ = await_child!(child, format!("Failed to delete branch {}", branch_name));
       };
     }
 
-    result
+    Ok(())
   }
 
   fn list(&self) -> CliResult {
-    let mut child = git!("branch", "-vv")?;
-    await_child!(child, "Failed to call git")
+    await_child!(git!("branch", "-vv")?, "Failed to call git")
   }
 
   fn log(&self) -> CliResult {
@@ -240,24 +269,77 @@ impl Cli {
     // %h = hash, %d = decorator (e.g. branch pointing to that commit)
     // %s = subject (commit description title line)
     // %an = author name, %ar = author date (relative)
-    let mut child = git!(
-      "log",
-      "--all",
-      "--pretty=format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)"
-    )?;
-    await_child!(child, "Failed to call git")
+    await_child!(
+      git!(
+        "log",
+        "--all",
+        "--pretty=format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)"
+      )?,
+      "Failed to call git"
+    )
   }
 
   fn graph(&self) -> CliResult {
     // like log, but author name and date are first, and message is truncated to try and fit in one
     // line
-    let mut child = git!(
-      "log",
-      "--graph",
-      "--all",
-      "--pretty=format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%<(50,trunc)%s"
-    )?;
-    await_child!(child, "Failed to call git")
+    let output = Command::new("git")
+      .args([
+        "log",
+        "--graph",
+        "--all",
+        "--color=always", // git detects that output isn't terminal, so by default won't use color
+        "--pretty=format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s",
+      ])
+      .output()?;
+
+    let string_output = String::from_utf8(output.stdout)?;
+    let lines = string_output.lines();
+    let mut out_lines: Vec<String> = Vec::new();
+    let term_width = get_term_width();
+
+    // truncate each line to term width
+    for line in lines {
+      let mut acc_width = 0usize;
+      let mut line_buf = String::new();
+      let mut escape_sequence = false;
+
+      // push characters until term width is exceeded
+      'chars: for c in line.chars() {
+        // unicode-width counts ansi escape sequences as 1 wide. manually push and ignore width
+        if c == '\x1b' {
+          escape_sequence = true;
+          line_buf.push(c);
+          continue;
+        }
+
+        // keep handling ansi escape sequence until the end. in our case, we only deal with color
+        // codes (and reset) which all end with 'm'
+        if escape_sequence && c == 'm' {
+          if c == 'm' {
+            escape_sequence = false;
+          }
+          line_buf.push(c);
+          continue;
+        }
+
+        let char_width = c.width().unwrap_or(0);
+
+        if acc_width + char_width > term_width {
+          break 'chars;
+        }
+
+        acc_width += char_width;
+        line_buf.push(c);
+      }
+
+      // push line to output
+      out_lines.push(line_buf);
+    }
+
+    // side-effect of manually printing is that we don't get automatic paging. we'll have to do that
+    // manually and likely implement config for that
+    println!("{}", out_lines.join("\n"));
+    Ok(())
   }
 
   fn config(&mut self, cmd: &ConfigCmd) -> CliResult {
@@ -290,4 +372,28 @@ impl Cli {
 
     Ok(())
   }
+}
+
+/// Gets current branch via `git branch --show-current`
+fn get_current_branch() -> Option<String> {
+  let output = Command::new("git")
+    .args(["branch", "--show-current"])
+    .output()
+    .ok()?;
+  String::from_utf8(output.stdout).ok()
+}
+
+fn fetch_all() -> CliResult {
+  // -p = prune remote refs (e.g. all the origin/<branch>)
+  // -t = fetch tags too
+  // --all = from all remotes
+  await_child!(
+    git!("fetch", "-pt", "--all")?,
+    "Failed to fetch from remotes"
+  )
+}
+
+fn get_term_width() -> usize {
+  let (_height, width) = console::Term::stdout().size();
+  width as usize
 }

@@ -1,3 +1,5 @@
+use std::string::FromUtf8Error;
+
 use crate::config::errors::ConfigError;
 
 #[derive(Debug)]
@@ -27,12 +29,18 @@ impl std::fmt::Display for CliError {
 // Convert io errors
 impl From<std::io::Error> for CliError {
   fn from(value: std::io::Error) -> Self {
-    CliError::Generic(value.to_string())
+    CliError::Generic(format!("{}", value))
   }
 }
 
 impl From<ConfigError> for CliError {
   fn from(value: ConfigError) -> Self {
     CliError::ConfigError(value)
+  }
+}
+
+impl From<FromUtf8Error> for CliError {
+  fn from(value: FromUtf8Error) -> Self {
+    CliError::SubprocessFailed(format!("{}", value))
   }
 }
