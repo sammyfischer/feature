@@ -15,6 +15,12 @@ pub type ConfigResult<T = ()> = Result<T, ConfigError>;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+  /// Main branch of the repository
+  pub base_branch: String,
+
+  /// Main remote name
+  pub default_remote: String,
+
   /// List of protected branches
   pub protected_branches: Vec<String>,
 
@@ -25,8 +31,10 @@ pub struct Config {
 impl Default for Config {
   fn default() -> Self {
     Self {
-      protected_branches: vec!["main".to_string(), "master".to_string()],
-      branch_sep: "-".to_string(),
+      base_branch: "main".into(),
+      default_remote: "origin".into(),
+      protected_branches: vec!["main".into(), "master".into()],
+      branch_sep: "-".into(),
     }
   }
 }

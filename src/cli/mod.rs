@@ -85,10 +85,10 @@ impl Cli {
   fn update(&self, base: &Option<String>) -> CliResult {
     let branch = match base {
       Some(it) => it,
-      None => todo!("Implement config file default"),
+      None => &self.config.base_branch,
     };
 
-    await_child!(git!("rebase", branch)?, "git failed")
+    await_child!(git!("rebase", branch)?, "Failed to call git")
   }
 
   fn push(&self) -> CliResult {
@@ -100,12 +100,11 @@ impl Cli {
       return Ok(());
     }
 
-    // TODO: configure default remote
     // -u = set upstream, doesn't hurt to do this every time
     // --force-with-lease = protects against overwriting others' work, but allows pushing after
     // rebasing with main (since that changes commit history)
     await_child!(
-      git!("push", "-u", "--force-with-lease", "origin", branch)?,
+      git!("push", "-u", "--force-with-lease", &self.config.default_remote, branch)?,
       "git failed"
     )
   }
