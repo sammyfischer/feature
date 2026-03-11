@@ -2,7 +2,7 @@
 
 use clap::{Parser, Subcommand};
 
-use crate::config::Config;
+use crate::{cli::config::ConfigCmd, config::Config};
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -79,25 +79,6 @@ pub struct StartArgs {
   #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
   /// Words to join together as branch name
   pub words: Vec<String>,
-}
-
-#[derive(Clone, Debug, Subcommand)]
-pub enum ConfigCmd {
-  Set(ConfigSetArgs),
-  #[command(aliases = ["del", "delete"])]
-  Unset(ConfigUnsetArgs),
-}
-
-#[derive(clap::Args, Clone, Debug)]
-pub struct ConfigSetArgs {
-  #[arg(long = "branch-sep", alias = "branch_sep")]
-  pub branch_sep: Option<String>,
-}
-
-#[derive(clap::Args, Clone, Debug)]
-pub struct ConfigUnsetArgs {
-  #[arg(long = "branch-sep", alias = "branch_sep")]
-  pub branch_sep: bool,
 }
 
 pub struct Cli {

@@ -12,3 +12,23 @@ impl std::fmt::Display for ConfigError {
     })
   }
 }
+
+impl From<std::io::Error> for ConfigError {
+  fn from(value: std::io::Error) -> Self {
+    ConfigError::Io(format!("{}", value))
+  }
+}
+
+// toml deserialization error
+impl From<toml::de::Error> for ConfigError {
+  fn from(value: toml::de::Error) -> Self {
+    ConfigError::Serialize(format!("{}", value))
+  }
+}
+
+// toml_edit error
+impl From<toml_edit::TomlError> for ConfigError {
+  fn from(value: toml_edit::TomlError) -> Self {
+    ConfigError::Serialize(format!("{}", value))
+  }
+}

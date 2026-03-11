@@ -41,7 +41,8 @@ macro_rules! git {
 pub type CliResult<T = ()> = Result<T, CliError>;
 
 impl Cli {
-  pub fn new(config: Config) -> Self {
+  pub fn new() -> Self {
+    let config = crate::config::read().unwrap_or_default();
     let args = Args::parse();
     Self { config, args }
   }
