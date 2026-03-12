@@ -16,7 +16,7 @@ pub type ConfigResult<T = ()> = Result<T, ConfigError>;
 #[serde(default)]
 pub struct Config {
   /// Main branch of the repository
-  pub base_branch: String,
+  pub default_base: String,
 
   /// Main remote name
   pub default_remote: String,
@@ -31,9 +31,9 @@ pub struct Config {
 impl Default for Config {
   fn default() -> Self {
     Self {
-      base_branch: "main".into(),
+      default_base: "main".into(),
       default_remote: "origin".into(),
-      protected_branches: vec!["main".into(), "master".into()],
+      protected_branches: vec!["main".into()],
       branch_sep: "-".into(),
     }
   }
@@ -45,37 +45,28 @@ pub fn read() -> ConfigResult<Config> {
     return Ok(Config::default());
   };
 
-  let text = fs::read_to_string(FILENAME)
-    .map_err(|_| ConfigError::Io("Couldn't read file contents".to_string()))?;
-
-  let config = toml::from_str(&text)
-    .map_err(|_| ConfigError::Serialize("Couldn't parse config file".to_string()))?;
+  let text = fs::read_to_string(FILENAME)?;
+  let config = toml::from_str(&text)?;
 
   Ok(config)
 }
 
 /// Reads the config file and loads a mutable config document
 pub fn read_doc() -> ConfigResult<DocumentMut> {
+  // if the file doesn't exist, return an empty document
   if !Path::new(FILENAME).exists() {
     return Ok(DocumentMut::new());
   };
 
-  let text = fs::read_to_string(FILENAME)
-    .map_err(|_| ConfigError::Io("Couldn't read file contents".to_string()))?;
-
-  let doc = text
-    .parse::<DocumentMut>()
-    .map_err(|_| ConfigError::Serialize("Couldn't parse config file".to_string()))?;
+  let text = fs::read_to_string(FILENAME)?;
+  let doc = text.parse::<DocumentMut>()?;
 
   Ok(doc)
 }
 
-/// Writes back the config document
+/// Writes back the config document. Creates the file if it doesn't exist
 pub fn write(doc: &DocumentMut) -> ConfigResult {
   let text = doc.to_string();
-
-  fs::write(FILENAME, text)
-    .map_err(|_| ConfigError::Io("Couldn't write config to file".to_string()))?;
-
+  fs::write(FILENAME, text)?;
   Ok(())
 }

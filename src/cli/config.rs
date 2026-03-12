@@ -1,4 +1,4 @@
-//! Implementations and definitions for config related commands
+//! Config subcommand
 
 use clap::Subcommand;
 
@@ -49,15 +49,15 @@ macro_rules! config_unset {
 }
 
 #[derive(Clone, Debug, Subcommand)]
-pub enum ConfigCmd {
-  Get(ConfigGetArgs),
-  Set(ConfigSetArgs),
+pub enum Args {
+  Get(GetArgs),
+  Set(SetArgs),
   #[command(visible_aliases = ["del", "delete"])]
-  Unset(ConfigUnsetArgs),
+  Unset(UnsetArgs),
 }
 
 #[derive(clap::Args, Clone, Debug)]
-pub struct ConfigGetArgs {
+pub struct GetArgs {
   #[arg(long, alias = "default_base")]
   pub default_base: bool,
 
@@ -69,7 +69,7 @@ pub struct ConfigGetArgs {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-pub struct ConfigSetArgs {
+pub struct SetArgs {
   #[arg(long, alias = "default_base")]
   pub default_base: Option<String>,
 
@@ -81,7 +81,7 @@ pub struct ConfigSetArgs {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-pub struct ConfigUnsetArgs {
+pub struct UnsetArgs {
   #[arg(long, alias = "default_base")]
   pub default_base: bool,
 
@@ -92,29 +92,29 @@ pub struct ConfigUnsetArgs {
   pub branch_sep: bool,
 }
 
-impl ConfigCmd {
+impl Args {
   pub fn run(&self) -> CliResult {
     match self {
-      ConfigCmd::Get(args) => self.get(args),
-      ConfigCmd::Set(args) => self.set(args),
-      ConfigCmd::Unset(args) => self.unset(args),
+      Args::Get(args) => self.get(args),
+      Args::Set(args) => self.set(args),
+      Args::Unset(args) => self.unset(args),
     }
   }
 
-  pub fn get(&self, args: &ConfigGetArgs) -> CliResult {
+  pub fn get(&self, args: &GetArgs) -> CliResult {
     let doc = config::read_doc()?;
     config_get!(doc, args; default_base, default_remote, branch_sep);
     Ok(())
   }
 
-  pub fn set(&self, args: &ConfigSetArgs) -> CliResult {
+  pub fn set(&self, args: &SetArgs) -> CliResult {
     let mut doc = config::read_doc()?;
     config_set!(doc, args; default_base, default_remote, branch_sep);
     config::write(&doc)?;
     Ok(())
   }
 
-  pub fn unset(&self, args: &ConfigUnsetArgs) -> CliResult {
+  pub fn unset(&self, args: &UnsetArgs) -> CliResult {
     let mut doc = config::read_doc()?;
     config_unset!(doc, args; default_base, default_remote, branch_sep);
     config::write(&doc)?;

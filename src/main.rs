@@ -1,5 +1,4 @@
-use crate::cli::CliResult;
-use crate::cli::def::Cli;
+use crate::cli::{Cli, CliResult};
 
 mod cli;
 mod config;
