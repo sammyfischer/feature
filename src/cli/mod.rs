@@ -9,6 +9,7 @@ use unicode_width::UnicodeWidthChar;
 use crate::cli::errors::CliError;
 use crate::config::Config;
 
+mod commit;
 mod config;
 mod errors;
 mod start;
@@ -56,11 +57,7 @@ pub enum Action {
   Start(start::Args),
 
   /// Commit using remaining args as commit message
-  Commit {
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
-    /// Words to join together as commit message
-    words: Vec<String>,
-  },
+  Commit(commit::Args),
 
   /// Update the current branch against its base branch
   Update {
@@ -125,7 +122,7 @@ impl Cli {
   pub fn run(&mut self) -> CliResult {
     match &self.args.action {
       Action::Start(args) => args.run(self),
-      Action::Commit { words } => self.commit(words),
+      Action::Commit(args) => args.run(),
       Action::Update { base } => self.update(base),
       Action::Push => self.push(),
       Action::Protect { branch } => self.protect(branch.clone()),
@@ -137,17 +134,6 @@ impl Cli {
       Action::Graph => self.graph(),
       Action::Config { args } => args.run(),
     }
-  }
-
-  /// Commit with remaining arguments as commit message
-  fn commit(&self, words: &[String]) -> CliResult {
-    let commit_msg = words.join(" ");
-    println!("Committing with message: {}", commit_msg);
-
-    await_child!(
-      git!("commit", "-m", commit_msg).spawn()?,
-      "git failed to execute"
-    )
   }
 
   /// Update current branch with base branch (using rebase)
