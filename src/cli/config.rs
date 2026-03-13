@@ -1,48 +1,51 @@
 //! Config subcommand
 
 use clap::Subcommand;
+use serde::{Deserialize, Serialize};
 
 use crate::cli::CliResult;
+use crate::cli::errors::CliError;
 use crate::config;
 
-/// Implements get logic for each config key
-macro_rules! config_get {
-  ($doc:expr, $args:expr; $($key:ident),+ $(,)?) => {
-    $(
-      if $args.$key {
-        match $doc.get(stringify!($key)) {
-          Some(it) => println!("{}: {}", stringify!($key), it.to_string().trim()),
-          None => println!("{} is unset", stringify!($key)),
-        }
+/// Loads the right config document
+macro_rules! load {
+  ($which:expr) => {
+    match $which {
+      WhichConfig::Project | WhichConfig::Local => config::project::load_doc()?,
+      WhichConfig::User | WhichConfig::Global => config::user::load_doc()?,
+    }
+  };
+}
+
+/// Saves the document to the right config file
+macro_rules! save {
+  ($which:expr, $doc:expr) => {
+    match $which {
+      WhichConfig::Project | WhichConfig::Local => config::project::save($doc)?,
+      WhichConfig::User | WhichConfig::Global => config::user::save($doc)?,
+    }
+  };
+}
+
+/// Generates match branches for each config key. For usage in the get subcommand
+macro_rules! get {
+  ($config:ident, $match_key:expr, $($key:ident),+ $(,)?) => {
+    match $match_key {
+      $(stringify!($key) => toml::Value::from($config.$key.clone()),)+
+      _ => {
+        eprintln!("{} doesn't exist!", $match_key);
+        continue;
       }
-    )+
+    }
   };
 }
 
 /// Implements set logic for each config key
-macro_rules! config_set {
-  ($doc:expr, $args:expr; $($key:ident),+ $(,)?) => {
+macro_rules! set {
+  ($doc:expr, $args:expr, $($key:ident),+ $(,)?) => {
     $(
-      if let Some(it) = & $args.$key {
-        $doc[stringify!($key)] = toml_edit::value(it);
-      }
-    )+
-  };
-}
-
-/// Implements unset logic for each config key
-macro_rules! config_unset {
-  ($doc:expr, $args:expr; $($key:ident),+ $(,)?) => {
-    $(
-      if $args.$key {
-        let old_val = $doc.remove_entry(stringify!($key));
-        if let Some((_, item)) = old_val {
-          println!(
-            "Unset {} (was {})",
-            stringify!($key),
-            item.to_string().trim()
-          );
-        }
+      if let Some(value) = & $args.$key {
+        $doc[stringify!($key)] = toml_edit::value(value);
       }
     )+
   };
@@ -50,26 +53,56 @@ macro_rules! config_unset {
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum Args {
+  /// Get a config value
   Get(GetArgs),
+
+  /// Modify a config value
   Set(SetArgs),
+
+  /// Delete a config value from a file
   #[command(visible_aliases = ["del", "delete"])]
   Unset(UnsetArgs),
+
+  /// Append a value to an array
+  Append(ArrayArgs),
+
+  /// Remove a value from an array
+  Remove(ArrayArgs),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum WhichConfig {
+  /// Project (local) config file
+  Project,
+  /// Project (local) config file
+  Local,
+  /// Global (user) config file
+  User,
+  /// Global (user) config file
+  Global,
 }
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct GetArgs {
-  #[arg(long, alias = "default_base")]
-  pub default_base: bool,
-
-  #[arg(long, alias = "default_remote")]
-  pub default_remote: bool,
-
-  #[arg(long, alias = "branch_sep")]
-  pub branch_sep: bool,
+  /// The names of the keys to get
+  #[arg(trailing_var_arg = true)]
+  pub keys: Vec<String>,
 }
 
 #[derive(clap::Args, Clone, Debug)]
+#[command(
+  after_long_help = "Each config key is specified as a flag, allowing you to set multiple at once"
+)]
 pub struct SetArgs {
+  /// Which file to modify
+  #[arg(long, default_value = "project", conflicts_with = "global")]
+  pub which: WhichConfig,
+
+  /// Shorthand for --which=global
+  #[arg(short, long, conflicts_with = "which")]
+  pub global: bool,
+
   #[arg(long, alias = "default_base")]
   pub default_base: Option<String>,
 
@@ -82,14 +115,35 @@ pub struct SetArgs {
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct UnsetArgs {
-  #[arg(long, alias = "default_base")]
-  pub default_base: bool,
+  /// Which file to modify
+  #[arg(long, default_value = "project", conflicts_with = "global")]
+  pub which: WhichConfig,
 
-  #[arg(long, alias = "default_remote")]
-  pub default_remote: bool,
+  /// Shorthand for --which=global
+  #[arg(short, long, conflicts_with = "which")]
+  pub global: bool,
 
-  #[arg(long, alias = "branch_sep")]
-  pub branch_sep: bool,
+  /// List of keys to unset
+  #[arg(trailing_var_arg = true)]
+  pub keys: Vec<String>,
+}
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct ArrayArgs {
+  /// Which file to modify
+  #[arg(long, default_value = "project", conflicts_with = "global")]
+  pub which: WhichConfig,
+
+  /// Shorthand for --which=global
+  #[arg(short, long, conflicts_with = "which")]
+  pub global: bool,
+
+  /// The key of the array
+  pub key: String,
+
+  /// The values to modify (append or remove)
+  #[arg(trailing_var_arg = true)]
+  pub values: Vec<String>,
 }
 
 impl Args {
@@ -98,26 +152,133 @@ impl Args {
       Args::Get(args) => self.get(args),
       Args::Set(args) => self.set(args),
       Args::Unset(args) => self.unset(args),
+      Args::Append(args) => self.append(args),
+      Args::Remove(args) => self.remove(args),
     }
   }
 
   pub fn get(&self, args: &GetArgs) -> CliResult {
-    let doc = config::read_doc()?;
-    config_get!(doc, args; default_base, default_remote, branch_sep);
+    let config = config::load()?;
+
+    for key in &args.keys {
+      let value = get!(
+        config,
+        &**key,
+        default_base,
+        default_remote,
+        protected_branches,
+        branch_sep,
+      );
+
+      println!("{}: {}", key, value);
+    }
+
     Ok(())
   }
 
   pub fn set(&self, args: &SetArgs) -> CliResult {
-    let mut doc = config::read_doc()?;
-    config_set!(doc, args; default_base, default_remote, branch_sep);
-    config::write(&doc)?;
+    let mut which = &args.which;
+    if args.global {
+      which = &WhichConfig::Global;
+    }
+
+    let mut doc = load!(which);
+    set!(doc, args, default_base, default_remote, branch_sep);
+    save!(which, doc);
     Ok(())
   }
 
   pub fn unset(&self, args: &UnsetArgs) -> CliResult {
-    let mut doc = config::read_doc()?;
-    config_unset!(doc, args; default_base, default_remote, branch_sep);
-    config::write(&doc)?;
+    let mut which = &args.which;
+    if args.global {
+      which = &WhichConfig::Global;
+    }
+
+    let mut doc = load!(which);
+
+    for key in &args.keys {
+      if let Some((_, value)) = doc.remove_entry(key) {
+        println!("Removed {} (was {})", key, value.to_string().trim());
+      };
+    }
+
+    save!(which, doc);
+    Ok(())
+  }
+
+  pub fn append(&self, args: &ArrayArgs) -> CliResult {
+    // short circuit if no values were specified
+    if args.values.is_empty() {
+      return Ok(());
+    }
+
+    let mut which = &args.which;
+    if args.global {
+      which = &WhichConfig::Global;
+    }
+
+    let mut doc = load!(which);
+
+    // TODO: check that this key is known by the config and should actually be an array
+    if !doc.contains_key(&args.key) {
+      doc[&args.key] = toml_edit::value(toml_edit::Array::new());
+    }
+
+    // get mutable item
+    let item = doc.get_mut(&args.key).ok_or(CliError::Config(format!(
+      "Failed to obtain key: {}",
+      args.key
+    )))?;
+
+    // get as mutable array
+    let value = item
+      .as_array_mut()
+      .ok_or(CliError::Config(format!("Not an array: {}", args.key)))?;
+
+    // push all values
+    for v in &args.values {
+      value.push(v);
+    }
+
+    save!(which, doc);
+    Ok(())
+  }
+
+  pub fn remove(&self, args: &ArrayArgs) -> CliResult {
+    // short circuit if no values were specified
+    if args.values.is_empty() {
+      return Ok(());
+    }
+
+    let mut which = &args.which;
+    if args.global {
+      which = &WhichConfig::Global;
+    }
+
+    let mut doc = load!(which);
+    // TODO: validate and display an error message
+    if !doc.contains_key(&args.key) {
+      return Ok(());
+    }
+
+    // get mutable item
+    let item = doc.get_mut(&args.key).ok_or(CliError::Config(format!(
+      "Failed to obtain key: {}",
+      args.key
+    )))?;
+
+    // get as mutable array
+    let value = item
+      .as_array_mut()
+      .ok_or(CliError::Config(format!("Not an array: {}", args.key)))?;
+
+    // retain values not specified by command
+    value.retain(|v| match v.as_str() {
+      Some(it) => !args.values.contains(&it.to_string()),
+      None => true,
+    });
+
+    save!(which, doc);
     Ok(())
   }
 }

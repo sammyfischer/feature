@@ -1,16 +1,8 @@
-use std::fs;
-use std::path::Path;
-
+use figment::Figment;
+use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
-use toml_edit::DocumentMut;
 
-use crate::config::errors::ConfigError;
-
-pub mod errors;
-
-const FILENAME: &str = ".feature.toml";
-
-pub type ConfigResult<T = ()> = Result<T, ConfigError>;
+use crate::cli::CliResult;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -39,34 +31,130 @@ impl Default for Config {
   }
 }
 
-/// Reads and deserializes the config file
-pub fn read() -> ConfigResult<Config> {
-  if !Path::new(FILENAME).exists() {
-    return Ok(Config::default());
-  };
+/// Loads and layers config from all sources except cli options
+pub fn load() -> CliResult<Config> {
+  // load defaults
+  let mut figment = Figment::new().merge(Serialized::defaults(Config::default()));
 
-  let text = fs::read_to_string(FILENAME)?;
-  let config = toml::from_str(&text)?;
+  // override with user config
+  // ignore error, just don't load and move on
+  if let Ok(path) = user::path() {
+    figment = figment.merge(Toml::file(&path));
+  }
 
+  // override with project config
+  {
+    let path = project::path();
+    if path.exists() {
+      figment = figment.merge(Toml::file(path));
+    }
+  }
+
+  let config = figment.extract::<Config>()?;
   Ok(config)
 }
 
-/// Reads the config file and loads a mutable config document
-pub fn read_doc() -> ConfigResult<DocumentMut> {
-  // if the file doesn't exist, return an empty document
-  if !Path::new(FILENAME).exists() {
-    return Ok(DocumentMut::new());
-  };
+pub mod project {
+  use std::fs;
+  use std::path::PathBuf;
 
-  let text = fs::read_to_string(FILENAME)?;
-  let doc = text.parse::<DocumentMut>()?;
+  use toml_edit::DocumentMut;
 
-  Ok(doc)
+  use crate::cli::CliResult;
+
+  pub fn path() -> PathBuf {
+    PathBuf::from(".feature.toml")
+  }
+
+  /// Reads the config file and loads a mutable config document
+  pub fn load_doc() -> CliResult<DocumentMut> {
+    let path = self::path();
+    // if the file doesn't exist, return an empty document
+    if !path.exists() {
+      return Ok(DocumentMut::new());
+    };
+
+    let text = fs::read_to_string(path)?;
+    let doc = text.parse::<DocumentMut>()?;
+
+    Ok(doc)
+  }
+
+  pub fn save(doc: DocumentMut) -> CliResult {
+    let text = doc.to_string();
+    fs::write(self::path(), text)?;
+    Ok(())
+  }
 }
 
-/// Writes back the config document. Creates the file if it doesn't exist
-pub fn write(doc: &DocumentMut) -> ConfigResult {
-  let text = doc.to_string();
-  fs::write(FILENAME, text)?;
-  Ok(())
+pub mod user {
+  use std::fs;
+  use std::io::ErrorKind;
+  use std::path::PathBuf;
+
+  use toml_edit::DocumentMut;
+
+  use crate::cli::CliResult;
+  use crate::cli::errors::CliError;
+
+  /// Returns the config file located in the platform's standard config directory
+  /// # Errors
+  /// Returns an error if the config directory cannot be obtained.
+  pub fn path() -> CliResult<PathBuf> {
+    let mut path = dirs::config_dir().ok_or(CliError::Config(
+      "Couldn't find user config directory".into(),
+    ))?;
+    path.push("feature");
+    path.push("config.toml");
+    Ok(path)
+  }
+
+  /// Reads the config file and loads a mutable config document
+  pub fn load_doc() -> CliResult<DocumentMut> {
+    let path = self::path()?;
+
+    // if the file doesn't exist, return an empty document
+    if !path.exists() {
+      return Ok(DocumentMut::new());
+    };
+
+    let text = fs::read_to_string(path)?;
+    let doc = text.parse::<DocumentMut>()?;
+
+    Ok(doc)
+  }
+
+  pub fn save(doc: DocumentMut) -> CliResult {
+    let path = self::path()?;
+    let Some(dir) = &path.parent() else {
+      return Err(CliError::Config(
+        "Failed to find parent directory of config".into(),
+      ));
+    };
+
+    // ensure full path exists
+    match fs::create_dir_all(dir) {
+      Ok(_) => Ok(()),
+      Err(e) => match e.kind() {
+        // ignore AlreadyExists error
+        ErrorKind::AlreadyExists => Ok(()),
+
+        ErrorKind::PermissionDenied => Err(CliError::Config(format!(
+          "Insufficient privilege to create directores in path: {}\n",
+          &path.to_string_lossy()
+        ))),
+
+        _ => Err(CliError::Config(format!(
+          "Failed to create path: {}. Error: {}",
+          path.to_string_lossy(),
+          e
+        ))),
+      },
+    }?;
+
+    let text = doc.to_string();
+    fs::write(&path, text)?;
+    println!("Wrote to config file at {}", &path.to_string_lossy());
+    Ok(())
+  }
 }

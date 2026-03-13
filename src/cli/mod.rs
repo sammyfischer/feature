@@ -11,7 +11,7 @@ use crate::config::Config;
 
 mod commit;
 mod config;
-mod errors;
+pub mod errors;
 mod start;
 
 /// Waits on the child process, returns result
@@ -68,14 +68,6 @@ pub enum Action {
   /// Push current branch to remote
   Push,
 
-  /// Add branch to list of protected branches
-  #[command(visible_alias = "prot")]
-  Protect { branch: String },
-
-  /// Remove branch from list of protected branches
-  #[command(visible_alias = "unprot")]
-  Unprotect { branch: String },
-
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   /// Syncs all base (protected) branches with remotes. Only fast-forwards branches, refuses to
   /// rebase/merge
@@ -100,7 +92,7 @@ pub enum Action {
   Graph,
 
   // ==== META / FEATURE COMMANDS ====
-  /// Modify config values or initialize a config file
+  /// Interact with feature config
   Config {
     #[command(subcommand)]
     args: config::Args,
@@ -114,7 +106,7 @@ pub struct Cli {
 
 impl Cli {
   pub fn new() -> Self {
-    let config = crate::config::read().unwrap_or_default();
+    let config = crate::config::load().unwrap_or_default();
     let args = Args::parse();
     Self { config, args }
   }
@@ -125,8 +117,6 @@ impl Cli {
       Action::Commit(args) => args.run(),
       Action::Update { base } => self.update(base),
       Action::Push => self.push(),
-      Action::Protect { branch } => self.protect(branch.clone()),
-      Action::Unprotect { branch } => self.unprotect(branch.clone()),
       Action::Sync => self.sync(),
       Action::Prune { dry_run } => self.prune(*dry_run),
       Action::List => self.list(),
@@ -168,46 +158,6 @@ impl Cli {
       .spawn()?,
       "Failed to push"
     )
-  }
-
-  fn protect(&mut self, branch: String) -> CliResult {
-    let mut doc = crate::config::read_doc()?;
-    let branches = doc["protected_branches"].as_array();
-
-    let mut branches = if let Some(it) = branches {
-      it.clone()
-    } else {
-      toml_edit::Array::new()
-    };
-
-    branches.push(branch);
-    doc["protected_branches"] = toml_edit::value(branches);
-
-    crate::config::write(&doc)?;
-    Ok(())
-  }
-
-  fn unprotect(&mut self, branch: String) -> CliResult {
-    let mut doc = crate::config::read_doc()?;
-
-    // if protected_branches is None, then there's nothing to remove, no need to error
-    let Some(branches) = doc["protected_branches"].as_array() else {
-      return Ok(());
-    };
-
-    let mut branches = branches.clone();
-
-    // find index
-    let i = branches.iter().position(|b| b.as_str() == Some(&branch));
-
-    // modify if found, else leave untouched
-    if let Some(i) = i {
-      branches.remove(i);
-      doc["protected_branches"] = toml_edit::value(branches);
-      crate::config::write(&doc)?;
-    }
-
-    Ok(())
   }
 
   fn sync(&self) -> CliResult {

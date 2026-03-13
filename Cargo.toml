@@ -6,8 +6,9 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
 console = "0.16.2"
-regex = "1.12.3"
-serde = { version = "1.0.228", features = ["serde_derive"] }
+dirs = "6.0.0"
+figment = { version = "0.10.19", features = ["env", "toml"] }
+serde = { version = "1.0.228", features = ["derive", "serde_derive"] }
 toml = "1.0.3"
 toml_edit = "0.25.3"
 unicode-width = "0.2.2"

@@ -1,7 +1,5 @@
 use std::string::FromUtf8Error;
 
-use crate::config::errors::ConfigError;
-
 #[derive(Debug)]
 #[repr(u8)]
 /// Enumeration of all error types, mapped to a nonzero return code
@@ -13,7 +11,7 @@ pub enum CliError {
   SubprocessFailed(String),
 
   /// An error with the config file
-  ConfigError(ConfigError),
+  Config(String),
 }
 
 impl std::fmt::Display for CliError {
@@ -21,7 +19,7 @@ impl std::fmt::Display for CliError {
     match self {
       CliError::Generic(msg) => write!(f, "{}", msg),
       CliError::SubprocessFailed(msg) => write!(f, "{}", msg),
-      CliError::ConfigError(config_error) => write!(f, "{}", config_error),
+      CliError::Config(msg) => write!(f, "{}", msg),
     }
   }
 }
@@ -33,14 +31,27 @@ impl From<std::io::Error> for CliError {
   }
 }
 
-impl From<ConfigError> for CliError {
-  fn from(value: ConfigError) -> Self {
-    CliError::ConfigError(value)
-  }
-}
-
 impl From<FromUtf8Error> for CliError {
   fn from(value: FromUtf8Error) -> Self {
     CliError::SubprocessFailed(format!("{}", value))
+  }
+}
+
+// toml deserialization error
+impl From<toml::de::Error> for CliError {
+  fn from(value: toml::de::Error) -> Self {
+    CliError::Config(format!("{}", value))
+  }
+}
+
+impl From<toml_edit::TomlError> for CliError {
+  fn from(value: toml_edit::TomlError) -> Self {
+    CliError::Config(format!("{}", value))
+  }
+}
+
+impl From<figment::Error> for CliError {
+  fn from(value: figment::Error) -> Self {
+    CliError::Config(format!("{}", value))
   }
 }
