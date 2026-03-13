@@ -4,7 +4,7 @@ use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::CliResult;
-use crate::cli::errors::CliError;
+use crate::cli::error::CliError;
 use crate::config;
 
 /// Loads the right config document

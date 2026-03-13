@@ -95,7 +95,7 @@ pub mod user {
   use toml_edit::DocumentMut;
 
   use crate::cli::CliResult;
-  use crate::cli::errors::CliError;
+  use crate::cli::error::CliError;
 
   /// Returns the config file located in the platform's standard config directory
   /// # Errors

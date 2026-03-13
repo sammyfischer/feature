@@ -6,12 +6,12 @@ use std::process::{Command, Stdio};
 use clap::{Parser, Subcommand};
 use unicode_width::UnicodeWidthChar;
 
-use crate::cli::errors::CliError;
+use crate::cli::error::CliError;
 use crate::config::Config;
 
 mod commit;
 mod config;
-pub mod errors;
+pub mod error;
 mod start;
 
 /// Waits on the child process, returns result
@@ -21,7 +21,7 @@ macro_rules! await_child {
     if $child.wait().is_ok_and(|status| status.success()) {
       Ok(())
     } else {
-      Err($crate::cli::errors::CliError::SubprocessFailed(
+      Err($crate::cli::error::CliError::SubprocessFailed(
         $msg.to_string(),
       ))
     }

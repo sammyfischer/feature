@@ -1,7 +1,7 @@
 //! Commit subcommand
 
 use crate::cli::CliResult;
-use crate::cli::errors::CliError;
+use crate::cli::error::CliError;
 use crate::{await_child, git};
 
 #[derive(clap::Args, Clone, Debug)]
