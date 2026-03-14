@@ -107,7 +107,7 @@ pub struct GetArgs {
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
-  after_long_help = "Each config key is specified as a flag, allowing you to set multiple at once"
+  after_long_help = "Each config key is specified as a flag, allowing you to set multiple at once. Tip: use `append` and `remove` to modify arrays."
 )]
 pub struct SetArgs {
   /// Which file to modify
@@ -118,8 +118,8 @@ pub struct SetArgs {
   #[arg(short, long, conflicts_with = "which")]
   pub global: bool,
 
-  #[arg(long, alias = "default_base")]
-  pub default_base: Option<String>,
+  #[arg(long)]
+  pub trunk: Option<String>,
 
   #[arg(long, alias = "default_remote")]
   pub default_remote: Option<String>,
@@ -216,14 +216,7 @@ impl Args {
     let config = config::load()?;
 
     for key in &args.keys {
-      let value = get!(
-        config,
-        &**key,
-        default_base,
-        default_remote,
-        protected_branches,
-        branch_sep,
-      );
+      let value = get!(config, &**key, trunk, default_remote, bases, branch_sep,);
 
       println!("{}: {}", key, value);
     }
@@ -238,7 +231,7 @@ impl Args {
     }
 
     let mut doc = load!(which);
-    set!(doc, args, default_base, default_remote, branch_sep);
+    set!(doc, args, trunk, default_remote, branch_sep);
     save!(which, doc);
     Ok(())
   }
@@ -338,6 +331,7 @@ impl Args {
   }
 }
 
+/// Helper function to configure a prompt and wrap it in a CliResult
 fn get_user_confirmation(prompt: &str) -> CliResult<bool> {
   Confirm::new()
     .default(false)

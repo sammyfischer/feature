@@ -7,14 +7,18 @@ use crate::cli::CliResult;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-  /// Main branch of the repository
-  pub default_base: String,
+  /// The main branch of the repository
+  pub trunk: String,
 
   /// Main remote name
   pub default_remote: String,
 
-  /// List of protected branches
-  pub protected_branches: Vec<String>,
+  /// List of possible base branches
+  pub bases: Vec<String>,
+
+  /// List of branches to protect from pushes/deletion. By default, base branches are already
+  /// protected and don't need to be added
+  pub protect: Vec<String>,
 
   /// Separator used between words in branch names
   pub branch_sep: String,
@@ -23,9 +27,10 @@ pub struct Config {
 impl Default for Config {
   fn default() -> Self {
     Self {
-      default_base: "main".into(),
+      trunk: "main".into(),
       default_remote: "origin".into(),
-      protected_branches: vec!["main".into()],
+      bases: vec!["main".into()],
+      protect: vec!["main".into(), "master".into()],
       branch_sep: "-".into(),
     }
   }
@@ -50,7 +55,7 @@ pub fn load() -> CliResult<Config> {
     }
   }
 
-  let config = figment.extract::<Config>()?;
+  let config: Config = figment.extract()?;
   Ok(config)
 }
 
