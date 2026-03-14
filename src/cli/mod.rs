@@ -1,4 +1,4 @@
-//! Useful functions, macros, and core command implementation
+//! Defines the main cli structure, most simple commands, and several helper functions and macros.
 
 use std::io::{IsTerminal, Write};
 use std::process::{Command, Stdio};
@@ -8,11 +8,16 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::cli::error::CliError;
 use crate::config::Config;
+use crate::database;
 
 mod commit;
 mod config;
 pub mod error;
+mod prune;
+mod push;
 mod start;
+mod sync;
+mod update;
 
 /// Waits on the child process, returns result
 #[macro_export]
@@ -60,13 +65,10 @@ pub enum Action {
   Commit(commit::Args),
 
   /// Update the current branch against its base branch
-  Update {
-    /// The name of the base branch to use. Defaults to the repo's main base
-    base: Option<String>,
-  },
+  Update(update::Args),
 
   /// Push current branch to remote
-  Push,
+  Push(push::Args),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   /// Syncs all base (protected) branches with remotes. Only fast-forwards branches, refuses to
@@ -74,10 +76,7 @@ pub enum Action {
   Sync,
 
   /// Clean up merged branches. A branch is merged if all its commits are found on default_base
-  Prune {
-    #[arg(long = "dry-run")]
-    dry_run: bool,
-  },
+  Prune(prune::Args),
 
   // ==== DISPLAY / INFO ====
   /// List branches
@@ -97,6 +96,15 @@ pub enum Action {
     #[command(subcommand)]
     args: config::Args,
   },
+
+  /// Set base branch in the database
+  Base {
+    /// The base branch
+    base: String,
+
+    /// The branch whose base will be set. Defaults to current branch
+    branch: Option<String>,
+  },
 }
 
 pub struct Cli {
@@ -115,172 +123,16 @@ impl Cli {
     match &self.args.action {
       Action::Start(args) => args.run(self),
       Action::Commit(args) => args.run(),
-      Action::Update { base } => self.update(base),
-      Action::Push => self.push(),
-      Action::Sync => self.sync(),
-      Action::Prune { dry_run } => self.prune(*dry_run),
+      Action::Update(args) => args.run(),
+      Action::Push(args) => args.run(self),
+      Action::Sync => sync::sync(self),
+      Action::Prune(args) => args.run(self),
       Action::List => self.list(),
       Action::Log => self.log(),
       Action::Graph => self.graph(),
       Action::Config { args } => args.run(),
+      Action::Base { base, branch } => self.base(base, branch),
     }
-  }
-
-  /// Update current branch with base branch (using rebase)
-  fn update(&self, base: &Option<String>) -> CliResult {
-    let branch = match base {
-      Some(it) => it,
-      None => &self.config.default_base,
-    };
-
-    await_child!(git!("rebase", branch).spawn()?, "Failed to call git")
-  }
-
-  fn push(&self) -> CliResult {
-    let branch = get_current_branch()?;
-
-    if self.config.protected_branches.contains(&branch) {
-      eprintln!("This is a protected branch, refusing to push");
-      return Ok(());
-    }
-
-    // -u = set upstream, doesn't hurt to do this every time
-    // --force-with-lease = protects against overwriting others' work, but allows pushing after
-    // rebasing with main (since that changes commit history)
-    await_child!(
-      git!(
-        "push",
-        "-u",
-        "--force-with-lease",
-        &self.config.default_remote,
-        branch
-      )
-      .spawn()?,
-      "Failed to push"
-    )
-  }
-
-  fn sync(&self) -> CliResult {
-    fetch_all()?;
-
-    if has_local_changes()? {
-      return Err(CliError::Generic(
-        "You have uncommitted changes! Please commit or stash them before syncing".into(),
-      ));
-    }
-
-    // save current branch to switch back to at the end
-    let start_branch = get_current_branch()?;
-
-    // TODO: should protected branches be considered base branches?
-    let base_branches = &self.config.protected_branches;
-
-    // whether the script switched to a diffferent branch
-    let mut has_switched = false;
-
-    // error messages to print at the end
-    let mut failures: Vec<String> = Vec::new();
-
-    for branch in base_branches {
-      // switch to branch
-      let Ok(mut child) = git!("switch", branch).spawn() else {
-        failures.push(format!("Failed to switch to branch: {}", branch));
-        continue;
-      };
-      let Ok(_) = await_child!(child, format!("Failed to switch to branch: {}", branch)) else {
-        failures.push(format!("Failed to switch to branch: {}", branch));
-        continue;
-      };
-
-      has_switched = true;
-
-      if let Ok(yes) = can_fast_forward(branch) {
-        if !yes {
-          failures.push(format!(
-            "Cannot fast forward branch: {}. You might want to pull manually",
-            branch
-          ));
-        }
-      } else {
-        failures.push(format!("Failed to check if {} is fast-forwardable", branch));
-        continue;
-      }
-
-      // pull changes (fast-forward only)
-      let Ok(mut child) = git!("pull", "--ff-only").spawn() else {
-        failures.push(format!("Failed to pull changes into branch: {}", branch));
-        continue;
-      };
-      let Ok(_) = await_child!(
-        child,
-        format!("Failed to pull changes into branch: {}", branch)
-      ) else {
-        failures.push(format!("Failed to pull changes into branch: {}", branch));
-        continue;
-      };
-    }
-
-    if has_switched {
-      // switch back
-      if let Ok(mut child) = git!("switch", &start_branch).spawn()
-        && await_child!(child, "Failed to switch back to starting branch").is_err()
-      {
-        failures.push(format!(
-          "Failed to switch back to starting branch: {}",
-          &start_branch
-        ));
-      };
-    }
-
-    if !failures.is_empty() {
-      eprintln!("{}", failures.join("\n"));
-    }
-
-    Ok(())
-  }
-
-  fn prune(&self, dry_run: bool) -> CliResult {
-    fetch_all()?;
-
-    // get list of all branches
-    let branches = get_all_branches()?;
-
-    if dry_run {
-      println!("Deletion candidates:")
-    }
-
-    for branch in branches {
-      // skip protected branches
-      if self.config.protected_branches.contains(&branch) {
-        continue;
-      }
-
-      // skip current branch
-      let current_branch = get_current_branch();
-      if current_branch.is_ok_and(|it| it == branch) {
-        continue;
-      }
-
-      // detect if branch is merged (i.e. has no commits that aren't on main)
-      if is_merged(&branch, &self.config.default_base).is_ok_and(|yes| yes) {
-        // in dry-run mode, print the branch name but don't delete
-        if dry_run {
-          println!("{}", &branch);
-          continue;
-        }
-
-        // delete 1 by 1 (use -D to force delete, we've assured all commits are on main)
-        if let Ok(mut child) = git!("branch", "-D", &branch).spawn() {
-          if await_child!(child, format!("Failed to delete branch {}", &branch)).is_err() {
-            eprintln!("Failed to delete branch {}", &branch);
-          }
-        } else {
-          eprintln!("Failed to delete branch {}", &branch);
-        };
-      }
-    }
-
-    Ok(())
   }
 
   fn list(&self) -> CliResult {
@@ -386,6 +238,17 @@ impl Cli {
     stdin.write_all(truncated.as_bytes())?;
     await_child!(less_proc, "Failed to open pager")
   }
+
+  fn base(&self, base: &str, branch: &Option<String>) -> CliResult {
+    let branch = match branch {
+      Some(it) => it,
+      None => &get_current_branch()?,
+    };
+
+    let mut db = database::load()?;
+    db.insert(branch.to_string(), base.to_string());
+    database::save(db)
+  }
 }
 
 /// Gets current branch via `git branch --show-current`
@@ -403,7 +266,7 @@ fn get_all_branches() -> CliResult<Vec<String>> {
 }
 
 /// Gets the branch's remote tracking branch
-fn get_tracking(branch: &str) -> CliResult<String> {
+fn get_tracking_branch(branch: &str) -> CliResult<String> {
   // --list <pattern> filters the entire list for the given pattern, we can use the current branch
   // name to only find its remote tracking branch
   let output = git!(
@@ -467,7 +330,7 @@ fn has_local_changes() -> CliResult<bool> {
 
 /// Whether the branch can be fast-forwarded to its remote counterpart
 fn can_fast_forward(branch: &str) -> CliResult<bool> {
-  let remote = get_tracking(branch)?;
+  let remote = get_tracking_branch(branch)?;
 
   let output = git!("rev-parse", branch).output()?;
   let output = String::from_utf8(output.stdout)?;
