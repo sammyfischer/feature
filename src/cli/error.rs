@@ -37,6 +37,13 @@ impl From<FromUtf8Error> for CliError {
   }
 }
 
+// toml serialization error
+impl From<toml::ser::Error> for CliError {
+  fn from(value: toml::ser::Error) -> Self {
+    CliError::Config(format!("{}", value))
+  }
+}
+
 // toml deserialization error
 impl From<toml::de::Error> for CliError {
   fn from(value: toml::de::Error) -> Self {

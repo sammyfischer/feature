@@ -1,6 +1,7 @@
 //! Config subcommand
 
 use clap::Subcommand;
+use dialoguer::Confirm;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::CliResult;
@@ -53,6 +54,9 @@ macro_rules! set {
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum Args {
+  /// Creates a config file with all default values specified
+  Create(CreateArgs),
+
   /// Get a config value
   Get(GetArgs),
 
@@ -81,6 +85,17 @@ pub enum WhichConfig {
   User,
   /// Global (user) config file
   Global,
+}
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct CreateArgs {
+  /// Which file to create
+  #[arg(long, default_value = "project", conflicts_with = "global")]
+  pub which: WhichConfig,
+
+  /// Shorthand for --which=global
+  #[arg(short, long, conflicts_with = "which")]
+  pub global: bool,
 }
 
 #[derive(clap::Args, Clone, Debug)]
@@ -149,11 +164,51 @@ pub struct ArrayArgs {
 impl Args {
   pub fn run(&self) -> CliResult {
     match self {
+      Args::Create(args) => self.create(args),
       Args::Get(args) => self.get(args),
       Args::Set(args) => self.set(args),
       Args::Unset(args) => self.unset(args),
       Args::Append(args) => self.append(args),
       Args::Remove(args) => self.remove(args),
+    }
+  }
+
+  pub fn create(&self, args: &CreateArgs) -> CliResult {
+    let mut which = &args.which;
+    if args.global {
+      which = &WhichConfig::Global;
+    }
+
+    match which {
+      WhichConfig::Project | WhichConfig::Local => {
+        // if it already exists, prompt user for confirmation
+        if config::project::path().exists() {
+          let choice = get_user_confirmation(
+            "A local config file already exists. Do you want to overwrite it?",
+          )?;
+
+          // user selected no
+          if !choice {
+            return Ok(());
+          }
+        }
+        config::project::save_default()
+      }
+
+      WhichConfig::User | WhichConfig::Global => {
+        // if it already exists, prompt user for confirmation
+        if config::user::path()?.exists() {
+          let choice = get_user_confirmation(
+            "A local config file already exists. Do you want to overwrite it?",
+          )?;
+
+          // user selected no
+          if !choice {
+            return Ok(());
+          }
+        }
+        config::user::save_default()
+      }
     }
   }
 
@@ -281,4 +336,12 @@ impl Args {
     save!(which, doc);
     Ok(())
   }
+}
+
+fn get_user_confirmation(prompt: &str) -> CliResult<bool> {
+  Confirm::new()
+    .default(false)
+    .with_prompt(prompt)
+    .interact()
+    .map_err(|_| CliError::Generic("Failed to handle prompt".into()))
 }

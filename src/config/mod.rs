@@ -61,6 +61,7 @@ pub mod project {
   use toml_edit::DocumentMut;
 
   use crate::cli::CliResult;
+  use crate::config::Config;
 
   pub fn path() -> PathBuf {
     PathBuf::from(".feature.toml")
@@ -81,8 +82,22 @@ pub mod project {
   }
 
   pub fn save(doc: DocumentMut) -> CliResult {
+    let path = self::path();
     let text = doc.to_string();
-    fs::write(self::path(), text)?;
+
+    fs::write(&path, text)?;
+    println!("Wrote to config file at {}", &path.to_string_lossy());
+    Ok(())
+  }
+
+  /// Saves an entire default config to the project directory
+  pub fn save_default() -> CliResult {
+    let path = self::path();
+    let config = Config::default();
+    let toml_raw = toml::to_string_pretty(&config)?;
+
+    fs::write(&path, toml_raw)?;
+    println!("Created default config file at {}", &path.to_string_lossy());
     Ok(())
   }
 }
@@ -96,6 +111,7 @@ pub mod user {
 
   use crate::cli::CliResult;
   use crate::cli::error::CliError;
+  use crate::config::Config;
 
   /// Returns the config file located in the platform's standard config directory
   /// # Errors
@@ -109,22 +125,8 @@ pub mod user {
     Ok(path)
   }
 
-  /// Reads the config file and loads a mutable config document
-  pub fn load_doc() -> CliResult<DocumentMut> {
-    let path = self::path()?;
-
-    // if the file doesn't exist, return an empty document
-    if !path.exists() {
-      return Ok(DocumentMut::new());
-    };
-
-    let text = fs::read_to_string(path)?;
-    let doc = text.parse::<DocumentMut>()?;
-
-    Ok(doc)
-  }
-
-  pub fn save(doc: DocumentMut) -> CliResult {
+  /// Gets the path and ensure that all necessary directories are created
+  fn ensure_path() -> CliResult<PathBuf> {
     let path = self::path()?;
     let Some(dir) = &path.parent() else {
       return Err(CliError::Config(
@@ -152,9 +154,41 @@ pub mod user {
       },
     }?;
 
+    Ok(path)
+  }
+
+  /// Reads the config file and loads a mutable config document
+  pub fn load_doc() -> CliResult<DocumentMut> {
+    let path = self::path()?;
+
+    // if the file doesn't exist, return an empty document
+    if !path.exists() {
+      return Ok(DocumentMut::new());
+    };
+
+    let text = fs::read_to_string(path)?;
+    let doc = text.parse::<DocumentMut>()?;
+
+    Ok(doc)
+  }
+
+  pub fn save(doc: DocumentMut) -> CliResult {
+    let path = self::ensure_path()?;
     let text = doc.to_string();
+
     fs::write(&path, text)?;
     println!("Wrote to config file at {}", &path.to_string_lossy());
+    Ok(())
+  }
+
+  /// Saves an entire default config to the user config directory
+  pub fn save_default() -> CliResult {
+    let path = self::ensure_path()?;
+    let config = Config::default();
+    let toml_raw = toml::to_string_pretty(&config)?;
+
+    fs::write(&path, toml_raw)?;
+    println!("Created default config file at {}", &path.to_string_lossy());
     Ok(())
   }
 }
