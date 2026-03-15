@@ -23,7 +23,7 @@ impl std::fmt::Display for CliError {
       CliError::Generic(msg) => write!(f, "{}", msg),
       CliError::SubprocessFailed(msg) => write!(f, "{}", msg),
       CliError::Config(msg) => write!(f, "{}", msg),
-      CliError::Database(msg) => write!(f, "{}", msg)
+      CliError::Database(msg) => write!(f, "{}", msg),
     }
   }
 }

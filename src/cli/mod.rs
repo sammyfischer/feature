@@ -1,10 +1,6 @@
 //! Defines the main cli structure, most simple commands, and several helper functions and macros.
 
-use std::io::{IsTerminal, Write};
-use std::process::{Command, Stdio};
-
 use clap::{Parser, Subcommand};
-use unicode_width::UnicodeWidthChar;
 
 use crate::cli::error::CliError;
 use crate::config::Config;
@@ -13,6 +9,7 @@ use crate::database;
 mod commit;
 mod config;
 pub mod error;
+mod graph;
 mod prune;
 mod push;
 mod start;
@@ -129,7 +126,7 @@ impl Cli {
       Action::Prune(args) => args.run(self),
       Action::List => self.list(),
       Action::Log => self.log(),
-      Action::Graph => self.graph(),
+      Action::Graph => graph::graph(),
       Action::Config { args } => args.run(),
       Action::Base { base, branch } => self.base(base, branch),
     }
@@ -153,90 +150,6 @@ impl Cli {
       .spawn()?,
       "Failed to call git"
     )
-  }
-
-  fn graph(&self) -> CliResult {
-    // like log, but author name and date are first and colored
-    let output = git!(
-      "log",
-      "--graph",
-      "--all",
-      "--color=always",
-      "--pretty=format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s",
-    )
-    .output()?;
-
-    let string_output = String::from_utf8(output.stdout)?;
-
-    // if stdout is not a terminal, just print and return
-    if !std::io::stdout().is_terminal() {
-      println!("{}", string_output);
-      return Ok(());
-    }
-
-    // if stdout is a terminal, truncate lines
-
-    let lines = string_output.lines();
-    let mut out_lines: Vec<String> = Vec::new();
-
-    let term_width = get_term_width();
-
-    // truncate each line to term width
-    for line in lines {
-      let mut acc_width = 0usize;
-      let mut line_buf = String::new();
-      let mut escape_sequence = false;
-
-      // push characters until term width is exceeded
-      for c in line.chars() {
-        // unicode-width counts ansi escape sequences as 1 wide. manually push and ignore width
-        if c == '\x1b' {
-          escape_sequence = true;
-          line_buf.push(c);
-          continue;
-        }
-
-        // keep handling ansi escape sequence until the end. in our case, we only deal with color
-        // codes (and reset) which all end with 'm'
-        if escape_sequence && c == 'm' {
-          if c == 'm' {
-            escape_sequence = false;
-          }
-          line_buf.push(c);
-          continue;
-        }
-
-        // if width returns None, assume 0
-        let char_width = c.width().unwrap_or(0);
-
-        if acc_width + char_width > term_width {
-          break;
-        }
-
-        acc_width += char_width;
-        line_buf.push(c);
-      }
-
-      // push line to output
-      out_lines.push(line_buf);
-    }
-
-    let truncated = out_lines.join("\n");
-
-    // forward output to less
-    // -F = just print output to stdout if it fits the terminal height
-    // -R = render control chars as-is
-    let mut less_proc = Command::new("less")
-      .arg("-FR")
-      .stdin(Stdio::piped())
-      .spawn()?;
-
-    let stdin = less_proc.stdin.as_mut().ok_or(CliError::SubprocessFailed(
-      "Failed to pipe output to pager".into(),
-    ))?;
-
-    stdin.write_all(truncated.as_bytes())?;
-    await_child!(less_proc, "Failed to open pager")
   }
 
   fn base(&self, base: &str, branch: &Option<String>) -> CliResult {

@@ -13,10 +13,7 @@ pub struct Args {
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
     let branch = get_current_branch()?;
-    let has_tracking = match get_tracking_branch(&branch) {
-      Ok(it) if !it.is_empty() => true,
-      _ => false,
-    };
+    let has_tracking = matches!(get_tracking_branch(&branch), Ok(it) if !it.is_empty());
 
     if cli.config.bases.contains(&branch) {
       eprintln!("This is a base branch, refusing to push");
