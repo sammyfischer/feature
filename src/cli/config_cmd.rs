@@ -1,11 +1,10 @@
 //! Config subcommand
 
 use clap::Subcommand;
-use dialoguer::Confirm;
 use serde::{Deserialize, Serialize};
 
-use crate::cli::CliResult;
 use crate::cli::error::CliError;
+use crate::cli::{CliResult, get_user_confirmation};
 use crate::config;
 
 /// Loads the right config document
@@ -329,13 +328,4 @@ impl Args {
     save!(which, doc);
     Ok(())
   }
-}
-
-/// Helper function to configure a prompt and wrap it in a CliResult
-fn get_user_confirmation(prompt: &str) -> CliResult<bool> {
-  Confirm::new()
-    .default(false)
-    .with_prompt(prompt)
-    .interact()
-    .map_err(|_| CliError::Generic("Failed to handle prompt".into()))
 }

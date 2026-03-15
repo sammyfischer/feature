@@ -36,9 +36,11 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Stdio;
 
 use crate::cli::CliResult;
 use crate::cli::error::CliError;
+use crate::git;
 
 pub type BranchMap = HashMap<String, String>;
 
@@ -99,4 +101,30 @@ pub fn save(database: BranchMap) -> CliResult {
 
   fs::write(path, lines.join("\n"))?;
   Ok(())
+}
+
+/// Cleans deleted branches from db. Mutates the database in memory, but does NOT write them back.
+pub fn clean(db: &mut BranchMap) {
+  let mut deleted: Vec<String> = Vec::new();
+
+  for (branch, _) in db.iter() {
+    let Ok(status) = git!("show-ref", "--verify", format!("refs/heads/{}", branch))
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .status()
+    else {
+      continue;
+    };
+
+    // branch no longer exists, delete from db
+    if !status.success() {
+      deleted.push(branch.to_string());
+    }
+  }
+
+  if !deleted.is_empty() {
+    for branch in &deleted {
+      db.remove(branch);
+    }
+  }
 }

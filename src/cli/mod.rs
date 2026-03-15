@@ -1,13 +1,14 @@
 //! Defines the main cli structure, most simple commands, and several helper functions and macros.
 
 use clap::{Parser, Subcommand};
+use dialoguer::Confirm;
 
 use crate::cli::error::CliError;
 use crate::config::Config;
-use crate::database;
 
 mod commit;
-mod config;
+mod config_cmd;
+mod db_cmd;
 pub mod error;
 mod graph;
 mod prune;
@@ -72,7 +73,8 @@ pub enum Action {
   /// rebase/merge
   Sync,
 
-  /// Clean up merged branches. A branch is merged if all its commits are found on default_base
+  /// Clean up merged branches. A branch is merged if all its commits are found on its base or the
+  /// trunk
   Prune(prune::Args),
 
   // ==== DISPLAY / INFO ====
@@ -91,16 +93,13 @@ pub enum Action {
   /// Interact with feature config
   Config {
     #[command(subcommand)]
-    args: config::Args,
+    args: config_cmd::Args,
   },
 
-  /// Set base branch in the database
-  Base {
-    /// The base branch
-    base: String,
-
-    /// The branch whose base will be set. Defaults to current branch
-    branch: Option<String>,
+  /// Interact with feature database
+  Db {
+    #[command(subcommand)]
+    args: db_cmd::Args,
   },
 }
 
@@ -128,7 +127,7 @@ impl Cli {
       Action::Log => self.log(),
       Action::Graph => graph::graph(),
       Action::Config { args } => args.run(),
-      Action::Base { base, branch } => self.base(base, branch),
+      Action::Db { args } => args.run(),
     }
   }
 
@@ -150,17 +149,6 @@ impl Cli {
       .spawn()?,
       "Failed to call git"
     )
-  }
-
-  fn base(&self, base: &str, branch: &Option<String>) -> CliResult {
-    let branch = match branch {
-      Some(it) => it,
-      None => &get_current_branch()?,
-    };
-
-    let mut db = database::load()?;
-    db.insert(branch.to_string(), base.to_string());
-    database::save(db)
   }
 }
 
@@ -275,4 +263,13 @@ fn fetch_all() -> CliResult {
 fn get_term_width() -> usize {
   let (_rows, cols) = console::Term::stdout().size();
   cols as usize
+}
+
+/// Configues a prompt and wraps it in a CliResult
+fn get_user_confirmation(prompt: &str) -> CliResult<bool> {
+  Confirm::new()
+    .default(false)
+    .with_prompt(prompt)
+    .interact()
+    .map_err(|_| CliError::Generic("Failed to handle prompt".into()))
 }

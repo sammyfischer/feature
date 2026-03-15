@@ -1,5 +1,3 @@
-use std::process::Stdio;
-
 use crate::cli::error::CliError;
 use crate::cli::{
   Cli,
@@ -84,32 +82,11 @@ pub fn sync(cli: &Cli) -> CliResult {
 
   // clean deleted branches from db
   if let Ok(mut db) = database::load() {
-    let mut deleted: Vec<String> = Vec::new();
+    database::clean(&mut db);
 
-    for (branch, _) in db.iter() {
-      let Ok(status) = git!("show-ref", "--verify", format!("refs/heads/{}", branch))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-      else {
-        continue;
-      };
-
-      // branch no longer exists, delete from db
-      if !status.success() {
-        deleted.push(branch.to_string());
-      }
-    }
-
-    if !deleted.is_empty() {
-      for branch in &deleted {
-        db.remove(branch);
-      }
-
-      if let Err(e) = database::save(db) {
-        failures.push(format!("Failed to save database changes: {}", e));
-      };
-    }
+    if let Err(e) = database::save(db) {
+      failures.push(format!("Failed to save database changes: {}", e));
+    };
   } else {
     failures.push("Failed to load database".into());
   }

@@ -13,7 +13,7 @@ impl Args {
 
     // get list of all branches
     let branches = get_all_branches()?;
-    let db = database::load()?;
+    let mut db = database::load()?;
 
     if self.dry_run {
       println!("Deletion candidates:")
@@ -31,8 +31,7 @@ impl Args {
       }
 
       // skip current branch
-      let current_branch = get_current_branch();
-      if current_branch.is_ok_and(|it| it == branch) {
+      if get_current_branch().is_ok_and(|it| it == branch) {
         continue;
       }
 
@@ -51,6 +50,9 @@ impl Args {
         if let Ok(mut child) = git!("branch", "-D", &branch).spawn() {
           if await_child!(child, format!("Failed to delete branch {}", &branch)).is_err() {
             eprintln!("Failed to delete branch {}", &branch);
+          } else {
+            // remove deleted branch from db
+            db.remove(&branch);
           }
         } else {
           eprintln!("Failed to delete branch {}", &branch);
