@@ -1,5 +1,12 @@
 use std::string::FromUtf8Error;
 
+#[macro_export]
+macro_rules! cli_err {
+  ($kind:ident, $($format_args:tt)*) => {
+    CliError::$kind(format!($($format_args)*))
+  };
+}
+
 #[derive(Debug)]
 #[repr(u8)]
 /// Enumeration of all error types, mapped to a nonzero return code
@@ -8,22 +15,26 @@ pub enum CliError {
   Generic(String) = 1,
 
   /// A process that was spawned failed to complete or returned an error
-  SubprocessFailed(String),
+  Process(String),
 
   /// An error with the config file
   Config(String),
 
   /// An error with the database file
   Database(String),
+
+  /// An error with libgit
+  Git(String),
 }
 
 impl std::fmt::Display for CliError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       CliError::Generic(msg) => write!(f, "{}", msg),
-      CliError::SubprocessFailed(msg) => write!(f, "{}", msg),
+      CliError::Process(msg) => write!(f, "{}", msg),
       CliError::Config(msg) => write!(f, "{}", msg),
       CliError::Database(msg) => write!(f, "{}", msg),
+      CliError::Git(msg) => write!(f, "{}", msg),
     }
   }
 }
@@ -37,7 +48,7 @@ impl From<std::io::Error> for CliError {
 
 impl From<FromUtf8Error> for CliError {
   fn from(value: FromUtf8Error) -> Self {
-    CliError::SubprocessFailed(format!("{}", value))
+    CliError::Process(format!("{}", value))
   }
 }
 
@@ -64,5 +75,11 @@ impl From<toml_edit::TomlError> for CliError {
 impl From<figment::Error> for CliError {
   fn from(value: figment::Error) -> Self {
     CliError::Config(format!("{}", value))
+  }
+}
+
+impl From<git2::Error> for CliError {
+  fn from(value: git2::Error) -> Self {
+    CliError::Git(format!("{}", value))
   }
 }

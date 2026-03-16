@@ -1,3 +1,5 @@
+use git2::Repository;
+
 use crate::cli::error::CliError;
 use crate::cli::{CliResult, get_current_branch};
 use crate::{await_child, database, git};
@@ -18,7 +20,8 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self) -> CliResult {
-    let branch = get_current_branch()?;
+    let repo = Repository::open(".")?;
+    let branch = get_current_branch(&repo)?;
     let mut db = database::load()?;
 
     if let Some(base) = &self.base {

@@ -94,9 +94,10 @@ pub fn graph() -> CliResult {
     .stdin(Stdio::piped())
     .spawn()?;
 
-  let stdin = less_proc.stdin.as_mut().ok_or(CliError::SubprocessFailed(
-    "Failed to pipe output to pager".into(),
-  ))?;
+  let stdin = less_proc
+    .stdin
+    .as_mut()
+    .ok_or(CliError::Process("Failed to pipe output to pager".into()))?;
 
   stdin.write_all(truncated.as_bytes())?;
   await_child!(less_proc, "Failed to open pager")

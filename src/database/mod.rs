@@ -99,6 +99,9 @@ pub fn save(database: BranchMap) -> CliResult {
     lines.push(format!("{} {}", branch, base));
   }
 
+  // add a blank line at the end
+  lines.push("".to_string());
+
   fs::write(path, lines.join("\n"))?;
   Ok(())
 }

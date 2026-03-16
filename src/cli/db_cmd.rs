@@ -3,6 +3,7 @@
 use std::fs;
 
 use clap::Subcommand;
+use git2::Repository;
 
 use super::error::CliError;
 use crate::cli::{CliResult, get_current_branch, get_user_confirmation};
@@ -47,7 +48,10 @@ impl Args {
   fn add(&self, base: &String, branch: &Option<String>) -> CliResult {
     let branch = match branch {
       Some(it) => it,
-      None => &get_current_branch()?,
+      None => {
+        let repo = Repository::open(".")?;
+        &get_current_branch(&repo)?
+      }
     };
 
     let mut db = database::load()?;

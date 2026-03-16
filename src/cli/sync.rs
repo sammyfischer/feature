@@ -1,3 +1,5 @@
+use git2::Repository;
+
 use crate::cli::error::CliError;
 use crate::cli::{
   Cli,
@@ -10,16 +12,17 @@ use crate::cli::{
 use crate::{await_child, database, git};
 
 pub fn sync(cli: &Cli) -> CliResult {
-  fetch_all()?;
+  let repo = Repository::open(".")?;
+  fetch_all(&repo)?;
 
-  if has_local_changes()? {
+  if has_local_changes(&repo)? {
     return Err(CliError::Generic(
       "You have uncommitted changes! Please commit or stash them before syncing".into(),
     ));
   }
 
   // save current branch to switch back to at the end
-  let start_branch = get_current_branch()?;
+  let start_branch = get_current_branch(&repo)?;
 
   let bases = &cli.config.bases;
 
@@ -42,7 +45,7 @@ pub fn sync(cli: &Cli) -> CliResult {
 
     has_switched = true;
 
-    if let Ok(yes) = can_fast_forward(branch) {
+    if let Ok(yes) = can_fast_forward(&repo, branch) {
       if !yes {
         failures.push(format!(
           "Cannot fast forward branch: {}. You might want to pull manually",

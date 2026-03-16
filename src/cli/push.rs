@@ -1,5 +1,7 @@
 use std::process::Command;
 
+use git2::Repository;
+
 use crate::await_child;
 use crate::cli::{Cli, CliResult, get_current_branch, get_tracking_branch};
 
@@ -12,8 +14,9 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
-    let branch = get_current_branch()?;
-    let has_tracking = matches!(get_tracking_branch(&branch), Ok(it) if !it.is_empty());
+    let repo = Repository::open(".")?;
+    let branch = get_current_branch(&repo)?;
+    let has_tracking = matches!(get_tracking_branch(&repo, &branch), Ok(it) if !it.is_empty());
 
     if cli.config.bases.contains(&branch) {
       eprintln!("This is a base branch, refusing to push");
@@ -33,6 +36,9 @@ impl Args {
     } else {
       // protects against overwriting others' work, but allows pushing after rebasing with main
       // (since that changes commit history)
+      //
+      // NOTE: git2 doesn't have a way of specifying this option, I'd have to reimplement it
+      // manually. I'd rather rely on the cli to be more rigorous
       cmd.arg("--force-with-lease");
     }
 

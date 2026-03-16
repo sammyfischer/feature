@@ -1,5 +1,7 @@
 //! Start subcommand
 
+use git2::Repository;
+
 use crate::cli::error::CliError;
 use crate::cli::{Cli, CliResult, get_current_branch};
 use crate::{await_child, database, git};
@@ -17,9 +19,10 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
+    let repo = Repository::open(".")?;
     let sep = self.sep.as_ref().unwrap_or(&cli.config.branch_sep);
 
-    let base = get_current_branch()?;
+    let base = get_current_branch(&repo)?;
     if !cli.config.bases.contains(&base) {
       return Err(CliError::Generic(
         "Must call start from a base branch. You can modify base branches with the `feature config` command.".into(),

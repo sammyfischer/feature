@@ -28,9 +28,8 @@ The database is a simple text file located at `.git/feature` in your project. Cu
 
 ## Todo list / roadmap
 
-- auto-push in `feature update`
-- use git2 to perform simpler tasks (e.g. getting remote of an existing branch) much faster
-  - will likely be less useful for more complex tasks, e.g. git log (I don't want to reimplement logic of porcelain git commands)
+- use git2
+  - remaining: commit, prune, push, start, sync, update, is_merged()
 - support feature commands in child dirs of a git dir (search upward)
 - precommit support?
 - submodule workflow support

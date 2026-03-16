@@ -1,3 +1,5 @@
+use git2::Repository;
+
 use crate::cli::{Cli, CliResult, fetch_all, get_all_branches, get_current_branch, is_merged};
 use crate::{await_child, database, git};
 
@@ -9,10 +11,11 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
-    fetch_all()?;
+    let repo = Repository::open(".")?;
+    fetch_all(&repo)?;
 
     // get list of all branches
-    let branches = get_all_branches()?;
+    let branches = get_all_branches(&repo)?;
     let mut db = database::load()?;
 
     if self.dry_run {
@@ -31,7 +34,7 @@ impl Args {
       }
 
       // skip current branch
-      if get_current_branch().is_ok_and(|it| it == branch) {
+      if get_current_branch(&repo).is_ok_and(|it| it == branch) {
         continue;
       }
 
