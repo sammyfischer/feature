@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 #[macro_export]
 macro_rules! cli_err {
   ($kind:ident, $($format_args:tt)*) => {
-    CliError::$kind(format!($($format_args)*))
+    $crate::cli::error::CliError::$kind(format!($($format_args)*))
   };
 }
 
