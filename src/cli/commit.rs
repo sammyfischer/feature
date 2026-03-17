@@ -1,8 +1,10 @@
 //! Commit subcommand
 
+use git2::{Commit, ErrorCode, Repository};
+
 use crate::cli::CliResult;
 use crate::cli::error::CliError;
-use crate::{await_child, git};
+use crate::cli_err;
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
@@ -20,28 +22,74 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self) -> CliResult {
-    let commit_msg = self.words.join(" ");
+    let repo = Repository::open(".")?;
+    let msg = self.words.join(" ");
 
+    // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
+    let current_commit = match repo.head() {
+      Ok(it) => Some(
+        it.peel_to_commit()
+          .map_err(|e| cli_err!(Git, "Failed to find commit at HEAD: {e}"))?,
+      ),
+      // empty repository, HEAD points to nothing
+      Err(e) if e.code() == ErrorCode::UnbornBranch => None,
+      Err(e) => return Err(cli_err!(Git, "Failed to get HEAD: {e}")),
+    };
+
+    // all the info needed for amend
     if self.amend {
-      let mut cmd = git!("commit", "--amend");
+      let current_commit = current_commit.ok_or(cli_err!(Git, "No commits yet, cannot amend"))?;
 
-      if commit_msg.is_empty() {
-        cmd.arg("--no-edit");
-      } else {
-        cmd.args(["-m", &commit_msg]);
-      };
+      current_commit
+        .amend(
+          Some("HEAD"),
+          None,
+          None,
+          None,
+          if !msg.is_empty() { Some(&msg) } else { None },
+          None,
+        )
+        .map_err(|e| cli_err!(Git, "Failed to amend commit: {e}"))?;
 
-      let mut child = cmd.spawn()?;
-      return await_child!(child, "Failed to amend commit");
+      return Ok(());
     }
 
-    if commit_msg.is_empty() {
+    // not an amend, must specify a message
+    if msg.is_empty() {
       return Err(CliError::Generic("Must specify a commit message".into()));
     }
 
-    await_child!(
-      git!("commit", "-m", commit_msg).spawn()?,
-      "Failed to create commit"
-    )
+    // extra info to create a commit
+    let signature = repo
+      .signature()
+      .map_err(|e| cli_err!(Git, "Failed to get default signature: {e}"))?;
+
+    let mut index = repo
+      .index()
+      .map_err(|e| cli_err!(Git, "Failed to get index: {e}"))?;
+
+    let tree_id = index
+      .write_tree()
+      .map_err(|e| cli_err!(Git, "Failed to get index tree id: {e}"))?;
+
+    let tree = repo
+      .find_tree(tree_id)
+      .map_err(|e| cli_err!(Git, "Failed find index tree from id: {e}"))?;
+
+    let parent_commits: Vec<Commit> = current_commit.into_iter().collect();
+    let parent_refs: Vec<&Commit> = parent_commits.iter().collect();
+
+    repo
+      .commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        &msg,
+        &tree,
+        &parent_refs,
+      )
+      .map_err(|e| cli_err!(Git, "Failed to commit: {e}"))?;
+
+    Ok(())
   }
 }

@@ -29,7 +29,7 @@ The database is a simple text file located at `.git/feature` in your project. Cu
 ## Todo list / roadmap
 
 - use git2
-  - remaining: commit, prune, push, start, sync, update, is_merged()
+  - remaining: prune, push, start, sync, update, is_merged()
 - support feature commands in child dirs of a git dir (search upward)
 - precommit support?
 - submodule workflow support
