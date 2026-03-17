@@ -5,6 +5,7 @@ use dialoguer::Confirm;
 use git2::{
   AutotagOption,
   BranchType,
+  Commit,
   Cred,
   CredentialType,
   FetchOptions,
@@ -161,6 +162,12 @@ impl Cli {
       "Failed to call git"
     )
   }
+}
+
+fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Commit<'repo>, git2::Error> {
+  let head = repo.head()?;
+  let commit = head.peel_to_commit()?;
+  Ok(commit)
 }
 
 /// Gets current branch via `git branch --show-current`

@@ -2,8 +2,8 @@
 
 use git2::{Commit, ErrorCode, Repository};
 
-use crate::cli::CliResult;
 use crate::cli::error::CliError;
+use crate::cli::{CliResult, get_current_commit};
 use crate::cli_err;
 
 #[derive(clap::Args, Clone, Debug)]
@@ -26,11 +26,8 @@ impl Args {
     let msg = self.words.join(" ");
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
-    let current_commit = match repo.head() {
-      Ok(it) => Some(
-        it.peel_to_commit()
-          .map_err(|e| cli_err!(Git, "Failed to find commit at HEAD: {e}"))?,
-      ),
+    let current_commit = match get_current_commit(&repo) {
+      Ok(it) => Some(it),
       // empty repository, HEAD points to nothing
       Err(e) if e.code() == ErrorCode::UnbornBranch => None,
       Err(e) => return Err(cli_err!(Git, "Failed to get HEAD: {e}")),
