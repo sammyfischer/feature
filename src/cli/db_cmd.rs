@@ -46,33 +46,37 @@ impl Args {
   }
 
   fn add(&self, base: &String, branch: &Option<String>) -> CliResult {
+    let repo = Repository::open_from_env()?;
     let branch = match branch {
       Some(it) => it,
       None => {
-        let repo = Repository::open(".")?;
+        let repo = Repository::open_from_env()?;
         &get_current_branch(&repo)?
       }
     };
 
-    let mut db = database::load()?;
+    let mut db = database::load(&repo)?;
     db.insert(branch.to_string(), base.to_string());
-    database::save(db)
+    database::save(&repo, db)
   }
 
   fn remove(&self, branch: &String) -> CliResult {
-    let mut db = database::load()?;
+    let repo = Repository::open_from_env()?;
+    let mut db = database::load(&repo)?;
     db.remove(branch);
-    database::save(db)
+    database::save(&repo, db)
   }
 
   fn clean(&self) -> CliResult {
-    let mut db = database::load()?;
+    let repo = Repository::open_from_env()?;
+    let mut db = database::load(&repo)?;
     database::clean(&mut db);
-    database::save(db)
+    database::save(&repo, db)
   }
 
   fn delete(&self, force: bool) -> CliResult {
-    let path = database::path()?;
+    let repo = Repository::open_from_env()?;
+    let path = database::path(&repo);
     if !path.exists() {
       println!("Database does not exist");
       return Ok(());

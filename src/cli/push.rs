@@ -14,7 +14,7 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
-    let repo = Repository::open(".")?;
+    let repo = Repository::open_from_env()?;
     let branch = get_current_branch(&repo)?;
     let has_tracking = matches!(get_tracking_branch(&repo, &branch), Ok(it) if !it.is_empty());
 

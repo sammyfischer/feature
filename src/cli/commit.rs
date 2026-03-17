@@ -22,7 +22,7 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self) -> CliResult {
-    let repo = Repository::open(".")?;
+    let repo = Repository::open_from_env()?;
     let msg = self.words.join(" ");
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits

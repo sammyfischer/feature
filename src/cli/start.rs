@@ -18,7 +18,7 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
-    let repo = Repository::open(".")?;
+    let repo = Repository::open_from_env()?;
     let sep = self.sep.as_ref().unwrap_or(&cli.config.branch_sep);
 
     let base = get_current_branch(&repo)?;
@@ -57,12 +57,12 @@ impl Args {
       .set_head(&format!("refs/heads/{branch_name}"))
       .map_err(|e| cli_err!(Git, "Failed to switch to branch: {e}"))?;
 
-    let db = database::load();
+    let db = database::load(&repo);
 
     if let Ok(mut db) = db {
       db.insert(branch_name, base);
 
-      if database::save(db).is_err() {
+      if database::save(&repo, db).is_err() {
         eprintln!("Failed to save branch data to database");
       };
     } else {

@@ -20,9 +20,9 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self) -> CliResult {
-    let repo = Repository::open(".")?;
+    let repo = Repository::open_from_env()?;
     let branch = get_current_branch(&repo)?;
-    let mut db = database::load()?;
+    let mut db = database::load(&repo)?;
 
     if let Some(base) = &self.base {
       if self.dry_run {

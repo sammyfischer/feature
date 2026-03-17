@@ -12,7 +12,7 @@ use crate::cli::{
 use crate::{await_child, database, git};
 
 pub fn sync(cli: &Cli) -> CliResult {
-  let repo = Repository::open(".")?;
+  let repo = Repository::open_from_env()?;
   fetch_all(&repo)?;
 
   if has_local_changes(&repo)? {
@@ -84,10 +84,10 @@ pub fn sync(cli: &Cli) -> CliResult {
   }
 
   // clean deleted branches from db
-  if let Ok(mut db) = database::load() {
+  if let Ok(mut db) = database::load(&repo) {
     database::clean(&mut db);
 
-    if let Err(e) = database::save(db) {
+    if let Err(e) = database::save(&repo, db) {
       failures.push(format!("Failed to save database changes: {}", e));
     };
   } else {

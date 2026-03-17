@@ -11,12 +11,12 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
-    let repo = Repository::open(".")?;
+    let repo = Repository::open_from_env()?;
     fetch_all(&repo)?;
 
     // get list of all branches
     let branches = get_all_branches(&repo)?;
-    let mut db = database::load()?;
+    let mut db = database::load(&repo)?;
 
     if self.dry_run {
       println!("Deletion candidates:")
@@ -68,7 +68,7 @@ impl Args {
     }
 
     if !self.dry_run {
-      database::save(db)?;
+      database::save(&repo, db)?;
     }
 
     Ok(())
