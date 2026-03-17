@@ -2,7 +2,9 @@ use std::fs::write;
 
 use tempfile::TempDir;
 
-use crate::fixtures::*;
+use crate::common::{init_repo, run_feature, run_git};
+
+mod common;
 
 fn add_file(dir: &TempDir) {
   let file_name = "file.txt";

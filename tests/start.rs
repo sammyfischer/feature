@@ -1,4 +1,6 @@
-use crate::fixtures::*;
+use crate::common::{init_commit, init_repo, run_feature, run_git};
+
+mod common;
 
 #[test]
 fn start_creates_branch() {
@@ -61,4 +63,13 @@ fn uses_custom_separator_alt_syntax() {
   };
 
   assert_eq!(stdout.trim(), "new_branch".to_string());
+}
+
+#[test]
+fn only_starts_on_base_branch() {
+  let dir = init_repo();
+  init_commit(&dir);
+
+  run_feature(&["start", "feature1"], dir.path()).success();
+  run_feature(&["start", "feature2"], dir.path()).failure();
 }

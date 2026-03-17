@@ -2,7 +2,7 @@ use std::fs::write;
 use std::path::Path;
 
 use assert_cmd::assert::Assert;
-use assert_cmd::{Command, pkg_name};
+use assert_cmd::{Command, cargo};
 use tempfile::TempDir;
 
 /// Creates a temp dir and initializes a git repo and commit signature
@@ -16,6 +16,19 @@ pub fn init_repo() -> TempDir {
   dir
 }
 
+pub fn init_repo_with_remote() -> (TempDir, TempDir) {
+  let local = init_repo();
+  let remote = init_repo();
+
+  run_git(
+    &["remote", "add", "origin", remote.path().to_str().unwrap()],
+    local.path(),
+  )
+  .success();
+
+  (local, remote)
+}
+
 /// Creates a file, stages it, then commits to HEAD
 pub fn init_commit(dir: &TempDir) {
   let file_name = "file.txt";
@@ -27,11 +40,7 @@ pub fn init_commit(dir: &TempDir) {
 }
 
 pub fn run_feature(args: &[&str], cwd: &Path) -> Assert {
-  Command::cargo_bin(pkg_name!())
-    .unwrap()
-    .current_dir(cwd)
-    .args(args)
-    .assert()
+  cargo::cargo_bin_cmd!().current_dir(cwd).args(args).assert()
 }
 
 pub fn run_git(args: &[&str], cwd: &Path) -> Assert {
