@@ -42,7 +42,7 @@ impl Args {
       let base = db.get(&branch).unwrap_or(&cli.config.trunk);
 
       // detect if branch is merged (i.e. has no commits that aren't on its base)
-      if is_merged(&branch, base).is_ok_and(|yes| yes) {
+      if is_merged(&repo, &branch, base).is_ok_and(|yes| yes) {
         // in dry-run mode, print the branch name but don't delete
         if self.dry_run {
           println!("{branch}");

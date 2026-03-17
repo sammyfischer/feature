@@ -218,10 +218,25 @@ fn get_tracking_branch(repo: &Repository, branch: &str) -> CliResult<String> {
 }
 
 /// Whether branch is merged into base
-fn is_merged(branch: &str, base: &str) -> CliResult<bool> {
-  let output = git!("log", branch, "--not", base, "--oneline").output()?;
-  let output = String::from_utf8(output.stdout)?;
-  Ok(output.trim().is_empty())
+fn is_merged(repo: &Repository, branch: &str, base: &str) -> CliResult<bool> {
+  let branch_commit = repo
+    .find_branch(branch, BranchType::Local)?
+    .get()
+    .peel_to_commit()?
+    .id();
+
+  let base_commit = repo
+    .find_branch(base, BranchType::Local)?
+    .get()
+    .peel_to_commit()?
+    .id();
+
+  if branch_commit == base_commit {
+    return Ok(true);
+  }
+
+  let is_ancestor = repo.graph_descendant_of(branch_commit, base_commit)?;
+  Ok(!is_ancestor)
 }
 
 /// Whether there are any uncommitted changes
