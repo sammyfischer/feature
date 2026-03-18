@@ -1,4 +1,4 @@
-use std::fs::write;
+use std::fs::{self};
 
 use tempfile::TempDir;
 
@@ -8,7 +8,7 @@ mod common;
 
 fn add_file(dir: &TempDir) {
   let file_name = "file.txt";
-  write(dir.path().join(&file_name), "hello world").unwrap();
+  fs::write(dir.path().join(&file_name), "hello world").unwrap();
   run_git(&["add", &file_name], dir.path()).success();
 }
 
@@ -36,4 +36,44 @@ fn no_message_fails() {
   add_file(&dir);
 
   run_feature(&["commit", ""], dir.path()).failure();
+}
+
+#[test]
+fn pre_commit_can_fail() {
+  let dir = init_repo();
+  let script = dir.path().join(".git").join("hooks").join("pre-commit");
+
+  // hook that always fails
+  fs::write(
+    script,
+    r"#!/bin/bash
+false
+",
+  )
+  .unwrap();
+
+  add_file(&dir);
+  run_feature(&["commit", "this", "should", "fail"], dir.path()).failure();
+}
+
+#[test]
+fn pre_commit_no_verify_passes() {
+  let dir = init_repo();
+  let script = dir.path().join(".git").join("hooks").join("pre-commit");
+
+  // hook that always fails
+  fs::write(
+    script,
+    r"#!/bin/bash
+false
+",
+  )
+  .unwrap();
+
+  add_file(&dir);
+  run_feature(
+    &["commit", "--no-verify", "this", "should", "fail"],
+    dir.path(),
+  )
+  .success();
 }

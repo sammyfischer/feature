@@ -1,5 +1,7 @@
 //! Commit subcommand
 
+use std::process::Command;
+
 use git2::{Commit, ErrorCode, Repository};
 
 use crate::cli::error::CliError;
@@ -14,6 +16,10 @@ pub struct Args {
     long_help = "Amend the previous commit. Remaining args overwrite the previous commit message. If no remaining args are specified, the previous commit message is preserved."
   )]
   amend: bool,
+
+  /// Bypass precommit hooks
+  #[arg(long)]
+  no_verify: bool,
 
   /// Words to join together as commit message
   #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -36,6 +42,8 @@ impl Args {
     // all the info needed for amend
     if self.amend {
       let current_commit = current_commit.ok_or(cli_err!(Git, "No commits yet, cannot amend"))?;
+
+      self.pre_commit(&repo)?;
 
       current_commit
         .amend(
@@ -76,6 +84,8 @@ impl Args {
     let parent_commits: Vec<Commit> = current_commit.into_iter().collect();
     let parent_refs: Vec<&Commit> = parent_commits.iter().collect();
 
+    self.pre_commit(&repo)?;
+
     repo
       .commit(
         Some("HEAD"),
@@ -88,5 +98,25 @@ impl Args {
       .map_err(|e| cli_err!(Git, "Failed to commit: {e}"))?;
 
     Ok(())
+  }
+
+  fn pre_commit(&self, repo: &Repository) -> CliResult {
+    if self.no_verify {
+      return Ok(());
+    }
+
+    let git_dir = repo.path();
+    let script = git_dir.join("hooks").join("pre-commit");
+
+    if !script.exists() {
+      // no hooks set, always succeed
+      return Ok(());
+    }
+
+    match Command::new(script).status() {
+      Ok(it) if it.success() => Ok(()),
+      Ok(_) => Err(cli_err!(Precommit, "Precommit hooks failed")),
+      Err(e) => Err(cli_err!(Process, "Failed to run precommit hooks: {e}")),
+    }
   }
 }

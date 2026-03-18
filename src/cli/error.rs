@@ -25,16 +25,20 @@ pub enum CliError {
 
   /// An error with libgit
   Git(String),
+
+  /// Precommit hooks failed
+  Precommit(String),
 }
 
 impl std::fmt::Display for CliError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      CliError::Generic(msg) => write!(f, "{}", msg),
-      CliError::Process(msg) => write!(f, "{}", msg),
-      CliError::Config(msg) => write!(f, "{}", msg),
-      CliError::Database(msg) => write!(f, "{}", msg),
-      CliError::Git(msg) => write!(f, "{}", msg),
+      CliError::Generic(msg) => write!(f, "{msg}"),
+      CliError::Process(msg) => write!(f, "{msg}"),
+      CliError::Config(msg) => write!(f, "{msg}"),
+      CliError::Database(msg) => write!(f, "{msg}"),
+      CliError::Git(msg) => write!(f, "{msg}"),
+      CliError::Precommit(msg) => write!(f, "{msg}"),
     }
   }
 }
