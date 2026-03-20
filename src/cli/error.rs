@@ -44,6 +44,9 @@ pub enum CliError {
 
   /// Precommit hooks failed
   Precommit(String),
+
+  /// Push safety checks failed
+  Push(String),
 }
 
 impl std::fmt::Display for CliError {
@@ -55,6 +58,7 @@ impl std::fmt::Display for CliError {
       CliError::Database(msg) => write!(f, "{msg}"),
       CliError::Git(msg) => write!(f, "{msg}"),
       CliError::Precommit(msg) => write!(f, "{msg}"),
+      CliError::Push(msg) => write!(f, "{msg}"),
     }
   }
 }
