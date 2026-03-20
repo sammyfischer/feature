@@ -29,11 +29,13 @@ The database is a simple text file located at `.git/feature` in your project. Cu
 ## Todo list / roadmap
 
 - use git2
-  - remaining: sync, update
-- consider using `.git/config` to store feature config
-  - con: wouldn't be tracked by git
-  - pro: if other team members don't use feature, it avoids polluting with extra files. feature is a personal tool that anyone can choose to use, so maybe it makes more sense to not have a common config
-  - pro: vscode already does this, it adds `vscode-merge-base` which seems to serve the same purpose as feature base branches
+  - remaining: update
+- use `.git/config` to store feature database
+  - vscode already does this, it adds `vscode-merge-base` which seems to serve the same purpose as feature base branches
   - in that case, detect `vscode-merge-base` automatically
+  - use `repo.config()`
+- consider using `.git/config` for feature config too
+- rethink base/protected branches in the config. it's confusing and feels redundant
+- simplify errors. the error enum isn't that useful and they could all just be strings
 - precommit commands? (e.g. installing/modifying)
 - submodule workflow support

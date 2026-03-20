@@ -206,16 +206,6 @@ fn get_all_branches(repo: &Repository) -> CliResult<Vec<String>> {
   Ok(output)
 }
 
-/// Gets the branch's remote tracking branch
-fn get_upstream(repo: &Repository, branch: &str) -> CliResult<String> {
-  let branch_obj = repo.find_branch(branch, BranchType::Local)?;
-  let upstream = branch_obj.upstream()?;
-  let name = upstream
-    .name()?
-    .ok_or(cli_err!(Generic, "Branch name is not valid utf-8"))?;
-  Ok(name.to_string())
-}
-
 /// Whether branch is merged into base
 fn is_merged(repo: &Repository, branch: &str, base: &str) -> CliResult<bool> {
   let branch_commit = repo
@@ -264,24 +254,6 @@ fn has_local_changes(repo: &Repository) -> CliResult<bool> {
   }
 
   Ok(false)
-}
-
-/// Whether the branch can be fast-forwarded to its remote counterpart
-fn can_fast_forward(repo: &Repository, branch: &str) -> CliResult<bool> {
-  let upstream = get_upstream(repo, branch)?;
-
-  let local_obj = repo.find_branch(branch, BranchType::Local)?;
-  let upstream_obj = repo.find_branch(&upstream, BranchType::Remote)?;
-
-  let local_oid = local_obj.get().peel_to_commit()?.id();
-  let upstream_oid = upstream_obj.get().peel_to_commit()?.id();
-
-  // same sha, branches are up to date
-  if local_oid == upstream_oid {
-    return Ok(true);
-  }
-
-  Ok(repo.merge_base(local_oid, upstream_oid).is_ok())
 }
 
 fn fetch_all(repo: &Repository) -> CliResult {

@@ -33,3 +33,13 @@ install:
 
 uninstall:
   cargo uninstall feature
+
+# sets up the project (installs pre-commit hook)
+init:
+  #!/bin/bash
+  echo "#!/bin/bash
+  set -euxo pipefail
+  dprint fmt
+  cargo clippy
+  cargo test" > .git/hooks/pre-commit
+  chmod +x .git/hooks/pre-commit

@@ -964,6 +964,7 @@ dependencies = [
  "figment",
  "git2",
  "predicates",
+ "regex",
  "serde",
  "tempfile",
  "toml 1.0.3+spec-1.1.0",
