@@ -207,13 +207,12 @@ fn get_all_branches(repo: &Repository) -> CliResult<Vec<String>> {
 }
 
 /// Gets the branch's remote tracking branch
-fn get_tracking_branch(repo: &Repository, branch: &str) -> CliResult<String> {
-  let upstream = repo.branch_upstream_remote(&format!("refs/heads/{}", branch))?;
-
+fn get_upstream(repo: &Repository, branch: &str) -> CliResult<String> {
+  let branch_obj = repo.find_branch(branch, BranchType::Local)?;
+  let upstream = branch_obj.upstream()?;
   let name = upstream
-    .as_str()
-    .ok_or(cli_err!(Git, "Failed to get upstream of {}", branch))?;
-
+    .name()?
+    .ok_or(cli_err!(Generic, "Branch name is not valid utf-8"))?;
   Ok(name.to_string())
 }
 
@@ -269,7 +268,7 @@ fn has_local_changes(repo: &Repository) -> CliResult<bool> {
 
 /// Whether the branch can be fast-forwarded to its remote counterpart
 fn can_fast_forward(repo: &Repository, branch: &str) -> CliResult<bool> {
-  let upstream = get_tracking_branch(repo, branch)?;
+  let upstream = get_upstream(repo, branch)?;
 
   let local_obj = repo.find_branch(branch, BranchType::Local)?;
   let upstream_obj = repo.find_branch(&upstream, BranchType::Remote)?;

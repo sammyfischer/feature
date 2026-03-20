@@ -3,7 +3,7 @@
 use git2::Repository;
 
 use crate::cli::{Cli, CliResult, get_current_branch, get_current_commit};
-use crate::{cli_err, database};
+use crate::{cli_err, cli_err_fn, database};
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
@@ -33,29 +33,33 @@ impl Args {
     println!("Creating branch: {}", branch_name);
 
     // find commit to create branch on
-    let current_commit =
-      get_current_commit(&repo).map_err(|e| cli_err!(Git, "Failed to find current commit: {e}"))?;
+    let current_commit = get_current_commit(&repo).map_err(cli_err_fn!(
+      Git,
+      e,
+      "Failed to find current commit: {e}"
+    ))?;
 
     // create branch
     let branch = repo
       .branch(&branch_name, &current_commit, false)
-      .map_err(|e| cli_err!(Git, "Failed to create branch: {e}"))?;
+      .map_err(cli_err_fn!(Git, e, "Failed to create branch: {e}"))?;
 
     // get tree to checkout
-    let tree = branch
-      .get()
-      .peel_to_tree()
-      .map_err(|e| cli_err!(Git, "Failed to resolve branch as tree: {e}"))?;
+    let tree = branch.get().peel_to_tree().map_err(cli_err_fn!(
+      Git,
+      e,
+      "Failed to resolve branch as tree: {e}"
+    ))?;
 
     // checkout branch
     repo
       .checkout_tree(tree.as_object(), None)
-      .map_err(|e| cli_err!(Git, "Failed to switch to branch: {e}"))?;
+      .map_err(cli_err_fn!(Git, e, "Failed to switch to branch: {e}"))?;
 
     // update HEAD
     repo
       .set_head(&format!("refs/heads/{branch_name}"))
-      .map_err(|e| cli_err!(Git, "Failed to switch to branch: {e}"))?;
+      .map_err(cli_err_fn!(Git, e, "Failed to switch to branch: {e}"))?;
 
     let db = database::load(&repo);
 

@@ -1,9 +1,25 @@
 use std::string::FromUtf8Error;
 
+/// Returns a `CliError` with a format string.
+///
+/// The first arg must be a name in the `CliError` namespace. All remaining args are
+/// passed to `format!` as-is.
 #[macro_export]
 macro_rules! cli_err {
   ($kind:ident, $($format_args:tt)*) => {
     $crate::cli::error::CliError::$kind(format!($($format_args)*))
+  };
+}
+
+/// Like `cli_err!` but returns a closure. Ideal for passing into `map_err`.
+///
+/// The first arg must be a name in the `CliError` namespace. The next arg is the name of the error
+/// variable passed into the closure, which can be used in the format string. All remaining args are
+/// passed to `format!` as-is.
+#[macro_export]
+macro_rules! cli_err_fn {
+  ($kind:ident, $err:ident, $($format_args:tt)*) => {
+    { |$err| $crate::cli::error::CliError::$kind(format!($($format_args)*)) }
   };
 }
 

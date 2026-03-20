@@ -6,7 +6,7 @@ use git2::{Commit, ErrorCode, Repository};
 
 use crate::cli::error::CliError;
 use crate::cli::{CliResult, get_current_commit};
-use crate::cli_err;
+use crate::{cli_err, cli_err_fn};
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
@@ -54,7 +54,7 @@ impl Args {
           if !msg.is_empty() { Some(&msg) } else { None },
           None,
         )
-        .map_err(|e| cli_err!(Git, "Failed to amend commit: {e}"))?;
+        .map_err(cli_err_fn!(Git, e, "Failed to amend commit: {e}"))?;
 
       return Ok(());
     }
@@ -65,21 +65,25 @@ impl Args {
     }
 
     // extra info to create a commit
-    let signature = repo
-      .signature()
-      .map_err(|e| cli_err!(Git, "Failed to get default signature: {e}"))?;
+    let signature =
+      repo
+        .signature()
+        .map_err(cli_err_fn!(Git, e, "Failed to get default signature: {e}"))?;
 
     let mut index = repo
       .index()
-      .map_err(|e| cli_err!(Git, "Failed to get index: {e}"))?;
+      .map_err(cli_err_fn!(Git, e, "Failed to get index: {e}"))?;
 
-    let tree_id = index
-      .write_tree()
-      .map_err(|e| cli_err!(Git, "Failed to get index tree id: {e}"))?;
+    let tree_id =
+      index
+        .write_tree()
+        .map_err(cli_err_fn!(Git, e, "Failed to get index tree id: {e}"))?;
 
-    let tree = repo
-      .find_tree(tree_id)
-      .map_err(|e| cli_err!(Git, "Failed find index tree from id: {e}"))?;
+    let tree = repo.find_tree(tree_id).map_err(cli_err_fn!(
+      Git,
+      e,
+      "Failed find index tree from id: {e}"
+    ))?;
 
     let parent_commits: Vec<Commit> = current_commit.into_iter().collect();
     let parent_refs: Vec<&Commit> = parent_commits.iter().collect();
@@ -95,7 +99,7 @@ impl Args {
         &tree,
         &parent_refs,
       )
-      .map_err(|e| cli_err!(Git, "Failed to commit: {e}"))?;
+      .map_err(cli_err_fn!(Git, e, "Failed to commit: {e}"))?;
 
     Ok(())
   }
