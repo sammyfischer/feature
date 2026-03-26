@@ -12,7 +12,7 @@ pub struct Args {
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
     let repo = Repository::open_from_env()?;
-    let config = data::git_config(&repo)?;
+    let mut config = data::git_config(&repo)?;
     fetch_all(&repo)?;
 
     // get list of all branches
@@ -67,7 +67,29 @@ impl Args {
           Ok(mut branch) => {
             if let Err(e) = branch.delete() {
               eprintln!("Failed to delete {}: {}", branch_name, e);
+              continue;
             };
+
+            let mut keys: Vec<String> = Vec::new();
+
+            {
+              let mut entries = config.entries(Some(&format!("branch.{}.*", branch_name)))?;
+              while let Some(entry) = entries.next() {
+                let Ok(entry) = entry else {
+                  continue;
+                };
+                let Some(name) = entry.name() else {
+                  continue;
+                };
+                keys.push(name.to_string());
+              }
+            }
+
+            for key in keys {
+              if let Err(e) = config.remove(&key) {
+                eprintln!("Failed to delete key {} from git config: {}", key, e)
+              }
+            }
           }
         };
       }
