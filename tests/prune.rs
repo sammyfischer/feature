@@ -1,5 +1,3 @@
-use std::fs;
-
 use crate::common::TestRepo;
 
 mod common;
@@ -22,7 +20,7 @@ fn deletes_merged_branches() {
 
   // check that they no longer exist
   let cmd = local.git(&["branch"]).success();
-  let text = String::from_utf8(cmd.get_output().stdout.clone()).unwrap();
+  let text = get_stdout!(cmd);
   assert!(!text.contains("feature1"));
   assert!(!text.contains("feature2"));
 }
@@ -36,9 +34,8 @@ fn perserves_unmerged_branches() {
 
   // create a feature branch and commit
   local.feature(&["start", "feature1"]).success();
-  fs::write(local.dir.path().join("file.txt"), "feature1 implementation").unwrap();
-  local.git(&["add", "."]).success();
-  local.feature(&["commit", "impl", "feature1"]).success();
+  local.write_file("file.txt", "feature1 impl");
+  local.commit_all("impl feature1");
   local.git(&["switch", "main"]).success();
 
   // create branches. don't commit so that their commit history is identical to main
@@ -50,10 +47,36 @@ fn perserves_unmerged_branches() {
   // prune shouldn't delete feature 1
   local.feature(&["prune"]).success();
 
-  // check that they no longer exist
+  // check that only correct branches were deleted
   let cmd = local.git(&["branch"]);
-  let text = String::from_utf8(cmd.get_output().stdout.clone()).unwrap();
+  let text = get_stdout!(cmd);
   assert!(text.contains("feature1"));
   assert!(!text.contains("feature2"));
   assert!(!text.contains("feature3"));
+}
+
+/// Running with --dry-run should print candidates but not delete any branches or modify config
+#[test]
+fn dry_run_prints_candidates() {
+  let (local, _remote) = TestRepo::new_with_remote();
+  local.init_commit();
+
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // branches with identical history to main
+  for branch in ["feature1", "feature2"] {
+    local.feature(&["start", branch]).success();
+    local.git(&["switch", "main"]).success();
+  }
+
+  let cmd = local.feature(&["prune", "--dry-run"]).success();
+  let stdout = get_stdout!(cmd);
+
+  assert_eq!(stdout.trim(), "Deletion candidates:\nfeature1\nfeature2");
+
+  // check that they still exist
+  let cmd = local.git(&["branch"]).success();
+  let text = get_stdout!(cmd);
+  assert!(text.contains("feature1"));
+  assert!(text.contains("feature2"));
 }

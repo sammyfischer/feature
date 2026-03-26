@@ -73,3 +73,28 @@ fn only_starts_on_base_branch() {
   repo.feature(&["start", "feature1"]).success();
   repo.feature(&["start", "feature2"]).failure();
 }
+
+/// If the base branch has no upstream, feature should set it as the feature-base
+#[test]
+fn sets_feature_base() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.feature(&["start", "topic"]).success();
+  let proc = repo.git(&["config", "branch.topic.feature-base"]).success();
+  assert_eq!(get_stdout!(proc).trim(), "refs/heads/main");
+}
+
+/// If the base branch has an upstream, feature should set the upstream as the feature-base
+#[test]
+fn sets_feature_base_using_remote() {
+  let (local, _remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  local.feature(&["start", "topic"]).success();
+  let proc = local
+    .git(&["config", "branch.topic.feature-base"])
+    .success();
+  assert_eq!(get_stdout!(proc).trim(), "refs/remotes/origin/main");
+}

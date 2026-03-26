@@ -9,7 +9,7 @@ use crate::cli::{
   get_remote_callbacks,
   has_local_changes,
 };
-use crate::{cli_err_fn, database};
+use crate::cli_err_fn;
 
 pub fn sync(cli: &Cli) -> CliResult {
   let repo = Repository::open_from_env()?;
@@ -95,17 +95,6 @@ pub fn sync(cli: &Cli) -> CliResult {
     if let Err(e) = remote.fetch(&[&head_refspec, &remote_refspec], Some(&mut opts), None) {
       eprintln!("Failed to fetch {}: {}", branch_name, e);
     };
-  }
-
-  // clean deleted branches from db
-  if let Ok(mut db) = database::load(&repo) {
-    database::clean(&mut db);
-
-    if let Err(e) = database::save(&repo, db) {
-      eprintln!("Failed to save database changes: {}", e);
-    };
-  } else {
-    eprintln!("Failed to load database");
   }
 
   Ok(())

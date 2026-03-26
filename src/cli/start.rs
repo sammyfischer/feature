@@ -3,7 +3,7 @@
 use git2::Repository;
 
 use crate::cli::{Cli, CliResult, get_current_branch, get_current_commit};
-use crate::{cli_err, cli_err_fn, database};
+use crate::{cli_err, cli_err_fn, data};
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
@@ -21,16 +21,16 @@ impl Args {
     let repo = Repository::open_from_env()?;
     let sep = self.sep.as_ref().unwrap_or(&cli.config.branch_sep);
 
-    let base = get_current_branch(&repo)?;
-    if !cli.config.bases.contains(&base) {
+    let branch_name = self.words.join(sep);
+    println!("Creating branch: {}", branch_name);
+
+    let base_name = get_current_branch(&repo)?;
+    if !cli.config.bases.contains(&base_name) {
       return Err(cli_err!(
         Generic,
         "Must call start from a base branch. You can modify base branches with the `feature config` command."
       ));
     }
-
-    let branch_name = self.words.join(sep);
-    println!("Creating branch: {}", branch_name);
 
     // find commit to create branch on
     let current_commit = get_current_commit(&repo).map_err(cli_err_fn!(
@@ -61,17 +61,41 @@ impl Args {
       .set_head(&format!("refs/heads/{branch_name}"))
       .map_err(cli_err_fn!(Git, e, "Failed to switch to branch: {e}"))?;
 
-    let db = database::load(&repo);
+    // getting info to modify config
+    let base = repo
+      .find_branch(&base_name, git2::BranchType::Local)
+      .map_err(cli_err_fn!(
+        Git,
+        e,
+        "Failed to get reference to base branch: {e}"
+      ))?;
 
-    if let Ok(mut db) = db {
-      db.insert(branch_name, base);
+    let feature_base_name = {
+      // we want the upstream of the base, e.g. refs/remotes/origin/main
+      let base_upstream = base.upstream().map_err(cli_err_fn!(
+        Git,
+        e,
+        "Failed to get upstream of base branch: {e}"
+      ));
 
-      if database::save(&repo, db).is_err() {
-        eprintln!("Failed to save branch data to database");
-      };
-    } else {
-      eprintln!("Failed to load database. Couldn't save branch data")
-    }
+      match base_upstream {
+        Ok(it) => it
+          .get()
+          .name()
+          .ok_or(cli_err!(Git, "Failed to get upstream name of base branch"))?
+          .to_string(),
+
+        // if there is no upstream, we can just use the actual base branch
+        Err(_) => base
+          .get()
+          .name()
+          .ok_or(cli_err!(Git, "Failed to get full name of base branch"))?
+          .to_string(),
+      }
+    };
+
+    let mut config = data::git_config(&repo)?;
+    data::set_feature_base(&mut config, &branch_name, &feature_base_name)?;
 
     Ok(())
   }

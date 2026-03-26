@@ -20,9 +20,9 @@ use crate::cli::error::CliError;
 use crate::cli_err;
 use crate::config::Config;
 
+mod base;
 mod commit;
 mod config_cmd;
-mod db_cmd;
 pub mod error;
 mod graph;
 mod prune;
@@ -108,11 +108,8 @@ pub enum Action {
     args: config_cmd::Args,
   },
 
-  /// Interact with feature database
-  Db {
-    #[command(subcommand)]
-    args: db_cmd::Args,
-  },
+  /// Set the base branch of a feature branch
+  Base(base::Args),
 }
 
 pub struct Cli {
@@ -139,7 +136,7 @@ impl Cli {
       Action::Log => self.log(),
       Action::Graph => graph::graph(),
       Action::Config { args } => args.run(),
-      Action::Db { args } => args.run(),
+      Action::Base(args) => args.run(),
     }
   }
 
@@ -170,7 +167,7 @@ fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Commit<'repo>, g
   Ok(commit)
 }
 
-/// Gets current branch via `git branch --show-current`
+/// Gets current branch name
 fn get_current_branch(repo: &Repository) -> CliResult<String> {
   let head = repo.head()?;
 
@@ -186,7 +183,7 @@ fn get_current_branch(repo: &Repository) -> CliResult<String> {
   Ok(short.to_string())
 }
 
-/// Returns a list of all local branches, or None if there was an error getting output
+/// Returns a list of all local branches
 fn get_all_branches(repo: &Repository) -> CliResult<Vec<String>> {
   let branches = repo.branches(Some(BranchType::Local))?;
 
@@ -208,17 +205,11 @@ fn get_all_branches(repo: &Repository) -> CliResult<Vec<String>> {
 
 /// Whether branch is merged into base
 fn is_merged(repo: &Repository, branch: &str, base: &str) -> CliResult<bool> {
-  let branch_commit = repo
-    .find_branch(branch, BranchType::Local)?
-    .get()
-    .peel_to_commit()?
-    .id();
+  let branch = repo.revparse_single(branch)?;
+  let base = repo.revparse_single(base)?;
 
-  let base_commit = repo
-    .find_branch(base, BranchType::Local)?
-    .get()
-    .peel_to_commit()?
-    .id();
+  let branch_commit = branch.peel_to_commit()?.id();
+  let base_commit = base.peel_to_commit()?.id();
 
   if branch_commit == base_commit {
     return Ok(true);
@@ -256,6 +247,7 @@ fn has_local_changes(repo: &Repository) -> CliResult<bool> {
   Ok(false)
 }
 
+/// Fetches all remote branches
 fn fetch_all(repo: &Repository) -> CliResult {
   let mut results: Vec<CliResult> = Vec::new();
 
@@ -276,7 +268,7 @@ fn fetch_all(repo: &Repository) -> CliResult {
     results.push(
       remote
         .fetch(
-          &[format!("refs/heads/*:refs/remotes/{}/*", remote_name)],
+          &[format!("+refs/heads/*:refs/remotes/{}/*", remote_name)],
           Some(&mut opts),
           None,
         )
