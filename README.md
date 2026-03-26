@@ -26,10 +26,9 @@ Use `feature config create` to create a project config file with all defaults. U
 
 The database is a simple text file located at `.git/feature` in your project. Currently, it just maps feature branches to their base branches. Using feature commands (e.g. start and prune) will update the database as needed. If you create a feature branch directly with git, you can add the branch to the database manually with `feature db add <base_name> <branch>` (if you omit branch, it defaults to the current branch).
 
-## Todo list / roadmap
+## Todo list
 
-- use git2
-  - remaining: update
+- use git2 for `feature update --skip` (currently doesn't work)
 - use `.git/config` to store feature database
   - vscode already does this, it adds `vscode-merge-base` which seems to serve the same purpose as feature base branches
   - in that case, detect `vscode-merge-base` automatically
@@ -39,3 +38,5 @@ The database is a simple text file located at `.git/feature` in your project. Cu
 - simplify errors. the error enum isn't that useful and they could all just be strings
 - precommit commands? (e.g. installing/modifying)
 - submodule workflow support
+- fully interactive tui for merge conflicts?
+  - in-memory rebase?

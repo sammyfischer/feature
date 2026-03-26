@@ -1,11 +1,36 @@
 #![allow(dead_code)]
 
 use std::fs::{self};
+use std::io::Write;
 use std::path::Path;
 
 use assert_cmd::assert::Assert;
 use assert_cmd::{Command, cargo};
 use tempfile::TempDir;
+
+/// Gets stdout of an `Assert` as a string
+#[macro_export]
+macro_rules! get_stdout {
+  ($cmd:expr) => {
+    String::from_utf8($cmd.get_output().stdout.clone()).expect("Output should be valid utf-8")
+  };
+
+  ($cmd:expr, $msg:literal) => {
+    String::from_utf8($cmd.get_output().stdout.clone()).expect($msg)
+  };
+}
+
+/// Get a path as a string
+#[macro_export]
+macro_rules! path_str {
+  ($path:expr) => {
+    $path.to_str().expect("Path should exist")
+  };
+
+  ($path:expr, $msg:literal) => {
+    $path.to_str().expect($msg)
+  };
+}
 
 pub struct TestRepo {
   pub dir: TempDir,
@@ -22,9 +47,7 @@ impl TestRepo {
 
     let dir = builder.tempdir().expect("Temp dir should be created");
     let this = Self { dir };
-    this
-      .git(&["init", this.path().to_str().expect("Dir path should exist")])
-      .success();
+    this.git(&["init", path_str!(this.path())]).success();
 
     this.git(&["config", "user.name", "test"]).success();
     this
@@ -41,13 +64,7 @@ impl TestRepo {
 
     let dir = builder.tempdir().expect("Temp dir should be created");
     let this = Self { dir };
-    this
-      .git(&[
-        "clone",
-        repo.path().to_str().expect("Dir path should exist"),
-        ".",
-      ])
-      .success();
+    this.git(&["clone", path_str!(repo.path()), "."]).success();
 
     this.git(&["config", "user.name", "test"]).success();
     this
@@ -98,6 +115,23 @@ impl TestRepo {
     fs::write(self.path().join(file_name), contents).expect("File should be written to");
   }
 
+  /// Appends to a file at the top level of the repo
+  pub fn append_file(&self, file_name: &str, contents: &str) {
+    let mut file = fs::OpenOptions::new()
+      .append(true)
+      .open(self.path().join(file_name))
+      .expect("File should've been opened for appending");
+    file
+      .write(contents.as_bytes())
+      .expect("Contents should have been appended to file");
+  }
+
+  /// Stages all changes and commits with the given message
+  pub fn commit_all(&self, msg: &str) {
+    self.git(&["add", "."]).success();
+    self.feature(&["commit", msg]).success();
+  }
+
   /// Creates the file "file.txt" and commits with the message "initial commit"
   pub fn init_commit(&self) {
     let file_name = "file.txt";
@@ -118,13 +152,13 @@ impl TestRepo {
     let proc = self
       .git(&["branch", "--format=%(refname) %(upstream)"])
       .success();
-    String::from_utf8(proc.get_output().stdout.clone()).expect("Output should be parseable as utf8")
+    get_stdout!(proc)
   }
 
   /// Lists just the commit hashes of a particular branch
   pub fn list_commits_on_branch(&self, branch: &str) -> String {
     let proc = self.git(&["log", "--pretty=format:%h", branch]);
-    String::from_utf8(proc.get_output().stdout.clone()).expect("Output should be parseable as utf8")
+    get_stdout!(proc)
   }
 
   /// Creates a pre-commit hook file with the given script.
@@ -133,6 +167,11 @@ impl TestRepo {
   pub fn create_precommit_hook(&self, script: &str) {
     let file = self.path().join(".git").join("hooks").join("pre-commit");
     fs::write(file, format!("#!/bin/bash\n{}", script)).expect("Pre-commit hook should be written");
+  }
+
+  /// Whether a rebase is current active
+  pub fn is_rebase_active(&self) -> bool {
+    self.path().join(".git").join("rebase-merge").exists()
   }
 }
 
@@ -146,11 +185,7 @@ impl TestRemote {
 
     Command::new("git")
       .current_dir(this.dir.path())
-      .args([
-        "init",
-        "--bare",
-        this.path().to_str().expect("Dir path should exist"),
-      ])
+      .args(["init", "--bare", path_str!(this.path())])
       .assert()
       .success();
 
@@ -161,10 +196,7 @@ impl TestRemote {
   pub fn git(&self, args: &[&str]) -> Assert {
     Command::new("git")
       .current_dir(self.path())
-      .args([
-        "--git-dir",
-        self.path().to_str().expect("Dir path should exist"),
-      ])
+      .args(["--git-dir", path_str!(self.path())])
       .args(args)
       .assert()
   }
@@ -175,12 +207,12 @@ impl TestRemote {
 
   pub fn list_branches(&self) -> String {
     let proc = self.git(&["branch", "--format=%(refname)"]).success();
-    String::from_utf8(proc.get_output().stdout.clone()).expect("Output should be parseable as utf8")
+    get_stdout!(proc)
   }
 
   /// Lists just the commit hashes of a particular branch
   pub fn list_commits_on_branch(&self, branch: &str) -> String {
     let proc = self.git(&["log", "--pretty=format:%h", branch]);
-    String::from_utf8(proc.get_output().stdout.clone()).expect("Output should be parseable as utf8")
+    get_stdout!(proc)
   }
 }
