@@ -21,8 +21,14 @@ fn deletes_merged_branches() {
   // check that they no longer exist
   let cmd = local.git(&["branch"]).success();
   let text = get_stdout!(cmd);
-  assert!(!text.contains("feature1"));
-  assert!(!text.contains("feature2"));
+
+  // branches and there config are deleted
+  for branch in ["feature1", "feature2"] {
+    assert!(!text.contains(branch));
+    local
+      .git(&["config", &format!("branch.{}.feature-base", branch)])
+      .failure();
+  }
 }
 
 #[test]
@@ -50,9 +56,19 @@ fn perserves_unmerged_branches() {
   // check that only correct branches were deleted
   let cmd = local.git(&["branch"]);
   let text = get_stdout!(cmd);
+
+  // feature1 and its config should exist
   assert!(text.contains("feature1"));
-  assert!(!text.contains("feature2"));
-  assert!(!text.contains("feature3"));
+  local
+    .git(&["config", "branch.feature1.feature-base"])
+    .success();
+
+  for branch in ["feature2", "feature3"] {
+    assert!(!text.contains(branch));
+    local
+      .git(&["config", &format!("branch.{}.feature-base", branch)])
+      .failure();
+  }
 }
 
 /// Running with --dry-run should print candidates but not delete any branches or modify config
@@ -77,6 +93,12 @@ fn dry_run_prints_candidates() {
   // check that they still exist
   let cmd = local.git(&["branch"]).success();
   let text = get_stdout!(cmd);
-  assert!(text.contains("feature1"));
-  assert!(text.contains("feature2"));
+
+  // check that branches and their config entries exist
+  for branch in ["feature1", "feature2"] {
+    assert!(text.contains(branch));
+    local
+      .git(&["config", &format!("branch.{}.feature-base", branch)])
+      .success();
+  }
 }
