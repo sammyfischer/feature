@@ -268,7 +268,7 @@ fn fetch_all(repo: &Repository) -> CliResult {
     results.push(
       remote
         .fetch(
-          &[format!("refs/heads/*:refs/remotes/{}/*", remote_name)],
+          &[format!("+refs/heads/*:refs/remotes/{}/*", remote_name)],
           Some(&mut opts),
           None,
         )
