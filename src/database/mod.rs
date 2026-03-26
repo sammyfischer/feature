@@ -38,6 +38,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Stdio;
 
+use git2::Repository;
+
 use crate::cli::CliResult;
 use crate::cli::error::CliError;
 use crate::git;
@@ -45,20 +47,15 @@ use crate::git;
 pub type BranchMap = HashMap<String, String>;
 
 /// Gets the path to the database file. Errors if the .git dir doesn't exist
-pub fn path() -> CliResult<PathBuf> {
-  let mut path = PathBuf::new();
-  path.push(".git");
-  if !path.exists() {
-    return Err(CliError::Generic("Not a git repository!".into()));
-  }
-  path.push("feature");
-  Ok(path)
+pub fn path(repo: &Repository) -> PathBuf {
+  let path = repo.path();
+  path.join("feature")
 }
 
 /// Loads the map from the database file if it exists, else loads an empty map
-pub fn load() -> CliResult<BranchMap> {
+pub fn load(repo: &Repository) -> CliResult<BranchMap> {
   let mut map: HashMap<String, String> = HashMap::new();
-  let path = path()?;
+  let path = path(repo);
 
   // if no file exists, return a blank map
   if !path.exists() {
@@ -90,14 +87,17 @@ pub fn load() -> CliResult<BranchMap> {
 }
 
 /// Creates or overwrites the database file with the given data
-pub fn save(database: BranchMap) -> CliResult {
-  let path = path()?;
+pub fn save(repo: &Repository, database: BranchMap) -> CliResult {
+  let path = path(repo);
 
   let mut lines: Vec<String> = Vec::new();
 
   for (branch, base) in database.iter() {
     lines.push(format!("{} {}", branch, base));
   }
+
+  // add a blank line at the end
+  lines.push("".to_string());
 
   fs::write(path, lines.join("\n"))?;
   Ok(())

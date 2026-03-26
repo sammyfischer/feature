@@ -1,4 +1,6 @@
-use crate::fixtures::*;
+use crate::common::TestRepo;
+
+mod common;
 
 #[test]
 fn start_creates_branch() {
@@ -8,38 +10,38 @@ fn start_creates_branch() {
     (vec!["start", "feature/dark", "mode"], "feature/dark-mode"),
   ] {
     // new repo and tempdir for each test
-    let dir = init_repo();
-    init_commit(&dir);
+    let repo = TestRepo::new();
+    repo.init_commit();
 
     // run start command
-    run_feature(&args, dir.path()).success();
+    repo.feature(&args).success();
 
     // check current branch name
-    let proc = run_git(&["branch", "--show-current"], dir.path()).success();
-    let Ok(stdout) = String::from_utf8(proc.get_output().stdout.clone()) else {
-      panic!("Failed to get stdout as string")
-    };
+    let proc = repo.git(&["branch", "--show-current"]).success();
+    let stdout = String::from_utf8(proc.get_output().stdout.clone()).unwrap();
     assert_eq!(stdout.trim(), expected.to_string());
   }
 }
 
 #[test]
 fn empty_branch_name_fails() {
-  let dir = init_repo();
-  init_commit(&dir);
+  let repo = TestRepo::new();
+  repo.init_commit();
   // empty string
-  run_feature(&["start", ""], dir.path()).failure();
+  repo.feature(&["start", ""]).failure();
 }
 
 #[test]
 fn uses_custom_separator() {
-  let dir = init_repo();
-  init_commit(&dir);
+  let repo = TestRepo::new();
+  repo.init_commit();
 
   // using `--flag=value` syntax
-  run_feature(&["start", "--sep=_", "new", "branch"], dir.path()).success();
+  repo
+    .feature(&["start", "--sep=_", "new", "branch"])
+    .success();
 
-  let proc = run_git(&["branch", "--show-current"], dir.path()).success();
+  let proc = repo.git(&["branch", "--show-current"]).success();
   let Ok(stdout) = String::from_utf8(proc.get_output().stdout.clone()) else {
     panic!("Failed to get stdout as string")
   };
@@ -49,16 +51,25 @@ fn uses_custom_separator() {
 
 #[test]
 fn uses_custom_separator_alt_syntax() {
-  let dir = init_repo();
-  init_commit(&dir);
+  let repo = TestRepo::new();
+  repo.init_commit();
 
   // using `--flag value` syntax
-  run_feature(&["start", "--sep", "_", "new", "branch"], dir.path()).success();
+  repo
+    .feature(&["start", "--sep", "_", "new", "branch"])
+    .success();
 
-  let proc = run_git(&["branch", "--show-current"], dir.path()).success();
-  let Ok(stdout) = String::from_utf8(proc.get_output().stdout.clone()) else {
-    panic!("Failed to get stdout as string")
-  };
+  let proc = repo.git(&["branch", "--show-current"]).success();
+  let stdout = String::from_utf8(proc.get_output().stdout.clone()).unwrap();
 
   assert_eq!(stdout.trim(), "new_branch".to_string());
+}
+
+#[test]
+fn only_starts_on_base_branch() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.feature(&["start", "feature1"]).success();
+  repo.feature(&["start", "feature2"]).failure();
 }

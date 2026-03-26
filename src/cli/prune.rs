@@ -1,5 +1,7 @@
+use git2::{BranchType, Repository};
+
 use crate::cli::{Cli, CliResult, fetch_all, get_all_branches, get_current_branch, is_merged};
-use crate::{await_child, database, git};
+use crate::database;
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
@@ -9,11 +11,12 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, cli: &Cli) -> CliResult {
-    fetch_all()?;
+    let repo = Repository::open_from_env()?;
+    fetch_all(&repo)?;
 
     // get list of all branches
-    let branches = get_all_branches()?;
-    let mut db = database::load()?;
+    let branches = get_all_branches(&repo)?;
+    let mut db = database::load(&repo)?;
 
     if self.dry_run {
       println!("Deletion candidates:")
@@ -31,7 +34,7 @@ impl Args {
       }
 
       // skip current branch
-      if get_current_branch().is_ok_and(|it| it == branch) {
+      if get_current_branch(&repo).is_ok_and(|it| it == branch) {
         continue;
       }
 
@@ -39,25 +42,33 @@ impl Args {
       let base = db.get(&branch).unwrap_or(&cli.config.trunk);
 
       // detect if branch is merged (i.e. has no commits that aren't on its base)
-      if is_merged(&branch, base).is_ok_and(|yes| yes) {
+      if is_merged(&repo, &branch, base).is_ok_and(|yes| yes) {
         // in dry-run mode, print the branch name but don't delete
         if self.dry_run {
-          println!("{}", &branch);
+          println!("{branch}");
           continue;
         }
 
-        // delete 1 by 1 (use -D to force delete, we've assured all commits exist on the base)
-        if let Ok(mut child) = git!("branch", "-D", &branch).spawn() {
-          if await_child!(child, format!("Failed to delete branch {}", &branch)).is_err() {
-            eprintln!("Failed to delete branch {}", &branch);
-          } else {
-            // remove deleted branch from db
-            db.remove(&branch);
+        match repo.find_branch(&branch, BranchType::Local) {
+          Err(e) => {
+            eprintln!("Failed to get reference to branch {branch}: {e}");
           }
-        } else {
-          eprintln!("Failed to delete branch {}", &branch);
+          Ok(mut branch_obj) => {
+            match branch_obj.delete() {
+              Ok(_) => {
+                db.remove(&branch);
+              }
+              Err(e) => {
+                eprintln!("Failed to delete {branch}: {e}");
+              }
+            };
+          }
         };
       }
+    }
+
+    if !self.dry_run {
+      database::save(&repo, db)?;
     }
 
     Ok(())

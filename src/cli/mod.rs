@@ -2,8 +2,22 @@
 
 use clap::{Parser, Subcommand};
 use dialoguer::Confirm;
+use git2::{
+  AutotagOption,
+  BranchType,
+  Commit,
+  Cred,
+  CredentialType,
+  FetchOptions,
+  FetchPrune,
+  RemoteCallbacks,
+  Repository,
+  Status,
+  StatusOptions,
+};
 
 use crate::cli::error::CliError;
+use crate::cli_err;
 use crate::config::Config;
 
 mod commit;
@@ -24,9 +38,7 @@ macro_rules! await_child {
     if $child.wait().is_ok_and(|status| status.success()) {
       Ok(())
     } else {
-      Err($crate::cli::error::CliError::SubprocessFailed(
-        $msg.to_string(),
-      ))
+      Err($crate::cli::error::CliError::Process($msg.to_string()))
     }
   };
 }
@@ -152,112 +164,165 @@ impl Cli {
   }
 }
 
+fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Commit<'repo>, git2::Error> {
+  let head = repo.head()?;
+  let commit = head.peel_to_commit()?;
+  Ok(commit)
+}
+
 /// Gets current branch via `git branch --show-current`
-fn get_current_branch() -> CliResult<String> {
-  let output = git!("branch", "--show-current").output()?;
-  let output = String::from_utf8(output.stdout)?;
-  Ok(output.trim().to_string())
+fn get_current_branch(repo: &Repository) -> CliResult<String> {
+  let head = repo.head()?;
+
+  if !head.is_branch() {
+    return Err(cli_err!(Git, "Not checked out to a branch"));
+  }
+
+  let short = head.shorthand().ok_or(cli_err!(
+    Git,
+    "HEAD has no shorthand. Are you checked out to a branch?"
+  ))?;
+
+  Ok(short.to_string())
 }
 
 /// Returns a list of all local branches, or None if there was an error getting output
-fn get_all_branches() -> CliResult<Vec<String>> {
-  let output = git!("branch", "--format=%(refname:short)").output()?;
-  let output = String::from_utf8(output.stdout)?;
-  Ok(output.lines().map(|branch| branch.to_string()).collect())
-}
+fn get_all_branches(repo: &Repository) -> CliResult<Vec<String>> {
+  let branches = repo.branches(Some(BranchType::Local))?;
 
-/// Gets the branch's remote tracking branch
-fn get_tracking_branch(branch: &str) -> CliResult<String> {
-  // --list <pattern> filters the entire list for the given pattern, we can use the current branch
-  // name to only find its remote tracking branch
-  let output = git!(
-    "branch",
-    "--format=%(refname:short) %(upstream:short)",
-    "--list",
-    branch
-  )
-  .output()?;
-  let output = String::from_utf8(output.stdout)?;
-  let mut lines = output.lines();
+  let mut output: Vec<String> = Vec::new();
 
-  if let Some(line) = lines.next() {
-    let mut words = line.split(" ");
-    let _ = words.next();
-    let remote = words.next();
-
-    if let Some(it) = remote {
-      return Ok(it.to_string());
-    }
+  // unwrap results and options, skip on error or none
+  for b in branches {
+    let Ok((b, _)) = b else {
+      continue;
+    };
+    let Ok(Some(name)) = b.name() else {
+      continue;
+    };
+    output.push(name.to_string());
   }
 
-  Err(CliError::Generic(format!(
-    "Couldn't find tracked branch for {}",
-    branch
-  )))
+  Ok(output)
 }
 
 /// Whether branch is merged into base
-fn is_merged(branch: &str, base: &str) -> CliResult<bool> {
-  let output = git!("log", branch, "--not", base, "--oneline").output()?;
-  let output = String::from_utf8(output.stdout)?;
-  Ok(output.trim().is_empty())
+fn is_merged(repo: &Repository, branch: &str, base: &str) -> CliResult<bool> {
+  let branch_commit = repo
+    .find_branch(branch, BranchType::Local)?
+    .get()
+    .peel_to_commit()?
+    .id();
+
+  let base_commit = repo
+    .find_branch(base, BranchType::Local)?
+    .get()
+    .peel_to_commit()?
+    .id();
+
+  if branch_commit == base_commit {
+    return Ok(true);
+  }
+
+  let is_ancestor = repo.graph_descendant_of(branch_commit, base_commit)?;
+  Ok(!is_ancestor)
 }
 
 /// Whether there are any uncommitted changes
-fn has_local_changes() -> CliResult<bool> {
-  // check unstaged changes
-  let output = git!("diff")
-    .output()
-    .map_err(|_| CliError::Generic("Failed to check for uncommitted changes".into()))?;
+fn has_local_changes(repo: &Repository) -> CliResult<bool> {
+  let mut opts = StatusOptions::new();
+  opts.include_untracked(false);
+  let statuses = repo.statuses(Some(&mut opts))?;
 
-  let output = String::from_utf8(output.stdout)
-    .map_err(|_| CliError::Generic("Failed to check for uncommitted changes".into()))?;
+  for entry in &statuses {
+    let status = entry.status();
 
-  // if diff is non-empty, immediately return true
-  if !output.trim().is_empty() {
-    return Ok(true);
+    if status.intersects(
+      Status::INDEX_NEW
+        | Status::INDEX_MODIFIED
+        | Status::INDEX_DELETED
+        | Status::INDEX_RENAMED
+        | Status::INDEX_TYPECHANGE
+        | Status::WT_MODIFIED
+        | Status::WT_DELETED
+        | Status::WT_RENAMED
+        | Status::WT_TYPECHANGE,
+    ) {
+      // return true immediately if any of the above changes are found
+      return Ok(true);
+    }
   }
 
-  // check staged changes
-  let output = git!("diff", "--cached")
-    .output()
-    .map_err(|_| CliError::Generic("Failed to check for uncommitted changes".into()))?;
-
-  let output = String::from_utf8(output.stdout)
-    .map_err(|_| CliError::Generic("Failed to check for uncommitted changes".into()))?;
-
-  Ok(!output.trim().is_empty())
+  Ok(false)
 }
 
-/// Whether the branch can be fast-forwarded to its remote counterpart
-fn can_fast_forward(branch: &str) -> CliResult<bool> {
-  let remote = get_tracking_branch(branch)?;
+fn fetch_all(repo: &Repository) -> CliResult {
+  let mut results: Vec<CliResult> = Vec::new();
 
-  let output = git!("rev-parse", branch).output()?;
-  let output = String::from_utf8(output.stdout)?;
-  let local_sha = output.trim();
+  let remotes = repo.remotes()?;
+  for remote_name in &remotes {
+    let Some(remote_name) = remote_name else {
+      continue;
+    };
 
-  let output = git!("rev-parse", &remote).output()?;
-  let output = String::from_utf8(output.stdout)?;
-  let remote_sha = output.trim();
+    let mut remote = repo.find_remote(remote_name)?;
+    let callbacks = get_remote_callbacks();
 
-  // same sha, branches are up to date
-  if local_sha == remote_sha {
-    return Ok(true);
+    let mut opts = FetchOptions::new();
+    opts.remote_callbacks(callbacks);
+    opts.prune(FetchPrune::On);
+    opts.download_tags(AutotagOption::All);
+
+    results.push(
+      remote
+        .fetch(
+          &[format!("refs/heads/*:refs/remotes/{}/*", remote_name)],
+          Some(&mut opts),
+          None,
+        )
+        .map_err(|e| e.into()),
+    );
   }
 
-  let merge_base = git!("merge-base", "--is-ancestor", branch, remote).status()?;
-  Ok(merge_base.success())
+  results.into_iter().collect()
 }
 
-fn fetch_all() -> CliResult {
-  // -p = prune remote refs (e.g. all the origin/<branch>)
-  // -t = fetch tags too
-  // --all = from all remotes
-  await_child!(
-    git!("fetch", "-pt", "--all").spawn()?,
-    "Failed to fetch from remotes"
-  )
+/// Gets remote callbacks to use for remote operations with git2
+fn get_remote_callbacks<'repo>() -> RemoteCallbacks<'repo> {
+  let mut callbacks = RemoteCallbacks::new();
+
+  callbacks.credentials(|url, username_from_url, allowed_types| {
+    if allowed_types.contains(CredentialType::SSH_KEY) {
+      return Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"));
+    }
+
+    if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
+      if let Ok(cred) =
+        Cred::credential_helper(&git2::Config::open_default()?, url, username_from_url)
+      {
+        return Ok(cred);
+      }
+
+      // fallback to git token env var
+      let token = std::env::var("GIT_TOKEN").map_err(|_| {
+        git2::Error::from_str(
+          "Failed to find credentials. Try setting the GIT_TOKEN environment variable",
+        )
+      })?;
+
+      return Cred::userpass_plaintext(username_from_url.unwrap_or("git"), &token);
+    }
+
+    if allowed_types.contains(CredentialType::DEFAULT) {
+      return Cred::default();
+    }
+
+    Err(git2::Error::from_str(&format!(
+      "No supported credential type for {url}"
+    )))
+  });
+
+  callbacks
 }
 
 fn get_term_width() -> usize {
