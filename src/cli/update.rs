@@ -4,7 +4,7 @@ use std::fs;
 use git2::{ErrorCode, Rebase, Repository};
 
 use crate::cli::{CliResult, get_current_branch};
-use crate::{cli_err, cli_err_fn, database};
+use crate::{cli_err, cli_err_fn, data};
 
 const MERGE_CONFLICT_MSG: &str = r"Merge conflict encountered! To resolve, do the following:
 1. Edit the files to resolve conflicts
@@ -63,17 +63,16 @@ impl Args {
       ));
     }
 
-    let db = database::load(&repo)?;
+    let config = data::git_config(&repo)?;
     let branch_name = get_current_branch(&repo)?;
 
     let base_name = match &self.base {
       Some(it) => it.clone(),
-      None => db
-        .get(&branch_name)
+      None => data::get_feature_base(&config, &branch_name)
         .ok_or(cli_err!(
           Database,
-          "Failed to find base branch from database. Manually specify it in this command or
-          use `feature db add <base>`",
+          "Failed to determine base branch. Manually specify it in this command or
+          use `feature base <base>`",
         ))?
         .clone(),
     };
@@ -83,20 +82,17 @@ impl Args {
       return Ok(());
     }
 
-    let base = repo
-      .find_branch(&base_name, git2::BranchType::Local)
-      .map_err(cli_err_fn!(
-        Git,
-        e,
-        "Failed to get base branch info for {}: {}",
-        base_name,
-        e
-      ))?;
+    let base = repo.revparse_single(&base_name).map_err(cli_err_fn!(
+      Git,
+      e,
+      "Failed to get base branch info for {}: {}",
+      base_name,
+      e
+    ))?;
 
     let base_commit = repo
       .find_annotated_commit(
         base
-          .get()
           .peel_to_commit()
           .map_err(cli_err_fn!(
             Git,
