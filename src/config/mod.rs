@@ -1,8 +1,7 @@
+use anyhow::Result;
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
-
-use crate::cli::CliResult;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -37,7 +36,7 @@ impl Default for Config {
 }
 
 /// Loads and layers config from all sources except cli options
-pub fn load() -> CliResult<Config> {
+pub fn load() -> Result<Config> {
   // load defaults
   let mut figment = Figment::new().merge(Serialized::defaults(Config::default()));
 
@@ -63,9 +62,9 @@ pub mod project {
   use std::fs;
   use std::path::PathBuf;
 
+  use anyhow::Result;
   use toml_edit::DocumentMut;
 
-  use crate::cli::CliResult;
   use crate::config::Config;
 
   pub fn path() -> PathBuf {
@@ -73,7 +72,7 @@ pub mod project {
   }
 
   /// Reads the config file and loads a mutable config document
-  pub fn load_doc() -> CliResult<DocumentMut> {
+  pub fn load_doc() -> Result<DocumentMut> {
     let path = self::path();
     // if the file doesn't exist, return an empty document
     if !path.exists() {
@@ -86,7 +85,7 @@ pub mod project {
     Ok(doc)
   }
 
-  pub fn save(doc: DocumentMut) -> CliResult {
+  pub fn save(doc: DocumentMut) -> Result<()> {
     let path = self::path();
     let text = doc.to_string();
 
@@ -96,7 +95,7 @@ pub mod project {
   }
 
   /// Saves an entire default config to the project directory
-  pub fn save_default() -> CliResult {
+  pub fn save_default() -> Result<()> {
     let path = self::path();
     let config = Config::default();
     let toml_raw = toml::to_string_pretty(&config)?;
@@ -112,31 +111,26 @@ pub mod user {
   use std::io::ErrorKind;
   use std::path::PathBuf;
 
+  use anyhow::{Result, anyhow};
   use toml_edit::DocumentMut;
 
-  use crate::cli::CliResult;
-  use crate::cli::error::CliError;
   use crate::config::Config;
 
   /// Returns the config file located in the platform's standard config directory
   /// # Errors
   /// Returns an error if the config directory cannot be obtained.
-  pub fn path() -> CliResult<PathBuf> {
-    let mut path = dirs::config_dir().ok_or(CliError::Config(
-      "Couldn't find user config directory".into(),
-    ))?;
+  pub fn path() -> Result<PathBuf> {
+    let mut path = dirs::config_dir().ok_or(anyhow!("Failed to find user config directory",))?;
     path.push("feature");
     path.push("config.toml");
     Ok(path)
   }
 
   /// Gets the path and ensure that all necessary directories are created
-  fn ensure_path() -> CliResult<PathBuf> {
+  fn ensure_path() -> Result<PathBuf> {
     let path = self::path()?;
     let Some(dir) = &path.parent() else {
-      return Err(CliError::Config(
-        "Failed to find parent directory of config".into(),
-      ));
+      return Err(anyhow!("Failed to find parent directory of config file"));
     };
 
     // ensure full path exists
@@ -146,16 +140,7 @@ pub mod user {
         // ignore AlreadyExists error
         ErrorKind::AlreadyExists => Ok(()),
 
-        ErrorKind::PermissionDenied => Err(CliError::Config(format!(
-          "Insufficient privilege to create directores in path: {}\n",
-          &path.to_string_lossy()
-        ))),
-
-        _ => Err(CliError::Config(format!(
-          "Failed to create path: {}. Error: {}",
-          path.to_string_lossy(),
-          e
-        ))),
+        _ => Err(e),
       },
     }?;
 
@@ -163,7 +148,7 @@ pub mod user {
   }
 
   /// Reads the config file and loads a mutable config document
-  pub fn load_doc() -> CliResult<DocumentMut> {
+  pub fn load_doc() -> Result<DocumentMut> {
     let path = self::path()?;
 
     // if the file doesn't exist, return an empty document
@@ -177,7 +162,7 @@ pub mod user {
     Ok(doc)
   }
 
-  pub fn save(doc: DocumentMut) -> CliResult {
+  pub fn save(doc: DocumentMut) -> Result<()> {
     let path = self::ensure_path()?;
     let text = doc.to_string();
 
@@ -187,7 +172,7 @@ pub mod user {
   }
 
   /// Saves an entire default config to the user config directory
-  pub fn save_default() -> CliResult {
+  pub fn save_default() -> Result<()> {
     let path = self::ensure_path()?;
     let config = Config::default();
     let toml_raw = toml::to_string_pretty(&config)?;

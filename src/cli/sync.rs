@@ -1,36 +1,25 @@
-use git2::{FetchOptions, Repository};
+use anyhow::{Context, Result, anyhow};
+use git2::FetchOptions;
 
-use crate::cli::error::CliError;
-use crate::cli::{
-  Cli,
-  CliResult,
-  fetch_all,
-  get_current_branch,
-  get_remote_callbacks,
-  has_local_changes,
-};
-use crate::cli_err_fn;
+use crate::cli::{Cli, fetch_all, get_current_branch, get_remote_callbacks, has_local_changes};
+use crate::open_repo;
 
-pub fn sync(cli: &Cli) -> CliResult {
-  let repo = Repository::open_from_env()?;
-  fetch_all(&repo)?;
+pub fn sync(cli: &Cli) -> Result<()> {
+  let repo = open_repo!();
+  fetch_all(&repo).context("Failed to fetch all remotes")?;
 
-  if has_local_changes(&repo)? {
-    return Err(CliError::Generic(
-      "You have uncommitted changes! Please commit or stash them before syncing".into(),
+  if has_local_changes(&repo).context("Failed to determine if there are any local changes")? {
+    return Err(anyhow!(
+      "You have uncommitted changes! Please commit or stash them before syncing",
     ));
   }
 
-  let start_branch = get_current_branch(&repo)?;
+  let start_branch = get_current_branch(&repo).context("Failed to get current branch")?;
   let bases = &cli.config.bases;
 
   // matches remote/branch, captures the remote name and branch name on remote
   // the remote is not allowed to contain slashes, so that it matches up to the first slash
-  let re = regex::Regex::new(r"([^\s/]+)/(\S+)").map_err(cli_err_fn!(
-    Generic,
-    e,
-    "Failed to compile a regex pattern: {e}"
-  ))?;
+  let re = regex::Regex::new(r"([^\s/]+)/(\S+)").expect("Failed to compile a regex pattern");
 
   let mut opts = FetchOptions::new();
   opts.remote_callbacks(get_remote_callbacks());

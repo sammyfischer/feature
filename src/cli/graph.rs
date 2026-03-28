@@ -3,13 +3,13 @@ use std::process::{Command, Stdio};
 
 use ansi_parser::AnsiParser;
 use ansi_parser::Output::{Escape, TextBlock};
+use anyhow::Result;
 use unicode_width::UnicodeWidthChar;
 
-use crate::cli::error::CliError;
-use crate::cli::{CliResult, get_term_width};
+use crate::cli::get_term_width;
 use crate::{await_child, git};
 
-pub fn graph() -> CliResult {
+pub fn graph() -> Result<()> {
   // like log, but author name and date are first and colored
   let output = git!(
     "log",
@@ -18,9 +18,10 @@ pub fn graph() -> CliResult {
     "--color=always",
     "--pretty=format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s",
   )
-  .output()?;
+  .output()
+  .expect("Failed to get git output");
 
-  let string_output = String::from_utf8(output.stdout)?;
+  let string_output = String::from_utf8(output.stdout).expect("Git output should be valid utf-8");
 
   // if stdout is not a terminal, just print and return
   if !std::io::stdout().is_terminal() {
@@ -90,13 +91,16 @@ pub fn graph() -> CliResult {
   let mut less_proc = Command::new("less")
     .arg("-FR")
     .stdin(Stdio::piped())
-    .spawn()?;
+    .spawn()
+    .expect("Failed to start pager");
 
   let stdin = less_proc
     .stdin
     .as_mut()
-    .ok_or(CliError::Process("Failed to pipe output to pager".into()))?;
+    .expect("Failed to send output to pager");
 
-  stdin.write_all(truncated.as_bytes())?;
-  await_child!(less_proc, "Failed to open pager")
+  stdin
+    .write_all(truncated.as_bytes())
+    .expect("Failed to send output to pager");
+  await_child!(less_proc, "Pager failed")
 }

@@ -63,12 +63,8 @@ As implied by some of the steps, feature is generally designed to complement cen
 
 Housekeeping
 
+- for push, use existing remote name if branch has an upstream
 - fix `feature update --skip`, or consider removing it (along with continue and abort)
-- simplify errors
-  - most of them can just be strings
-  - main function should return Result<(), String>
-  - some functions can return a CliError, but only as an easy way to check the error type. they should be converted to a string for output
-  - consider panicking for fatal errors, this would help debug
 - rethink base/protected branches
   - protected branches are a decent way to protect non-bases from auto-deletions
   - maybe there's a better way

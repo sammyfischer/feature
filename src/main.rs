@@ -1,9 +1,11 @@
-use crate::cli::{Cli, CliResult};
+use anyhow::Result;
+
+use crate::cli::Cli;
 
 mod cli;
 mod config;
 mod data;
 
-fn main() -> CliResult {
+fn main() -> Result<()> {
   Cli::new().run()
 }

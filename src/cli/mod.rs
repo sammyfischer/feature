@@ -1,5 +1,6 @@
 //! Defines the main cli structure, most simple commands, and several helper functions and macros.
 
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 use dialoguer::Confirm;
 use git2::{
@@ -8,6 +9,7 @@ use git2::{
   Commit,
   Cred,
   CredentialType,
+  ErrorCode,
   FetchOptions,
   FetchPrune,
   RemoteCallbacks,
@@ -16,14 +18,11 @@ use git2::{
   StatusOptions,
 };
 
-use crate::cli::error::CliError;
-use crate::cli_err;
 use crate::config::Config;
 
 mod base;
 mod commit;
 mod config_cmd;
-pub mod error;
 mod graph;
 mod prune;
 mod push;
@@ -38,7 +37,7 @@ macro_rules! await_child {
     if $child.wait().is_ok_and(|status| status.success()) {
       Ok(())
     } else {
-      Err($crate::cli::error::CliError::Process($msg.to_string()))
+      Err(anyhow::anyhow!($msg.to_string()))
     }
   };
 }
@@ -57,7 +56,13 @@ macro_rules! git {
   };
 }
 
-pub type CliResult<T = ()> = Result<T, CliError>;
+/// Automatically opens a suitable git repo. Panics if it can't find one.
+#[macro_export]
+macro_rules! open_repo {
+  () => {
+    git2::Repository::open_from_env().expect("Failed to open git repo")
+  };
+}
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -124,7 +129,7 @@ impl Cli {
     Self { config, args }
   }
 
-  pub fn run(&mut self) -> CliResult {
+  pub fn run(&mut self) -> anyhow::Result<()> {
     match &self.args.action {
       Action::Start(args) => args.run(self),
       Action::Commit(args) => args.run(),
@@ -140,11 +145,11 @@ impl Cli {
     }
   }
 
-  fn list(&self) -> CliResult {
+  fn list(&self) -> Result<()> {
     await_child!(git!("branch", "-vv").spawn()?, "Failed to call git")
   }
 
-  fn log(&self) -> CliResult {
+  fn log(&self) -> Result<()> {
     // git pretty format:
     // %h = hash, %d = decorator (e.g. branch pointing to that commit)
     // %s = subject (commit description title line)
@@ -155,28 +160,36 @@ impl Cli {
         "--all",
         "--pretty=format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)"
       )
-      .spawn()?,
+      .spawn()
+      .expect("Failed to call git"),
       "Failed to call git"
     )
   }
 }
 
-fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Commit<'repo>, git2::Error> {
-  let head = repo.head()?;
-  let commit = head.peel_to_commit()?;
-  Ok(commit)
+fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Option<Commit<'repo>>> {
+  let head = match repo.head() {
+    Ok(it) => it,
+    Err(e) if e.code() == ErrorCode::UnbornBranch => return Ok(None),
+    Err(e) => return Err(e.into()),
+  };
+
+  let commit = head
+    .peel_to_commit()
+    .expect("Failed to get commit pointed to by HEAD");
+
+  Ok(Some(commit))
 }
 
 /// Gets current branch name
-fn get_current_branch(repo: &Repository) -> CliResult<String> {
+fn get_current_branch(repo: &Repository) -> Result<String> {
   let head = repo.head()?;
 
   if !head.is_branch() {
-    return Err(cli_err!(Git, "Not checked out to a branch"));
+    return Err(anyhow!("Not checked out to a branch"));
   }
 
-  let short = head.shorthand().ok_or(cli_err!(
-    Git,
+  let short = head.shorthand().ok_or(anyhow!(
     "HEAD has no shorthand. Are you checked out to a branch?"
   ))?;
 
@@ -184,29 +197,29 @@ fn get_current_branch(repo: &Repository) -> CliResult<String> {
 }
 
 /// Returns a list of all local branches
-fn get_all_branches(repo: &Repository) -> CliResult<Vec<String>> {
-  let branches = repo.branches(Some(BranchType::Local))?;
+fn get_all_branches(repo: &Repository) -> Result<Vec<String>> {
+  let branches = repo
+    .branches(Some(BranchType::Local))
+    .expect("Failed to get list of local branches");
 
   let mut output: Vec<String> = Vec::new();
 
   // unwrap results and options, skip on error or none
-  for b in branches {
-    let Ok((b, _)) = b else {
-      continue;
-    };
-    let Ok(Some(name)) = b.name() else {
-      continue;
-    };
-    output.push(name.to_string());
+  for branch in branches {
+    if let Ok((branch, _)) = branch
+      && let Ok(Some(name)) = branch.name()
+    {
+      output.push(name.to_string());
+    }
   }
 
   Ok(output)
 }
 
 /// Whether branch is merged into base
-fn is_merged(repo: &Repository, branch: &str, base: &str) -> CliResult<bool> {
-  let branch = repo.revparse_single(branch)?;
-  let base = repo.revparse_single(base)?;
+fn is_merged(repo: &Repository, branch_name: &str, base_name: &str) -> Result<bool> {
+  let branch = repo.revparse_single(branch_name)?;
+  let base = repo.revparse_single(base_name)?;
 
   let branch_commit = branch.peel_to_commit()?.id();
   let base_commit = base.peel_to_commit()?.id();
@@ -220,10 +233,13 @@ fn is_merged(repo: &Repository, branch: &str, base: &str) -> CliResult<bool> {
 }
 
 /// Whether there are any uncommitted changes
-fn has_local_changes(repo: &Repository) -> CliResult<bool> {
+fn has_local_changes(repo: &Repository) -> Result<bool> {
   let mut opts = StatusOptions::new();
   opts.include_untracked(false);
-  let statuses = repo.statuses(Some(&mut opts))?;
+
+  let statuses = repo
+    .statuses(Some(&mut opts))
+    .expect("Failed to get repository statuses");
 
   for entry in &statuses {
     let status = entry.status();
@@ -248,16 +264,18 @@ fn has_local_changes(repo: &Repository) -> CliResult<bool> {
 }
 
 /// Fetches all remote branches
-fn fetch_all(repo: &Repository) -> CliResult {
-  let mut results: Vec<CliResult> = Vec::new();
+fn fetch_all(repo: &Repository) -> Result<()> {
+  let mut results: Vec<Result<()>> = Vec::new();
 
-  let remotes = repo.remotes()?;
+  let remotes = repo.remotes().expect("Failed to list all remotes");
   for remote_name in &remotes {
     let Some(remote_name) = remote_name else {
       continue;
     };
 
-    let mut remote = repo.find_remote(remote_name)?;
+    let mut remote = repo
+      .find_remote(remote_name)
+      .unwrap_or_else(|_| panic!("Failed to get reference to remote {}", remote_name));
     let callbacks = get_remote_callbacks();
 
     let mut opts = FetchOptions::new();
@@ -272,11 +290,17 @@ fn fetch_all(repo: &Repository) -> CliResult {
           Some(&mut opts),
           None,
         )
-        .map_err(|e| e.into()),
+        .map_err(|e| anyhow!("{}", e)),
     );
   }
 
-  results.into_iter().collect()
+  for result in results {
+    if let Err(e) = result {
+      eprintln!("{}", e);
+    }
+  }
+
+  Ok(())
 }
 
 /// Gets remote callbacks to use for remote operations with git2
@@ -322,11 +346,11 @@ fn get_term_width() -> usize {
   cols as usize
 }
 
-/// Configues a prompt and wraps it in a CliResult
-fn get_user_confirmation(prompt: &str) -> CliResult<bool> {
-  Confirm::new()
+/// Configues a yes/no prompt and gets user input
+fn get_user_confirmation(prompt: &str) -> Result<bool> {
+  let result = Confirm::new()
     .default(false)
     .with_prompt(prompt)
-    .interact()
-    .map_err(|_| CliError::Generic("Failed to handle prompt".into()))
+    .interact()?;
+  Ok(result)
 }

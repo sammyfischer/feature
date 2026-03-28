@@ -1,7 +1,8 @@
-use git2::{ErrorCode, PushOptions, Repository};
+use anyhow::{Context, Error, Result, anyhow};
+use git2::{ErrorCode, PushOptions};
 
-use crate::cli::{Cli, CliResult, get_current_branch, get_remote_callbacks};
-use crate::{cli_err, cli_err_fn};
+use crate::cli::{Cli, get_current_branch, get_remote_callbacks};
+use crate::open_repo;
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
@@ -11,56 +12,41 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> CliResult {
-    let repo = Repository::open_from_env()?;
+  pub fn run(&self, cli: &Cli) -> Result<()> {
+    let repo = open_repo!();
     let branch_name = get_current_branch(&repo)?;
 
     // allow pushing bases, but as fast-forward only. the remote can still choose to reject
     if cli.config.bases.contains(&branch_name) && self.force {
-      return Err(cli_err!(
-        Push,
-        "This is a base branch, refusing to force push"
-      ));
+      return Err(anyhow!("Cannot force push a base branch"));
     }
 
     // same for protected branches
     if cli.config.protect.contains(&branch_name) && self.force {
-      return Err(cli_err!(
-        Push,
-        "This is a protected branch, refusing to force push"
-      ));
+      return Err(anyhow!("Cannot force push a protected branch"));
     }
 
     let mut branch = repo
       .find_branch(&branch_name, git2::BranchType::Local)
-      .map_err(cli_err_fn!(
-        Git,
-        e,
-        "Failed to get reference to {branch_name}: {e}"
-      ))?;
+      .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
 
     // TODO: consider getting remote name from upstream if it exists, then default to this
     let remote_name = &cli.config.default_remote;
-    let mut remote = repo.find_remote(remote_name).map_err(cli_err_fn!(
-      Git,
-      e,
-      "Failed to get reference to default remote: {e}"
-    ))?;
+    let mut remote = repo
+      .find_remote(remote_name)
+      .with_context(|| format!("Failed to get reference to default remote {}", remote_name))?;
 
     // if there's already an upstream, use that. else use current branch name and set upstream at
     // the end
     let mut has_upstream = false;
     let upstream_name = match branch.upstream() {
       Ok(it) => {
-        let name = it
-          .name()?
-          .ok_or(cli_err!(Git, "Upstream branch name is not valid utf-8"))?;
+        let name = it.name()?.expect("Upstream branch name is not valid utf-8");
 
         let name = name
           // remote the origin/ prefix, as we don't want it in the refspec
           .strip_prefix(&format!("{}/", remote_name))
-          .ok_or(cli_err!(
-            Push,
+          .ok_or(anyhow!(
             "Detected upstream {}, but it doesn't belong to the default remote: {}",
             name,
             remote_name
@@ -73,9 +59,7 @@ impl Args {
 
       // upstream not found, create it with the same name as branch
       Err(e) if e.code() == ErrorCode::NotFound => branch_name.clone(),
-      Err(e) => {
-        return Err(cli_err!(Git, "Failure when getting upstream: {e}"));
-      }
+      Err(e) => return Err(Error::from(e).context("Failed to get upstream of current branch")),
     };
 
     let mut opts = PushOptions::new();
@@ -125,7 +109,7 @@ impl Args {
 
     remote
       .push(&[&refspec], Some(&mut opts))
-      .map_err(cli_err_fn!(Git, e, "Failed to push: {e}"))?;
+      .expect("Failed to push");
 
     // set upstream if not already
     if !has_upstream {
@@ -134,11 +118,7 @@ impl Args {
 
       branch
         .set_upstream(Some(&set_upstream_to))
-        .map_err(cli_err_fn!(
-          Git,
-          e,
-          "Failed to set upstream tracking branch: {e}"
-        ))?;
+        .context("Failed to set upstream tracking branch")?;
     }
 
     Ok(())
