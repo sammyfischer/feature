@@ -69,7 +69,7 @@ pub mod project {
   use crate::config::Config;
 
   pub fn path() -> PathBuf {
-    PathBuf::from(".feature.toml")
+    PathBuf::from("feature.toml")
   }
 
   /// Reads the config file and loads a mutable config document

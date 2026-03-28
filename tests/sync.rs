@@ -8,7 +8,7 @@ fn updates_all_bases() {
   local.init_commit();
   local.feature(&["push"]);
 
-  local.write_file(".gitignore", ".feature.toml");
+  local.write_file(".gitignore", "feature.toml");
   local.git(&["add", "."]).success();
   local.feature(&["commit", "added", "gitignore"]).success();
 
