@@ -72,10 +72,8 @@ pub fn graph() -> CliResult {
 
     if truncated {
       // replace end with ellipsis
-      for _ in 0..3 {
-        line_buf.pop();
-      }
-      line_buf.push_str("...");
+      line_buf.pop();
+      line_buf.push('\u{2026}');
       // reset color/formatting
       line_buf.push_str("\x1b[0m");
     }

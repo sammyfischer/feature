@@ -14,10 +14,10 @@ test target="":
   #!/usr/bin/env bash
   if [ -n "{{target}}" ]; then
     echo "Testing {{target}}"
-    cargo test --test {{target}}
+    cargo test --quiet --test {{target}}
   else
     echo "Testing all"
-    cargo test
+    cargo test --quiet
   fi
 
 # format with dprint
@@ -27,6 +27,9 @@ fmt:
 # lint with clippy
 lint:
   cargo clippy
+
+# compliance checks
+check: fmt lint test
 
 install:
   cargo install --path .

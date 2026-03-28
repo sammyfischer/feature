@@ -63,7 +63,6 @@ As implied by some of the steps, feature is generally designed to complement cen
 
 Housekeeping
 
-- use utf8 ellipsis (`\u2026`) to truncate text in graph
 - fix `feature update --skip`, or consider removing it (along with continue and abort)
 - simplify errors
   - most of them can just be strings
