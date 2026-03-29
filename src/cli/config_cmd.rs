@@ -1,10 +1,10 @@
 //! Config subcommand
 
+use anyhow::{Result, anyhow};
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
-use crate::cli::error::CliError;
-use crate::cli::{CliResult, get_user_confirmation};
+use crate::cli::get_user_confirmation;
 use crate::config;
 
 /// Loads the right config document
@@ -117,9 +117,6 @@ pub struct SetArgs {
   #[arg(short, long, conflicts_with = "which")]
   pub global: bool,
 
-  #[arg(long)]
-  pub trunk: Option<String>,
-
   #[arg(long, alias = "default_remote")]
   pub default_remote: Option<String>,
 
@@ -161,7 +158,7 @@ pub struct ArrayArgs {
 }
 
 impl Args {
-  pub fn run(&self) -> CliResult {
+  pub fn run(&self) -> Result<()> {
     match self {
       Args::Create(args) => self.create(args),
       Args::Get(args) => self.get(args),
@@ -172,7 +169,7 @@ impl Args {
     }
   }
 
-  pub fn create(&self, args: &CreateArgs) -> CliResult {
+  pub fn create(&self, args: &CreateArgs) -> Result<()> {
     let mut which = &args.which;
     if args.global {
       which = &WhichConfig::Global;
@@ -211,11 +208,11 @@ impl Args {
     }
   }
 
-  pub fn get(&self, args: &GetArgs) -> CliResult {
+  pub fn get(&self, args: &GetArgs) -> Result<()> {
     let config = config::load()?;
 
     for key in &args.keys {
-      let value = get!(config, &**key, trunk, default_remote, bases, branch_sep,);
+      let value = get!(config, &**key, default_remote, bases, branch_sep,);
 
       println!("{}: {}", key, value);
     }
@@ -223,19 +220,19 @@ impl Args {
     Ok(())
   }
 
-  pub fn set(&self, args: &SetArgs) -> CliResult {
+  pub fn set(&self, args: &SetArgs) -> Result<()> {
     let mut which = &args.which;
     if args.global {
       which = &WhichConfig::Global;
     }
 
     let mut doc = load!(which);
-    set!(doc, args, trunk, default_remote, branch_sep);
+    set!(doc, args, default_remote, branch_sep);
     save!(which, doc);
     Ok(())
   }
 
-  pub fn unset(&self, args: &UnsetArgs) -> CliResult {
+  pub fn unset(&self, args: &UnsetArgs) -> Result<()> {
     let mut which = &args.which;
     if args.global {
       which = &WhichConfig::Global;
@@ -253,7 +250,7 @@ impl Args {
     Ok(())
   }
 
-  pub fn append(&self, args: &ArrayArgs) -> CliResult {
+  pub fn append(&self, args: &ArrayArgs) -> Result<()> {
     // short circuit if no values were specified
     if args.values.is_empty() {
       return Ok(());
@@ -272,15 +269,14 @@ impl Args {
     }
 
     // get mutable item
-    let item = doc.get_mut(&args.key).ok_or(CliError::Config(format!(
-      "Failed to obtain key: {}",
-      args.key
-    )))?;
+    let item = doc
+      .get_mut(&args.key)
+      .ok_or(anyhow!(format!("Failed to obtain key: {}", args.key)))?;
 
     // get as mutable array
     let value = item
       .as_array_mut()
-      .ok_or(CliError::Config(format!("Not an array: {}", args.key)))?;
+      .ok_or(anyhow!(format!("Not an array: {}", args.key)))?;
 
     // push all values
     for v in &args.values {
@@ -291,7 +287,7 @@ impl Args {
     Ok(())
   }
 
-  pub fn remove(&self, args: &ArrayArgs) -> CliResult {
+  pub fn remove(&self, args: &ArrayArgs) -> Result<()> {
     // short circuit if no values were specified
     if args.values.is_empty() {
       return Ok(());
@@ -309,15 +305,14 @@ impl Args {
     }
 
     // get mutable item
-    let item = doc.get_mut(&args.key).ok_or(CliError::Config(format!(
-      "Failed to obtain key: {}",
-      args.key
-    )))?;
+    let item = doc
+      .get_mut(&args.key)
+      .ok_or(anyhow!(format!("Failed to obtain key: {}", args.key)))?;
 
     // get as mutable array
     let value = item
       .as_array_mut()
-      .ok_or(CliError::Config(format!("Not an array: {}", args.key)))?;
+      .ok_or(anyhow!(format!("Not an array: {}", args.key)))?;
 
     // retain values not specified by command
     value.retain(|v| match v.as_str() {
