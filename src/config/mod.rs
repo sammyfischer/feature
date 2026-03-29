@@ -6,9 +6,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-  /// The main branch of the repository
-  pub trunk: String,
-
   /// Main remote name
   pub default_remote: String,
 
@@ -26,10 +23,9 @@ pub struct Config {
 impl Default for Config {
   fn default() -> Self {
     Self {
-      trunk: "main".into(),
       default_remote: "origin".into(),
       bases: vec!["main".into()],
-      protect: vec!["main".into(), "master".into()],
+      protect: vec![],
       branch_sep: "-".into(),
     }
   }

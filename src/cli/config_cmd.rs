@@ -117,9 +117,6 @@ pub struct SetArgs {
   #[arg(short, long, conflicts_with = "which")]
   pub global: bool,
 
-  #[arg(long)]
-  pub trunk: Option<String>,
-
   #[arg(long, alias = "default_remote")]
   pub default_remote: Option<String>,
 
@@ -215,7 +212,7 @@ impl Args {
     let config = config::load()?;
 
     for key in &args.keys {
-      let value = get!(config, &**key, trunk, default_remote, bases, branch_sep,);
+      let value = get!(config, &**key, default_remote, bases, branch_sep,);
 
       println!("{}: {}", key, value);
     }
@@ -230,7 +227,7 @@ impl Args {
     }
 
     let mut doc = load!(which);
-    set!(doc, args, trunk, default_remote, branch_sep);
+    set!(doc, args, default_remote, branch_sep);
     save!(which, doc);
     Ok(())
   }

@@ -90,8 +90,7 @@ pub enum Action {
   /// rebase/merge
   Sync,
 
-  /// Clean up merged branches. A branch is merged if all its commits are found on its base or the
-  /// trunk
+  /// Clean up merged branches. A branch is merged if all its commits are found on its base
   Prune(prune::Args),
 
   // ==== DISPLAY / INFO ====

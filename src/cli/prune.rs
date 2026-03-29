@@ -53,7 +53,7 @@ impl Args {
 
     let config = repo.config().context("Failed to get git config")?;
 
-    // find base branch from db, or just use the trunk branch
+    // find base branch from db, else skip
     let base_name = data::get_feature_base(&config, branch_name)
       .context("Cannot prune branches without a base")?;
 
