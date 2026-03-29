@@ -18,6 +18,9 @@ pub struct Config {
 
   /// Separator used between words in branch names
   pub branch_sep: String,
+
+  /// Template for creating branch names. See `feature start --help` for more info
+  pub branch_format: String,
 }
 
 impl Default for Config {
@@ -27,6 +30,7 @@ impl Default for Config {
       bases: vec!["main".into()],
       protect: vec![],
       branch_sep: "-".into(),
+      branch_format: "%s".into(),
     }
   }
 }

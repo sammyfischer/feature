@@ -122,6 +122,9 @@ pub struct SetArgs {
 
   #[arg(long, alias = "branch_sep")]
   pub branch_sep: Option<String>,
+
+  #[arg(long, alias = "branch_format")]
+  pub branch_format: Option<String>,
 }
 
 #[derive(clap::Args, Clone, Debug)]
@@ -212,7 +215,14 @@ impl Args {
     let config = config::load()?;
 
     for key in &args.keys {
-      let value = get!(config, &**key, default_remote, bases, branch_sep,);
+      let value = get!(
+        config,
+        &**key,
+        default_remote,
+        bases,
+        branch_sep,
+        branch_format
+      );
 
       println!("{}: {}", key, value);
     }
@@ -227,7 +237,7 @@ impl Args {
     }
 
     let mut doc = load!(which);
-    set!(doc, args, default_remote, branch_sep);
+    set!(doc, args, default_remote, branch_sep, branch_format);
     save!(which, doc);
     Ok(())
   }
