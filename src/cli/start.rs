@@ -14,12 +14,12 @@ const NOT_ON_BASE_MSG: &str = r"Must call start from a base branch. You can modi
 const EMPTY_REPO_MSG: &str =
   r"Cannot call start on an empty repository. Create at least one commit first.";
 
-const FORMAT_HELP_MSG: &str = r"Template replacements (in order): \
-  %%      -> a literal '%' \
-  %(user) -> git config username \
-  %(base) -> base branch name \
-  %(sep)  -> the configured separator \
-  %s      -> the args joined with the configured separator";
+const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
+  %%      -> a literal '%'
+  %(user) -> user.name found in git config
+  %(base) -> base branch name
+  %(sep)  -> the separator used to join WORDS
+  %s      -> WORDS joined by the separator";
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {

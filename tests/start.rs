@@ -86,9 +86,46 @@ branch_format = "%(user)%(sep)%(base)%(sep)%s"
 
   // with config file options
   repo.git(&["switch", "main"]).success();
-  let cmd = repo.feature(&["start", "new", "branch"]).success();
-  println!("{}", get_stdout!(cmd));
+  repo.feature(&["start", "new", "branch"]).success();
 
   let cmd = repo.git(&["branch", "--show-current"]).success();
   assert_eq!(get_stdout!(cmd).trim(), "test_main_new_branch");
+}
+
+/// Dry run mode only prints the would-be branch name, and doesn't create or switch to a branch
+#[test]
+pub fn dry_run_prints_branch() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+  repo.write_file(
+    "feature.toml",
+    r#"branch_sep = "_"
+branch_format = "%(user)%(sep)%(base)%(sep)%s"
+"#,
+  );
+
+  // with command line options
+  let cmd = repo
+    .feature(&[
+      "start",
+      "--dry-run",
+      "--format=%(user)/%s",
+      "--sep=-",
+      "new",
+      "branch",
+    ])
+    .success();
+
+  assert_eq!(get_stdout!(cmd).trim(), "Creating branch: test/new-branch");
+
+  // with config file options
+  // by not switching back to main, we're effectively testing that feature didn't create and switch
+  // to the new branch
+  let cmd = repo
+    .feature(&["start", "--dry-run", "new", "branch"])
+    .success();
+  assert_eq!(
+    get_stdout!(cmd).trim(),
+    "Creating branch: test_main_new_branch"
+  );
 }
