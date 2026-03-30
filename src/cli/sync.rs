@@ -4,7 +4,12 @@ use git2::FetchOptions;
 use crate::cli::{Cli, fetch_all, get_current_branch, get_remote_callbacks, has_local_changes};
 use crate::open_repo;
 
-pub fn sync(cli: &Cli) -> Result<()> {
+pub const LONG_ABOUT: &str = r"Updates all base branches with their remotes.
+
+Fast-forwards local branches (e.g. refs/heads/*) and force-updates remotes
+(e.g. refs/remotes/origin/*).";
+
+pub fn run(cli: &Cli) -> Result<()> {
   let repo = open_repo!();
   fetch_all(&repo).context("Failed to fetch all remotes")?;
 

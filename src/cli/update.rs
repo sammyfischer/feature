@@ -7,6 +7,9 @@ use git2::{ErrorCode, Rebase, Repository};
 use crate::cli::get_current_branch;
 use crate::{data, open_repo};
 
+const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
+rebase.";
+
 const MERGE_CONFLICT_MSG: &str = r"Merge conflict encountered! To resolve, do the following:
 
 1. Edit the files to resolve conflicts
@@ -35,6 +38,7 @@ const NO_SIGNATURE_MSG: &str = r"Failed to get default commit signature. Try set
 `git config user.email <email>`";
 
 #[derive(clap::Args, Clone, Debug)]
+#[command(about = "Updates this branch with its base", long_about = LONG_ABOUT)]
 pub struct Args {
   /// Output which base branch will be used, but don't perform the rebase or modify the database.
   #[arg(long)]

@@ -4,7 +4,18 @@ use git2::{BranchType, Repository};
 use crate::cli::{Cli, fetch_all, get_all_branches, get_current_branch, is_merged};
 use crate::{await_child, data, git, open_repo};
 
+const LONG_ABOUT: &str = r"Deletes all branches that:
+- have a known base branch
+- are an ancestor of their base branch
+- aren't a base or protected branch
+- aren't the current branch
+
+These checks should prevent most accidental deletions, and at least ensure that
+any deleted branches were redundant (being an ancestor of the base means the
+base contains the branch's commit history already).";
+
 #[derive(clap::Args, Clone, Debug)]
+#[command(about = "Deletes merged feature branches", long_about = LONG_ABOUT)]
 pub struct Args {
   #[arg(long)]
   dry_run: bool,

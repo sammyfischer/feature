@@ -74,24 +74,15 @@ pub struct Args {
 #[derive(Debug, Subcommand)]
 pub enum Action {
   // ==== FEATURE BRANCH WORKFLOW / SINGLE BRANCH ACTIONS ====
-  /// Start a new feature branch
   Start(start::Args),
-
-  /// Commit using remaining args as commit message
   Commit(commit::Args),
-
-  /// Update the current branch against its base branch
   Update(update::Args),
-
-  /// Push current branch to remote
   Push(push::Args),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
-  /// Syncs all base (protected) branches with remotes. Only fast-forwards branches, refuses to
-  /// rebase/merge
+  #[command(about = "Syncs all base branches with their remotes", long_about = sync::LONG_ABOUT)]
   Sync,
 
-  /// Clean up merged branches. A branch is merged if all its commits are found on its base
   Prune(prune::Args),
 
   // ==== DISPLAY / INFO ====
@@ -109,7 +100,6 @@ pub enum Action {
     args: config_cmd::Args,
   },
 
-  /// Set the base branch of a feature branch
   Base(base::Args),
 }
 
@@ -131,7 +121,7 @@ impl Cli {
       Action::Commit(args) => args.run(),
       Action::Update(args) => args.run(),
       Action::Push(args) => args.run(self),
-      Action::Sync => sync::sync(self),
+      Action::Sync => sync::run(self),
       Action::Prune(args) => args.run(self),
       Action::List => self.list(),
       Action::Log(args) => args.run(self),
