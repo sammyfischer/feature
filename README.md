@@ -71,7 +71,6 @@ Housekeeping
 
 Features
 
-- custom log/graph output
 - submodule utilities
   - `feature mod ...`
   - sync/prune all modules
