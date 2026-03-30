@@ -9,7 +9,14 @@ use crate::cli::{Cli, get_current_branch, get_current_commit};
 use crate::config::Config;
 use crate::{data, open_repo};
 
-const NOT_ON_BASE_MSG: &str = r"Must call start from a base branch. You can modify base branches with:
+const LONG_ABOUT: &str = r"Creates and switches to a new branch.
+This command does no checks to validate the branch name or verify that it
+doesn't already exist.
+
+Supports several custom formatting options that can be specified in the command
+line or config file.";
+
+const NOT_ON_BASE_MSG: &str = r"Must call start from a base branch. You can add a base branche with:
 
 `feature config append bases <BRANCH_NAME>`";
 
@@ -24,6 +31,7 @@ const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
   %s      -> WORDS joined by the separator";
 
 #[derive(clap::Args, Clone, Debug)]
+#[command(about = "Starts a new feature branch", long_about = LONG_ABOUT)]
 pub struct Args {
   /// The separator to use when joining words
   #[arg(long)]
@@ -136,9 +144,23 @@ impl Args {
     config: &Config,
     base_name: &str,
   ) -> Result<String> {
-    let sep = self.sep.as_ref().unwrap_or(&config.branch_sep);
+    let sep = self.sep.as_ref().unwrap_or(&config.format.branch_sep);
     let main_part = self.words.join(sep);
-    let template = self.format.as_ref().unwrap_or(&config.branch_format);
+
+    let mut template = self.format.as_ref();
+    // use config if cli option isn't specified
+    if template.is_none() {
+      template = config.format.branch.as_ref();
+    }
+
+    // if neither cli nor config specifies a template, just use the main part
+    let Some(template) = template else {
+      return Ok(main_part);
+    };
+
+    if template.is_empty() {
+      return Ok(main_part);
+    }
 
     // cached value of user.name from git config
     let mut username: Option<String> = None;

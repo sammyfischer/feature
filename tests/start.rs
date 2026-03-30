@@ -71,8 +71,9 @@ fn uses_custom_format() {
   repo.init_commit();
   repo.write_file(
     "feature.toml",
-    r#"branch_sep = "_"
-branch_format = "%(user)%(sep)%(base)%(sep)%s"
+    r#"[format]
+branch_sep = "_"
+branch = "%(user)%(sep)%(base)%(sep)%s"
 "#,
   );
 
@@ -108,6 +109,7 @@ fn advanced_custom_formats() {
     ("%%(user)", "%(user)"),
     ("%%%s", "%new-branch"),
     ("%%%%", "%%"),
+    ("", "new-branch"),
   ] {
     repo
       .feature(&["start", &format!("--format={}", template), "new", "branch"])
@@ -119,7 +121,7 @@ fn advanced_custom_formats() {
   }
 
   // failure cases
-  for template in ["%", "%x", "%(what)", "%(use", "%(user", "feature%", ""] {
+  for template in ["%", "%x", "%(what)", "%(use", "%(user", "feature%"] {
     repo
       .feature(&["start", &format!("--format={}", template), "new", "branch"])
       .failure();
@@ -133,8 +135,9 @@ pub fn dry_run_prints_branch() {
   repo.init_commit();
   repo.write_file(
     "feature.toml",
-    r#"branch_sep = "_"
-branch_format = "%(user)%(sep)%(base)%(sep)%s"
+    r#"[format]
+branch_sep = "_"
+branch = "%(user)%(sep)%(base)%(sep)%s"
 "#,
   );
 

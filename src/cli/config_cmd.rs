@@ -27,42 +27,18 @@ macro_rules! save {
   };
 }
 
-/// Generates match branches for each config key. For usage in the get subcommand
-macro_rules! get {
-  ($config:ident, $match_key:expr, $($key:ident),+ $(,)?) => {
-    match $match_key {
-      $(stringify!($key) => toml::Value::from($config.$key.clone()),)+
-      _ => {
-        eprintln!("{} doesn't exist!", $match_key);
-        continue;
-      }
-    }
-  };
-}
-
-/// Implements set logic for each config key
-macro_rules! set {
-  ($doc:expr, $args:expr, $($key:ident),+ $(,)?) => {
-    $(
-      if let Some(value) = & $args.$key {
-        $doc[stringify!($key)] = toml_edit::value(value);
-      }
-    )+
-  };
-}
-
 #[derive(Clone, Debug, Subcommand)]
 pub enum Args {
-  /// Creates a config file with all default values specified
+  /// Creates a config file with default values
   Create(CreateArgs),
 
-  /// Get a config value
+  /// Get the value of some config keys
   Get(GetArgs),
 
-  /// Modify a config value
+  /// Modify a single config value
   Set(SetArgs),
 
-  /// Delete a config value from a file
+  /// Delete a config keys from a file
   #[command(visible_aliases = ["del", "delete"])]
   Unset(UnsetArgs),
 
@@ -104,10 +80,11 @@ pub struct GetArgs {
   pub keys: Vec<String>,
 }
 
+const SET_LONG_ABOUT: &str = r"Each config key is specified as a flag, allowing you to set multiple at once.
+Tip: use `append` and `remove` to modify arrays.";
+
 #[derive(clap::Args, Clone, Debug)]
-#[command(
-  after_long_help = "Each config key is specified as a flag, allowing you to set multiple at once. Tip: use `append` and `remove` to modify arrays."
-)]
+#[command(long_about = SET_LONG_ABOUT)]
 pub struct SetArgs {
   /// Which file to modify
   #[arg(long, default_value = "project", conflicts_with = "global")]
@@ -117,14 +94,9 @@ pub struct SetArgs {
   #[arg(short, long, conflicts_with = "which")]
   pub global: bool,
 
-  #[arg(long, alias = "default_remote")]
-  pub default_remote: Option<String>,
-
-  #[arg(long, alias = "branch_sep")]
-  pub branch_sep: Option<String>,
-
-  #[arg(long, alias = "branch_format")]
-  pub branch_format: Option<String>,
+  /// Use dots to access nested keys, e.g. format.branch
+  pub key: String,
+  pub value: String,
 }
 
 #[derive(clap::Args, Clone, Debug)]
@@ -215,14 +187,22 @@ impl Args {
     let config = config::load()?;
 
     for key in &args.keys {
-      let value = get!(
-        config,
-        &**key,
-        default_remote,
-        bases,
-        branch_sep,
-        branch_format
-      );
+      let value = match &**key {
+        "default_remote" => config.default_remote.clone(),
+        "bases" => toml::Value::from(config.bases.clone()).to_string(),
+        "protect" => toml::Value::from(config.protect.clone()).to_string(),
+        "format.branch_sep" => config.format.branch_sep.clone(),
+        "format.branch" => match config.format.branch {
+          Some(ref it) => it.clone(),
+          None => "None".to_string(),
+        },
+        "format.log" => config.format.log.clone(),
+        "format.graph" => config.format.graph.clone(),
+        _ => {
+          eprintln!("{} doesn't exist!", (&**key));
+          continue;
+        }
+      };
 
       println!("{}: {}", key, value);
     }
@@ -237,7 +217,16 @@ impl Args {
     }
 
     let mut doc = load!(which);
-    set!(doc, args, default_remote, branch_sep, branch_format);
+
+    match &*args.key {
+      "default_remote" => doc["default_remote"] = toml_edit::value(&args.value),
+      "format.branch_sep" => doc["format"]["branch_sep"] = toml_edit::value(&args.value),
+      "format.branch" => doc["format"]["branch"] = toml_edit::value(&args.value),
+      "format.log" => doc["format"]["log"] = toml_edit::value(&args.value),
+      "format.graph" => doc["format"]["graph"] = toml_edit::value(&args.value),
+      it => return Err(anyhow!("Unrecognized key: {}", it)),
+    }
+
     save!(which, doc);
     Ok(())
   }
@@ -251,9 +240,10 @@ impl Args {
     let mut doc = load!(which);
 
     for key in &args.keys {
-      if let Some((_, value)) = doc.remove_entry(key) {
-        println!("Removed {} (was {})", key, value.to_string().trim());
-      };
+      match doc.remove_entry(key) {
+        Some((_, value)) => println!("Removed {} (was {})", key, value.to_string().trim()),
+        None => eprintln!("Unrecognized key: {}", key),
+      }
     }
 
     save!(which, doc);
