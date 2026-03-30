@@ -5,6 +5,7 @@ use crate::cli::{Cli, get_current_branch, get_remote_callbacks};
 use crate::open_repo;
 
 #[derive(clap::Args, Clone, Debug)]
+#[command(about = "Pushes a branch to remote, setting upstream automatically")]
 pub struct Args {
   /// Force push
   #[arg(short, long)]

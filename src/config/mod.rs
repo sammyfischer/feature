@@ -16,8 +16,8 @@ pub struct Config {
   /// protected and don't need to be added
   pub protect: Vec<String>,
 
-  /// Separator used between words in branch names
-  pub branch_sep: String,
+  /// Section for formatting config
+  pub format: FormatConfig,
 }
 
 impl Default for Config {
@@ -26,7 +26,35 @@ impl Default for Config {
       default_remote: "origin".into(),
       bases: vec!["main".into()],
       protect: vec![],
+      format: Default::default(),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FormatConfig {
+  /// Separator used between words in branch names
+  pub branch_sep: String,
+
+  /// Template for creating branch names. See `feature start --help` for more info
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub branch: Option<String>,
+
+  /// Template for log output
+  pub log: String,
+
+  /// Template for graph output
+  pub graph: String,
+}
+
+impl Default for FormatConfig {
+  fn default() -> Self {
+    Self {
       branch_sep: "-".into(),
+      branch: Default::default(),
+      log: "format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)".into(),
+      graph: "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s".into(),
     }
   }
 }

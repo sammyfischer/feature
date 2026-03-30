@@ -17,9 +17,8 @@ fn start_creates_branch() {
     repo.feature(&args).success();
 
     // check current branch name
-    let proc = repo.git(&["branch", "--show-current"]).success();
-    let stdout = String::from_utf8(proc.get_output().stdout.clone()).unwrap();
-    assert_eq!(stdout.trim(), expected.to_string());
+    let cmd = repo.git(&["branch", "--show-current"]).success();
+    assert_eq!(get_stdout!(cmd).trim(), expected.to_string());
   }
 }
 
@@ -29,40 +28,6 @@ fn empty_branch_name_fails() {
   repo.init_commit();
   // empty string
   repo.feature(&["start", ""]).failure();
-}
-
-#[test]
-fn uses_custom_separator() {
-  let repo = TestRepo::new();
-  repo.init_commit();
-
-  // using `--flag=value` syntax
-  repo
-    .feature(&["start", "--sep=_", "new", "branch"])
-    .success();
-
-  let proc = repo.git(&["branch", "--show-current"]).success();
-  let Ok(stdout) = String::from_utf8(proc.get_output().stdout.clone()) else {
-    panic!("Failed to get stdout as string")
-  };
-
-  assert_eq!(stdout.trim(), "new_branch".to_string());
-}
-
-#[test]
-fn uses_custom_separator_alt_syntax() {
-  let repo = TestRepo::new();
-  repo.init_commit();
-
-  // using `--flag value` syntax
-  repo
-    .feature(&["start", "--sep", "_", "new", "branch"])
-    .success();
-
-  let proc = repo.git(&["branch", "--show-current"]).success();
-  let stdout = String::from_utf8(proc.get_output().stdout.clone()).unwrap();
-
-  assert_eq!(stdout.trim(), "new_branch".to_string());
 }
 
 #[test]
@@ -97,4 +62,110 @@ fn sets_feature_base_using_remote() {
     .git(&["config", "branch.topic.feature-base"])
     .success();
   assert_eq!(get_stdout!(proc).trim(), "refs/remotes/origin/main");
+}
+
+/// Branch names should correctly follow the specified template
+#[test]
+fn uses_custom_format() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+  repo.write_file(
+    "feature.toml",
+    r#"[format]
+branch_sep = "_"
+branch = "%(user)%(sep)%(base)%(sep)%s"
+"#,
+  );
+
+  // with command line options
+  repo
+    .feature(&["start", "--format=%(user)/%s", "--sep=-", "new", "branch"])
+    .success();
+
+  let cmd = repo.git(&["branch", "--show-current"]).success();
+  assert_eq!(get_stdout!(cmd).trim(), "test/new-branch");
+
+  // with config file options
+  repo.git(&["switch", "main"]).success();
+  repo.feature(&["start", "new", "branch"]).success();
+
+  let cmd = repo.git(&["branch", "--show-current"]).success();
+  assert_eq!(get_stdout!(cmd).trim(), "test_main_new_branch");
+}
+
+/// Tests more complex substitutions in the branch name template
+#[test]
+fn advanced_custom_formats() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  // success cases
+  for (template, expected) in [
+    ("feature/%s", "feature/new-branch"),
+    ("%(user)/%s", "test/new-branch"),
+    ("%(base)%(sep)%s", "main-new-branch"),
+    ("%shello", "new-branchhello"),
+    ("%%s", "%s"),
+    ("%%(user)", "%(user)"),
+    ("%%%s", "%new-branch"),
+    ("%%%%", "%%"),
+    ("", "new-branch"),
+  ] {
+    repo
+      .feature(&["start", &format!("--format={}", template), "new", "branch"])
+      .success();
+
+    let cmd = repo.git(&["branch", "--show-current"]).success();
+    assert_eq!(get_stdout!(cmd).trim(), expected.to_string());
+    repo.git(&["switch", "main"]).success();
+  }
+
+  // failure cases
+  for template in ["%", "%x", "%(what)", "%(use", "%(user", "feature%"] {
+    repo
+      .feature(&["start", &format!("--format={}", template), "new", "branch"])
+      .failure();
+  }
+}
+
+/// Dry run mode only prints the would-be branch name, and doesn't create or switch to a branch
+#[test]
+pub fn dry_run_prints_branch() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+  repo.write_file(
+    "feature.toml",
+    r#"[format]
+branch_sep = "_"
+branch = "%(user)%(sep)%(base)%(sep)%s"
+"#,
+  );
+
+  // with command line options
+  let cmd = repo
+    .feature(&[
+      "start",
+      "--dry-run",
+      "--format=%(user)/%s",
+      "--sep=-",
+      "new",
+      "branch",
+    ])
+    .success();
+
+  assert_eq!(
+    get_stdout!(cmd).trim(),
+    "Creating branch test/new-branch\u{2026}"
+  );
+
+  // with config file options
+  // by not switching back to main, we're effectively testing that feature didn't create and switch
+  // to the new branch
+  let cmd = repo
+    .feature(&["start", "--dry-run", "new", "branch"])
+    .success();
+  assert_eq!(
+    get_stdout!(cmd).trim(),
+    "Creating branch test_main_new_branch\u{2026}"
+  );
 }

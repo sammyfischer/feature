@@ -5,7 +5,15 @@ use anyhow::{Context, Result, anyhow};
 use crate::cli::get_current_branch;
 use crate::{data, open_repo};
 
+const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
+
+Feature automatically tracks base branches when you use "feature start", but if
+you use other tools you'll have to tell feature which one to use. Base branches
+can't be quickly or reliably determined, so you will have to specify it
+manually for some feature commands to work."#;
+
 #[derive(clap::Args, Clone, Debug)]
+#[command(about = "Tell feature which base another branch belongs to", long_about = LONG_ABOUT)]
 pub struct Args {
   /// The name of the base branch
   base: String,

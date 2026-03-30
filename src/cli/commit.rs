@@ -8,13 +8,14 @@ use git2::{Commit, Repository};
 use crate::cli::get_current_commit;
 use crate::open_repo;
 
+const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
+If no remaining args are specified, the previous commit message is used.";
+
 #[derive(clap::Args, Clone, Debug)]
+#[command(about = "Commit staged changes")]
 pub struct Args {
   /// Whether to amend the previous commit
-  #[arg(
-    long,
-    long_help = "Amend the previous commit. Remaining args overwrite the previous commit message. If no remaining args are specified, the previous commit message is preserved."
-  )]
+  #[arg(long, long_help = AMEND_LONG_HELP)]
   amend: bool,
 
   /// Bypass precommit hooks

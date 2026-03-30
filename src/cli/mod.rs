@@ -24,6 +24,7 @@ mod base;
 mod commit;
 mod config_cmd;
 mod graph;
+mod log;
 mod prune;
 mod push;
 mod start;
@@ -73,24 +74,15 @@ pub struct Args {
 #[derive(Debug, Subcommand)]
 pub enum Action {
   // ==== FEATURE BRANCH WORKFLOW / SINGLE BRANCH ACTIONS ====
-  /// Start a new feature branch
   Start(start::Args),
-
-  /// Commit using remaining args as commit message
   Commit(commit::Args),
-
-  /// Update the current branch against its base branch
   Update(update::Args),
-
-  /// Push current branch to remote
   Push(push::Args),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
-  /// Syncs all base (protected) branches with remotes. Only fast-forwards branches, refuses to
-  /// rebase/merge
+  #[command(about = "Syncs all base branches with their remotes", long_about = sync::LONG_ABOUT)]
   Sync,
 
-  /// Clean up merged branches. A branch is merged if all its commits are found on its base
   Prune(prune::Args),
 
   // ==== DISPLAY / INFO ====
@@ -98,12 +90,8 @@ pub enum Action {
   #[command(visible_alias = "ls")]
   List,
 
-  /// View git log with entire commit subject line, followed by author name and relative date
-  Log,
-
-  /// View git graph with author name and relative date in noticable colors. Truncates each line to
-  /// the terminal width
-  Graph,
+  Log(log::Args),
+  Graph(graph::Args),
 
   // ==== META / FEATURE COMMANDS ====
   /// Interact with feature config
@@ -112,7 +100,6 @@ pub enum Action {
     args: config_cmd::Args,
   },
 
-  /// Set the base branch of a feature branch
   Base(base::Args),
 }
 
@@ -134,11 +121,11 @@ impl Cli {
       Action::Commit(args) => args.run(),
       Action::Update(args) => args.run(),
       Action::Push(args) => args.run(self),
-      Action::Sync => sync::sync(self),
+      Action::Sync => sync::run(self),
       Action::Prune(args) => args.run(self),
       Action::List => self.list(),
-      Action::Log => self.log(),
-      Action::Graph => graph::graph(),
+      Action::Log(args) => args.run(self),
+      Action::Graph(args) => args.run(self),
       Action::Config { args } => args.run(),
       Action::Base(args) => args.run(),
     }
@@ -146,23 +133,6 @@ impl Cli {
 
   fn list(&self) -> Result<()> {
     await_child!(git!("branch", "-vv").spawn()?, "Failed to call git")
-  }
-
-  fn log(&self) -> Result<()> {
-    // git pretty format:
-    // %h = hash, %d = decorator (e.g. branch pointing to that commit)
-    // %s = subject (commit description title line)
-    // %an = author name, %ar = author date (relative)
-    await_child!(
-      git!(
-        "log",
-        "--all",
-        "--pretty=format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)"
-      )
-      .spawn()
-      .expect("Failed to call git"),
-      "Failed to call git"
-    )
   }
 }
 

@@ -71,16 +71,11 @@ Housekeeping
 
 Features
 
-- custom log/graph output
-- custom branch template (replacement tokens like %(name), %(base))
 - submodule utilities
   - `feature mod ...`
   - sync/prune all modules
-  - automatically commit to parent when committing to a module
   - `feature status` that intelligently displays module statuses too
-  - create a single branch in all modules for features whose work will span across packages
-  - config file to alias commands in packages, like pnpm workspaces
-    - e.g. different test command for frontend and backend
+  - create a single branch in all modules for features whose work will span across them
 - interactive tui for rebase
   - would only activate upon conflicts
   - make changes in the editor and save them
