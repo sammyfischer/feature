@@ -1,5 +1,7 @@
 //! Start subcommand
 
+use std::str::Chars;
+
 use anyhow::{Context, Result, anyhow};
 use git2::{ErrorCode, Repository};
 
@@ -50,7 +52,7 @@ impl Args {
     }
 
     let branch_name = self.build_branch_name(&repo, &cli.config, &base_name)?;
-    println!("Creating branch: {}", branch_name);
+    println!("Creating branch {}\u{2026}", branch_name);
 
     if self.dry_run {
       return Ok(());
@@ -135,31 +137,150 @@ impl Args {
     base_name: &str,
   ) -> Result<String> {
     let sep = self.sep.as_ref().unwrap_or(&config.branch_sep);
-
-    // unique part of the branch name
     let main_part = self.words.join(sep);
-
     let template = self.format.as_ref().unwrap_or(&config.branch_format);
 
-    // TODO: lazily evaluate on first replacement
-    // would involve:
-    // - making replacements occur in a loop, scan across template once
-    // - push characters to new string, replace patterns as they're encountered
-    // - outside the loop, store a string buffer to cache the evaluated value as an option
-    //   - None => evaluate, Some => use cached value
-    let signature = repo.signature().context("Failed to get git user name")?;
-    let username = signature
-      .name()
-      .expect("Git user name should be valid utf-8");
+    // cached value of user.name from git config
+    let mut username: Option<String> = None;
 
-    // "%%" must be replaced first, for the others order doesn't matter
-    Ok(
-      template
-        .replace(r"%%", "%")
-        .replace(r"%(user)", username)
-        .replace(r"%(base)", base_name)
-        .replace(r"%(sep)", sep)
-        .replace(r"%s", &main_part),
-    )
+    /// State machine states
+    #[derive(PartialEq)]
+    enum State {
+      /// Parsing unescaped characters
+      Base,
+      /// Parsing the first character after an escape
+      FirstEscape,
+      /// Parsing the remainder of a variable-length escape
+      LongEscape,
+    }
+    let mut state: State = State::Base;
+    let mut out = String::new();
+    let mut escape_buf = String::new();
+
+    let mut iter = template.chars();
+
+    while let Some(c) = iter.next() {
+      match state {
+        State::Base => match c {
+          '%' => {
+            escape_buf.push(c);
+            state = State::FirstEscape;
+          }
+          _ => out.push(c),
+        },
+
+        // we've seen one '%' already
+        State::FirstEscape => match c {
+          '%' => {
+            out.push('%');
+            escape_buf.clear();
+            state = State::Base;
+          }
+          's' => {
+            out.push_str(&main_part);
+            escape_buf.clear();
+            state = State::Base;
+          }
+          '(' => {
+            escape_buf.push(c);
+            state = State::LongEscape;
+          }
+          _ => {
+            escape_buf.push(c);
+            return Err(anyhow!("Unrecognized template replacement: {}", escape_buf));
+          }
+        },
+
+        // user, base, or sep replacement
+        State::LongEscape => match c {
+          'u' => {
+            // the only possible match is "user", check against remaining chars
+            // buffer the escape sequence as it is in the template
+            escape_buf.push(c);
+            parse_long_escape(&mut iter, &mut escape_buf, "ser)")?;
+
+            match username {
+              // use cached value
+              Some(ref it) => out.push_str(it),
+              // compute and cache value
+              None => {
+                let signature = repo.signature().context("Failed to get git user name")?;
+                let value = signature
+                  .name()
+                  .expect("Git user name should be valid utf-8")
+                  .to_string();
+                out.push_str(&value);
+                username = Some(value);
+              }
+            }
+
+            // finished parsing escape, back to regular parsing
+            escape_buf.clear();
+            state = State::Base;
+          }
+          'b' => {
+            escape_buf.push(c);
+            parse_long_escape(&mut iter, &mut escape_buf, "ase)")?;
+            out.push_str(base_name);
+
+            escape_buf.clear();
+            state = State::Base;
+          }
+          's' => {
+            escape_buf.push(c);
+            parse_long_escape(&mut iter, &mut escape_buf, "ep)")?;
+            out.push_str(sep);
+
+            escape_buf.clear();
+            state = State::Base;
+          }
+          _ => {
+            escape_buf.push(c);
+            return Err(recover_long_escape(&mut iter, &mut escape_buf));
+          }
+        },
+      }
+    }
+
+    if state == State::FirstEscape || state == State::LongEscape {
+      return Err(anyhow!("Unrecognized template replacement: {}", escape_buf));
+    }
+
+    Ok(out)
   }
+}
+
+/// Parses through iter, checking that each char matches each char in `reference`. Buffers all
+/// parsed chars into `escape`. Returns an error if there's a mismatch.
+fn parse_long_escape(iter: &mut Chars, escape: &mut String, reference: &str) -> Result<()> {
+  let mut ref_iter = reference.chars();
+
+  // iterate and check in tandem
+  while let Some(c) = ref_iter.next()
+    && let Some(d) = iter.next()
+  {
+    escape.push(c);
+    // if at any point they don't match, we have an invalid escape sequence
+    if c != d {
+      return Err(recover_long_escape(iter, escape));
+    }
+  }
+
+  Ok(())
+}
+
+/// Read the rest of the invalid long escape sequence.
+///
+/// Takes the existing buffer `escape` which should have buffered all previous escape chars. Pushes
+/// new chars up to and including the next ')' or end of the string.
+///
+/// Returns an anyhow error with a suitable message containing the bad escape sequence
+fn recover_long_escape(iter: &mut Chars, escape: &mut String) -> anyhow::Error {
+  for c in iter.by_ref() {
+    escape.push(c);
+    if c == ')' {
+      break;
+    }
+  }
+  anyhow!("Unrecognized template replacement: {}", escape)
 }

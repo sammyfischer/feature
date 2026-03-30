@@ -92,6 +92,40 @@ branch_format = "%(user)%(sep)%(base)%(sep)%s"
   assert_eq!(get_stdout!(cmd).trim(), "test_main_new_branch");
 }
 
+/// Tests more complex substitutions in the branch name template
+#[test]
+fn advanced_custom_formats() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  // success cases
+  for (template, expected) in [
+    ("feature/%s", "feature/new-branch"),
+    ("%(user)/%s", "test/new-branch"),
+    ("%(base)%(sep)%s", "main-new-branch"),
+    ("%shello", "new-branchhello"),
+    ("%%s", "%s"),
+    ("%%(user)", "%(user)"),
+    ("%%%s", "%new-branch"),
+    ("%%%%", "%%"),
+  ] {
+    repo
+      .feature(&["start", &format!("--format={}", template), "new", "branch"])
+      .success();
+
+    let cmd = repo.git(&["branch", "--show-current"]).success();
+    assert_eq!(get_stdout!(cmd).trim(), expected.to_string());
+    repo.git(&["switch", "main"]).success();
+  }
+
+  // failure cases
+  for template in ["%", "%x", "%(what)", "%(use", "%(user", "feature%", ""] {
+    repo
+      .feature(&["start", &format!("--format={}", template), "new", "branch"])
+      .failure();
+  }
+}
+
 /// Dry run mode only prints the would-be branch name, and doesn't create or switch to a branch
 #[test]
 pub fn dry_run_prints_branch() {
@@ -116,7 +150,10 @@ branch_format = "%(user)%(sep)%(base)%(sep)%s"
     ])
     .success();
 
-  assert_eq!(get_stdout!(cmd).trim(), "Creating branch: test/new-branch");
+  assert_eq!(
+    get_stdout!(cmd).trim(),
+    "Creating branch test/new-branch\u{2026}"
+  );
 
   // with config file options
   // by not switching back to main, we're effectively testing that feature didn't create and switch
@@ -126,6 +163,6 @@ branch_format = "%(user)%(sep)%(base)%(sep)%s"
     .success();
   assert_eq!(
     get_stdout!(cmd).trim(),
-    "Creating branch: test_main_new_branch"
+    "Creating branch test_main_new_branch\u{2026}"
   );
 }
