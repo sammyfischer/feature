@@ -1,7 +1,7 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use git2::{BranchType, Repository};
 
-use crate::cli::{Cli, fetch_all, get_all_branches, get_current_branch, is_merged};
+use crate::cli::{Cli, fetch_all, get_all_branches, get_current_branch};
 use crate::{await_child, data, git, open_repo};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
@@ -45,21 +45,25 @@ impl Args {
   /// Deletes a branch if:
   /// - it's not a base branch
   /// - it's not a protected branch
+  /// - it's not the current branch
   /// - it's changes are merged into its base
   fn safe_delete_branch(&self, cli: &Cli, repo: &Repository, branch_name: &String) -> Result<()> {
     // skip base branches
     if cli.config.bases.contains(branch_name) {
-      return Err(anyhow!("Cannot delete a base branch"));
+      return Ok(());
     }
 
     // skip other protected branches
     if cli.config.protect.contains(branch_name) {
-      return Err(anyhow!("Cannot delete a protected branch"));
+      return Ok(());
     }
 
     // skip current branch
     if &get_current_branch(repo).context("Failed to get current branch")? == branch_name {
-      return Err(anyhow!("Cannot delete currently checked-out branch"));
+      // not necessarily an error, but the user should know that a non-base non-protected branch was
+      // skipped and may manually need to be deleted
+      println!("Skipping currently checked-out branch: {}", branch_name);
+      return Ok(());
     }
 
     let config = repo.config().context("Failed to get git config")?;
@@ -87,18 +91,47 @@ impl Args {
         .find_branch(branch_name, BranchType::Local)
         .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
 
+      let commit = branch
+        .get()
+        .peel_to_commit()
+        .with_context(|| format!("Failed to get commit pointed to by {}", branch_name))?
+        .id()
+        .to_string();
+
       branch
         .delete()
-        .unwrap_or_else(|_| panic!("Failed to delete branch {}", branch_name));
+        .with_context(|| format!("Failed to delete branch {}", branch_name))?;
+
+      println!("Deleted branch {} (was {})", branch_name, &commit[..6]);
 
       // git2 can't remove entire config sections, but git provides a command to do so
       let key = format!("branch.{}", branch_name);
       let mut child = git!("config", "--remove-section", key)
         .spawn()
         .context("Failed to call git")?;
-      await_child!(child, "Failed to call git")?;
+
+      await_child!(child, "Git")?;
     }
 
     Ok(())
   }
+}
+
+/// Whether branch is merged into base. A branch is considered merged if:
+/// - it points to the same commit as its base
+/// - it's not a descendant of base (i.e. there are no new commits)
+fn is_merged(repo: &Repository, branch_name: &str, base_name: &str) -> Result<bool> {
+  let branch = repo.revparse_single(branch_name)?;
+  let base = repo.revparse_single(base_name)?;
+
+  let branch_commit = branch.peel_to_commit()?.id();
+  let base_commit = base.peel_to_commit()?.id();
+
+  if branch_commit == base_commit {
+    return Ok(true);
+  }
+
+  // whether branch is a descendant of base. if it is, then there are newer unmerged commits
+  let is_descendant = repo.graph_descendant_of(branch_commit, base_commit)?;
+  Ok(!is_descendant)
 }

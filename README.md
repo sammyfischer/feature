@@ -71,6 +71,7 @@ Housekeeping
 
 Features
 
+- custom `feature list` format
 - submodule utilities
   - `feature mod ...`
   - sync/prune all modules

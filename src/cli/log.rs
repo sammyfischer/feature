@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::cli::Cli;
 use crate::{await_child, git};
@@ -39,8 +39,8 @@ impl Args {
         )
       )
       .spawn()
-      .expect("Failed to call git"),
-      "Failed to call git"
+      .context("Failed to call git log")?,
+      "Git"
     )
   }
 }

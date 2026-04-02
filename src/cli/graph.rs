@@ -67,17 +67,18 @@ impl Args {
       .arg("-FR")
       .stdin(Stdio::piped())
       .spawn()
-      .expect("Failed to start pager");
+      .expect("Failed to start less");
 
     let stdin = less_proc
       .stdin
       .as_mut()
-      .expect("Failed to send output to pager");
+      .expect("Failed to send output to less");
 
     stdin
       .write_all(truncated.as_bytes())
-      .expect("Failed to send output to pager");
-    await_child!(less_proc, "Pager failed")
+      .expect("Failed to send output to less");
+
+    await_child!(less_proc, "Less")
   }
 }
 
