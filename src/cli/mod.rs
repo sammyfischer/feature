@@ -1,6 +1,6 @@
 //! Defines the main cli structure, most simple commands, and several helper functions and macros.
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use dialoguer::Confirm;
 use git2::{
@@ -34,11 +34,15 @@ mod update;
 /// Waits on the child process, returns result
 #[macro_export]
 macro_rules! await_child {
-  ($child:expr, $msg:expr) => {
-    if $child.wait().is_ok_and(|status| status.success()) {
-      Ok(())
-    } else {
-      Err(anyhow::anyhow!($msg.to_string()))
+  ($child:expr, $name:expr) => {
+    match $child.wait() {
+      Ok(status) if status.success() => Ok(()),
+      Ok(status) => Err(anyhow::anyhow!(
+        "{} exited with nonzero exit code: {}",
+        $name,
+        status
+      )),
+      Err(e) => Err(anyhow::anyhow!(e)),
     }
   };
 }
@@ -132,7 +136,12 @@ impl Cli {
   }
 
   fn list(&self) -> Result<()> {
-    await_child!(git!("branch", "-vv").spawn()?, "Failed to call git")
+    await_child!(
+      git!("branch", "-vv")
+        .spawn()
+        .context("Failed to call git branch")?,
+      "Git"
+    )
   }
 }
 
@@ -183,22 +192,6 @@ fn get_all_branches(repo: &Repository) -> Result<Vec<String>> {
   }
 
   Ok(output)
-}
-
-/// Whether branch is merged into base
-fn is_merged(repo: &Repository, branch_name: &str, base_name: &str) -> Result<bool> {
-  let branch = repo.revparse_single(branch_name)?;
-  let base = repo.revparse_single(base_name)?;
-
-  let branch_commit = branch.peel_to_commit()?.id();
-  let base_commit = base.peel_to_commit()?.id();
-
-  if branch_commit == base_commit {
-    return Ok(true);
-  }
-
-  let is_ancestor = repo.graph_descendant_of(branch_commit, base_commit)?;
-  Ok(!is_ancestor)
 }
 
 /// Whether there are any uncommitted changes
