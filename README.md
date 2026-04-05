@@ -71,7 +71,11 @@ Housekeeping
 
 Features
 
-- custom `feature list` format
+- `feature list`
+  - pager
+  - highlight current branches for each worktree in cyan
+  - submodules
+  - custom python function in config dir to build each line
 - submodule utilities
   - `feature mod ...`
   - sync/prune all modules
