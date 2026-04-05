@@ -1,4 +1,5 @@
 use anyhow::{Context, Error, Result, anyhow};
+use console::style;
 use git2::{ErrorCode, PushOptions};
 
 use crate::cli::{Cli, get_current_branch, get_remote_callbacks};
@@ -112,16 +113,33 @@ impl Args {
       .push(&[&refspec], Some(&mut opts))
       .expect("Failed to push");
 
+    let mut out = format!(
+      "{} {} to {}",
+      if self.force {
+        style("Force-pushed").yellow()
+      } else {
+        style("Pushed").green()
+      },
+      branch_name,
+      remote_name
+    );
+
     // set upstream if not already
     if !has_upstream {
       let set_upstream_to = format!("{}/{}", remote_name, upstream_name);
-      println!("Setting upstream to: {}", set_upstream_to);
+
+      out.push_str(
+        &style(format!(" (tracking {})", set_upstream_to))
+          .dim()
+          .to_string(),
+      );
 
       branch
         .set_upstream(Some(&set_upstream_to))
         .context("Failed to set upstream tracking branch")?;
     }
 
+    println!("{}", out);
     Ok(())
   }
 }

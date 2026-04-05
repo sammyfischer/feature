@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use console::style;
 use git2::{BranchType, Repository};
 
 use crate::cli::{Cli, fetch_all, get_all_branches, get_current_branch};
@@ -102,7 +103,12 @@ impl Args {
         .delete()
         .with_context(|| format!("Failed to delete branch {}", branch_name))?;
 
-      println!("Deleted branch {} (was {})", branch_name, &commit[..6]);
+      println!(
+        "{} {} {}",
+        style("Deleted").red(),
+        branch_name,
+        &style(&format!("(was {})", &commit[..7])).dim()
+      );
 
       // git2 can't remove entire config sections, but git provides a command to do so
       let key = format!("branch.{}", branch_name);

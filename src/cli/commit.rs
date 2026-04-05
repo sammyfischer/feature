@@ -3,6 +3,7 @@
 use std::process::Command;
 
 use anyhow::{Result, anyhow};
+use console::style;
 use git2::{Commit, Repository};
 
 use crate::cli::get_current_commit;
@@ -35,6 +36,14 @@ impl Args {
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;
 
+    let signature = repo
+      .signature()
+      .expect("Failed to get default commit signature");
+
+    let mut index = repo.index().expect("Failed to get current index");
+    let tree_id = index.write_tree().expect("Failed to get index tree id");
+    let tree = repo.find_tree(tree_id).expect("Failed to get index tree");
+
     // all the info needed for amend
     if self.amend {
       let current_commit = current_commit.ok_or(anyhow!("No commits yet, cannot amend"))?;
@@ -44,13 +53,35 @@ impl Args {
         .amend(
           Some("HEAD"),
           None,
-          None,
+          Some(&signature),
           None,
           if !msg.is_empty() { Some(&msg) } else { None },
-          None,
+          Some(&tree),
         )
         .expect("Failed to amend commit");
 
+      let mut out = format!(
+        "{} {} as {} {}",
+        style("Amended").yellow(),
+        &current_commit.id().to_string()[..7],
+        style(
+          signature
+            .name()
+            .expect("Default signature name should be valid utf-8")
+        )
+        .cyan(),
+        style(
+          signature
+            .email()
+            .expect("Default signature email should be valid utf-8")
+        )
+        .dim()
+      );
+      if !msg.is_empty() {
+        out.push('\n');
+        out.push_str(&msg);
+      }
+      println!("{}", out);
       return Ok(());
     }
 
@@ -58,15 +89,6 @@ impl Args {
     if msg.is_empty() {
       return Err(anyhow!("Must specify a commit message"));
     }
-
-    // extra info to create a commit
-    let signature = repo
-      .signature()
-      .expect("Failed to get default commit signature");
-
-    let mut index = repo.index().expect("Failed to get current index");
-    let tree_id = index.write_tree().expect("Failed to get index tree id");
-    let tree = repo.find_tree(tree_id).expect("Failed to get index tree");
 
     let parent_commits: Vec<Commit> = current_commit.into_iter().collect();
     let parent_refs: Vec<&Commit> = parent_commits.iter().collect();
@@ -84,6 +106,23 @@ impl Args {
       )
       .expect("Failed to commit");
 
+    println!(
+      "{} as {} {}",
+      style("Committed").green(),
+      style(
+        signature
+          .name()
+          .expect("Default signature name should be valid utf-8")
+      )
+      .cyan(),
+      style(
+        signature
+          .email()
+          .expect("Default signature email should be valid utf-8")
+      )
+      .dim()
+    );
+    println!("{}", msg);
     Ok(())
   }
 
@@ -100,11 +139,14 @@ impl Args {
       return Ok(());
     }
 
-    let status = Command::new(script).status()?;
+    let output = Command::new(script).output()?;
 
-    if status.success() {
+    if output.status.success() {
       Ok(())
     } else {
+      eprintln!("Precommit output:");
+      eprintln!();
+      eprintln!("{}", String::from_utf8_lossy(&output.stderr));
       Err(anyhow!("Precommit hooks failed"))
     }
   }

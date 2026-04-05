@@ -1,6 +1,7 @@
 //! Start subcommand
 
 use anyhow::{Result, anyhow};
+use console::style;
 use git2::{ErrorCode, Repository};
 
 use crate::cli::{Cli, get_current_branch, get_current_commit};
@@ -59,9 +60,9 @@ impl Args {
     }
 
     let branch_name = self.build_branch_name(&repo, &cli.config, &base_name)?;
-    println!("Creating branch {}\u{2026}", branch_name);
 
     if self.dry_run {
+      print_branch_message(&branch_name, &base_name);
       return Ok(());
     }
 
@@ -74,6 +75,8 @@ impl Args {
     let branch = repo
       .branch(&branch_name, &current_commit, false)
       .expect("Failed to create branch");
+
+    print_branch_message(&branch_name, &base_name);
 
     // get tree to checkout
     let tree = branch
@@ -176,4 +179,14 @@ impl Args {
 
     templater.replace(template)
   }
+}
+
+#[inline(always)]
+fn print_branch_message(branch_name: &str, base_name: &str) {
+  println!(
+    "{} {} {}",
+    style("Created").green(),
+    branch_name,
+    style(format!("(from {})", base_name)).dim()
+  );
 }

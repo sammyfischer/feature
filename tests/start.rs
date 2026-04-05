@@ -155,7 +155,7 @@ branch = "%(user)%(sep)%(base)%(sep)%s"
 
   assert_eq!(
     get_stdout!(cmd).trim(),
-    "Creating branch test/new-branch\u{2026}"
+    "Created test/new-branch (from main)"
   );
 
   // with config file options
@@ -166,6 +166,6 @@ branch = "%(user)%(sep)%(base)%(sep)%s"
     .success();
   assert_eq!(
     get_stdout!(cmd).trim(),
-    "Creating branch test_main_new_branch\u{2026}"
+    "Created test_main_new_branch (from main)"
   );
 }
