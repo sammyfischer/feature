@@ -120,8 +120,8 @@ impl Args {
       } else {
         style("Pushed").green()
       },
-      branch_name,
-      remote_name
+      style(branch_name).blue(),
+      style(remote_name).magenta()
     );
 
     // set upstream if not already
