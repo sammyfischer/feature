@@ -28,7 +28,10 @@ pub fn run(cli: &Cli) -> Result<()> {
     let out: String;
 
     if branch_name == &start_branch {
-      println!("Already checked out to {}. Skipping over it", branch_name);
+      println!(
+        "{}",
+        style(format!("Skipping {} (currently checked out)", branch_name)).dim()
+      );
       continue;
     }
 

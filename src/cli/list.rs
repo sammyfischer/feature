@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use console::{measure_text_width, pad_str, style, truncate_str};
+use console::{Term, measure_text_width, pad_str, style, truncate_str};
 use git2::{Branch, ErrorCode, Repository};
 
 use crate::cli::{get_current_branch, get_term_width};
@@ -135,9 +135,10 @@ impl Args {
     let line_tail = style("\u{2026}").dim().to_string();
     let trunc_tail = "\u{2026}";
     let term_width = get_term_width();
+    let mut out = String::new();
 
     for (i, row) in rows.iter().enumerate() {
-      let mut buf = String::new();
+      let mut line = String::new();
 
       'branch: {
         let branch = fix_width(
@@ -147,14 +148,14 @@ impl Args {
         );
 
         if i == 0 {
-          buf.push_str(&style(branch).bold().to_string());
+          line.push_str(&style(branch).bold().to_string());
           break 'branch;
         }
 
         if current.as_ref().is_some_and(|it| it == &row.branch) {
-          buf.push_str(&style(&branch).green().to_string());
+          line.push_str(&style(&branch).green().to_string());
         } else {
-          buf.push_str(&branch);
+          line.push_str(&branch);
         }
       }
 
@@ -164,14 +165,14 @@ impl Args {
         }
 
         let hash = fix_width(&row.hash, 7, trunc_tail);
-        buf.push(' ');
+        line.push(' ');
 
         if i == 0 {
-          buf.push_str(&style(hash).bold().yellow().to_string());
+          line.push_str(&style(hash).bold().yellow().to_string());
           break 'hash;
         }
 
-        buf.push_str(&style(hash).yellow().to_string());
+        line.push_str(&style(hash).yellow().to_string());
       }
 
       'upstream: {
@@ -186,18 +187,18 @@ impl Args {
         );
         let ab = fix_width(&row.ab_upstream, col_widths.ab_upstream, trunc_tail);
 
-        buf.push(' ');
+        line.push(' ');
 
         if i == 0 {
-          buf.push_str(&style(upstream).bold().blue().to_string());
-          buf.push(' ');
-          buf.push_str(&ab); // the header is just spaces, styles aren't needed
+          line.push_str(&style(upstream).bold().blue().to_string());
+          line.push(' ');
+          line.push_str(&ab); // the header is just spaces, styles aren't needed
           break 'upstream;
         }
 
-        buf.push_str(&style(upstream).blue().to_string());
-        buf.push(' ');
-        buf.push_str(&ab);
+        line.push_str(&style(upstream).blue().to_string());
+        line.push(' ');
+        line.push_str(&ab);
       }
 
       'base: {
@@ -208,31 +209,37 @@ impl Args {
         let base = fix_width(&row.base, col_widths.base.min(max_widths.base), trunc_tail);
         let ab = fix_width(&row.ab_base, col_widths.ab_base, trunc_tail);
 
-        buf.push(' ');
+        line.push(' ');
 
         if i == 0 {
-          buf.push_str(&style(base).bold().magenta().to_string());
-          buf.push(' ');
-          buf.push_str(&ab);
+          line.push_str(&style(base).bold().magenta().to_string());
+          line.push(' ');
+          line.push_str(&ab);
           break 'base;
         }
 
-        buf.push_str(&style(base).magenta().to_string());
+        line.push_str(&style(base).magenta().to_string());
 
-        buf.push(' ');
-        buf.push_str(&ab);
+        line.push(' ');
+        line.push_str(&ab);
       }
 
-      buf.push(' ');
+      line.push(' ');
       if i == 0 {
-        buf.push_str(&style(&row.subject).bold().to_string());
+        line.push_str(&style(&row.subject).bold().to_string());
       } else {
-        buf.push_str(&row.subject);
+        line.push_str(&row.subject);
       }
 
-      println!("{}", truncate_str(&buf, term_width, &line_tail));
+      if Term::stdout().is_term() {
+        line = truncate_str(&line, term_width, &line_tail).to_string();
+      }
+
+      out.push_str(&line);
+      out.push('\n');
     }
 
+    print!("{}", out);
     Ok(())
   }
 
