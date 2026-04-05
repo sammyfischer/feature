@@ -1,12 +1,11 @@
-use std::io::{IsTerminal, Write};
-use std::process::{Command, Stdio};
+use std::io::IsTerminal;
 use std::str::Lines;
 
 use anyhow::{Context, Result};
 use console::{style, truncate_str};
 
-use crate::cli::{Cli, get_term_width};
-use crate::{await_child, git};
+use crate::cli::{Cli, get_term_width, paginate};
+use crate::git;
 
 const LONG_ABOUT: &str = r"View a graph of commits.
 
@@ -58,25 +57,7 @@ impl Args {
     // if stdout is a terminal, truncate lines
     let truncated = truncate_lines(&mut string_output.lines()).join("\n");
 
-    // forward output to less
-    // -F = just print output to stdout if it fits the terminal height
-    // -R = render control chars as-is
-    let mut less_proc = Command::new("less")
-      .arg("-FR")
-      .stdin(Stdio::piped())
-      .spawn()
-      .expect("Failed to start less");
-
-    let stdin = less_proc
-      .stdin
-      .as_mut()
-      .expect("Failed to send output to less");
-
-    stdin
-      .write_all(truncated.as_bytes())
-      .expect("Failed to send output to less");
-
-    await_child!(less_proc, "Less")
+    paginate(&truncated)
   }
 }
 

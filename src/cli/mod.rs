@@ -1,5 +1,8 @@
 //! Defines the main cli structure, most simple commands, and several helper functions and macros.
 
+use std::io::Write;
+use std::process::{Command, Stdio};
+
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 use dialoguer::Confirm;
@@ -307,4 +310,26 @@ fn get_user_confirmation(prompt: &str) -> Result<bool> {
     .with_prompt(prompt)
     .interact()?;
   Ok(result)
+}
+
+/// Takes a string and sends its output to less with the following options:
+/// - `-F` to print to stdout directly if the terminal is tall enough
+/// - `-R` to print raw control characters
+fn paginate(s: &str) -> Result<()> {
+  let mut less_proc = Command::new("less")
+    .arg("-FR")
+    .stdin(Stdio::piped())
+    .spawn()
+    .expect("Failed to start less");
+
+  let stdin = less_proc
+    .stdin
+    .as_mut()
+    .expect("Failed to send output to less");
+
+  stdin
+    .write_all(s.as_bytes())
+    .expect("Failed to send output to less");
+
+  await_child!(less_proc, "Less")
 }

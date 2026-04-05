@@ -72,10 +72,11 @@ Housekeeping
 Features
 
 - feature list
-  - pager
   - highlight current branches for each worktree in cyan
   - submodules
   - custom python function in config dir to build each line
+- feature status
+  - status output matching feature commit diff output
 - feature stash
   - more intuitive options to stash (--all => worktree/index, --unstaged => worktree, --staged => index)
   - action should be a flag, not positional (and should --push by default)
