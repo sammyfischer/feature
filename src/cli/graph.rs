@@ -2,10 +2,8 @@ use std::io::{IsTerminal, Write};
 use std::process::{Command, Stdio};
 use std::str::Lines;
 
-use ansi_parser::AnsiParser;
-use ansi_parser::Output::{Escape, TextBlock};
 use anyhow::{Context, Result};
-use unicode_width::UnicodeWidthChar;
+use console::{style, truncate_str};
 
 use crate::cli::{Cli, get_term_width};
 use crate::{await_child, git};
@@ -85,52 +83,11 @@ impl Args {
 fn truncate_lines(lines: &mut Lines) -> Vec<String> {
   let mut out: Vec<String> = Vec::new();
   let term_width = get_term_width();
+  let tail = style("\u{2026}").dim().to_string();
 
   // truncate each line to term width
   for line in lines {
-    // output buffer
-    let mut line_buf = String::new();
-
-    // accumulated line width
-    let mut acc_width = 0usize;
-
-    // whether the current line was truncated
-    let mut truncated = false;
-
-    'tokens: for token in line.ansi_parse() {
-      match token {
-        TextBlock(text) => {
-          // push chars until terminal width
-          for c in text.chars() {
-            let char_width = c.width().unwrap_or(0);
-
-            if acc_width + char_width > term_width {
-              truncated = true;
-              break 'tokens;
-            }
-
-            acc_width += char_width;
-            line_buf.push(c);
-          }
-        }
-
-        Escape(ansi_sequence) => {
-          // always add
-          line_buf.push_str(&ansi_sequence.to_string());
-        }
-      }
-    }
-
-    if truncated {
-      // replace end with ellipsis
-      line_buf.pop();
-      line_buf.push('\u{2026}');
-      // reset color/formatting
-      line_buf.push_str("\x1b[0m");
-    }
-
-    // push line to output
-    out.push(line_buf);
+    out.push(truncate_str(line, term_width, &tail).to_string());
   }
 
   out

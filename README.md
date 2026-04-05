@@ -71,13 +71,18 @@ Housekeeping
 
 Features
 
-- `feature list`
+- feature list
   - pager
   - highlight current branches for each worktree in cyan
   - submodules
   - custom python function in config dir to build each line
-- submodule utilities
-  - `feature mod ...`
+- feature stash
+  - more intuitive options to stash (--all => worktree/index, --unstaged => worktree, --staged => index)
+  - action should be a flag, not positional (and should --push by default)
+  - concatenate args as message
+  - stashes could be given easier-to-type names (refs/stashes/name), this may affect compatibility with regular git stash commands
+  - pretty output
+- feature mod (submodule commands)
   - sync/prune all modules
   - `feature status` that intelligently displays module statuses too
   - create a single branch in all modules for features whose work will span across them
