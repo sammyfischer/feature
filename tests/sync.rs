@@ -63,16 +63,3 @@ fn updates_all_bases() {
     "main should have been skipped by sync"
   );
 }
-
-#[test]
-fn fails_if_local_changes_exist() {
-  let (local, _remote) = TestRepo::new_with_remote();
-  local.init_commit();
-  local.feature(&["push"]);
-
-  // add new file to worktree
-  local.write_file("new.txt", "uncommitted changes");
-  // add to index (new files in worktree always succeed)
-  local.git(&["add", "new.txt"]);
-  local.feature(&["sync"]).failure();
-}

@@ -2,6 +2,7 @@ use std::fmt::Write;
 use std::fs;
 
 use anyhow::{Context, Result, anyhow};
+use console::style;
 use git2::{ErrorCode, Rebase, Repository};
 
 use crate::cli::get_current_branch;
@@ -113,9 +114,22 @@ impl Args {
 
     let mut rebase = repo
       .rebase(None, Some(&base_commit), None, None)
-      .expect("Failed to initiate rebase");
+      .context("Failed to initiate rebase")?;
 
-    self.rebase(&repo, &mut rebase)
+    self.rebase(&repo, &mut rebase)?;
+
+    println!(
+      "{} {} with changes from {}",
+      style("Updated").green(),
+      style(branch_name).blue(),
+      style(
+        base_name
+          .strip_prefix("refs/remotes/")
+          .unwrap_or(&base_name)
+      )
+      .magenta()
+    );
+    Ok(())
   }
 
   /// Runs the given rebase until it finishes or encounters a conflict
