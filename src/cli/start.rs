@@ -1,6 +1,6 @@
 //! Start subcommand
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use git2::{ErrorCode, Repository};
 
 use crate::cli::{Cli, get_current_branch, get_current_commit};

@@ -1,3 +1,6 @@
+//! Representation of the cli config. Use [load] to get the entire flattened config struct. Includes
+//! modules to work with specific config levels.
+
 use anyhow::Result;
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};

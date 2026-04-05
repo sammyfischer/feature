@@ -71,15 +71,11 @@ Housekeeping
 
 Features
 
-- custom `feature list` format
-  - name, hash, commit subject, upstream, remote
-  - ahead/behind status for upstream and base
-  - worktree and index status
-  - could support a user defined python function in the config dir
-    - a table is passed in containing all the replacement values for the user to do computations
-  - current branch should be green
-  - current branch in worktrees could be cyan too
-  - submodules could display, but all separately
+- `feature list`
+  - pager
+  - highlight current branches for each worktree in cyan
+  - submodules
+  - custom python function in config dir to build each line
 - submodule utilities
   - `feature mod ...`
   - sync/prune all modules

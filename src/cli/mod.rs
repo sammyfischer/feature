@@ -1,6 +1,6 @@
 //! Defines the main cli structure, most simple commands, and several helper functions and macros.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 use dialoguer::Confirm;
 use git2::{
@@ -24,6 +24,7 @@ mod base;
 mod commit;
 mod config_cmd;
 mod graph;
+mod list;
 mod log;
 mod prune;
 mod push;
@@ -90,9 +91,8 @@ pub enum Action {
   Prune(prune::Args),
 
   // ==== DISPLAY / INFO ====
-  /// List branches
   #[command(visible_alias = "ls")]
-  List,
+  List(list::Args),
 
   Log(log::Args),
   Graph(graph::Args),
@@ -127,21 +127,12 @@ impl Cli {
       Action::Push(args) => args.run(self),
       Action::Sync => sync::run(self),
       Action::Prune(args) => args.run(self),
-      Action::List => self.list(),
+      Action::List(args) => args.run(),
       Action::Log(args) => args.run(self),
       Action::Graph(args) => args.run(self),
       Action::Config { args } => args.run(),
       Action::Base(args) => args.run(),
     }
-  }
-
-  fn list(&self) -> Result<()> {
-    await_child!(
-      git!("branch", "-vv")
-        .spawn()
-        .context("Failed to call git branch")?,
-      "Git"
-    )
   }
 }
 
@@ -304,7 +295,7 @@ fn get_remote_callbacks<'repo>() -> RemoteCallbacks<'repo> {
 }
 
 fn get_term_width() -> usize {
-  let (_rows, cols) = console::Term::stdout().size();
+  let (_rows, cols) = console::Term::stdout().size_checked().unwrap_or((64, 80));
   cols as usize
 }
 
