@@ -186,6 +186,7 @@ fn get_all_branches(repo: &Repository) -> Result<Vec<String>> {
 }
 
 /// Whether there are any uncommitted changes
+#[allow(unused)]
 fn has_local_changes(repo: &Repository) -> Result<bool> {
   let mut opts = StatusOptions::new();
   opts.include_untracked(false);
