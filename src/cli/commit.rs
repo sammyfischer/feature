@@ -235,8 +235,13 @@ fn diff_output(repo: &Repository, new_id: &Oid, old_id: Option<&Oid>) -> Result<
 
   // summary
   out.push_str(&format!(
-    "{} files changed [{} {}]\n",
+    "{} {} changed [{} {}]\n",
     style(stats.files_changed()).cyan(),
+    if stats.files_changed() == 1 {
+      "file"
+    } else {
+      "files"
+    },
     style(format!("+{}", stats.insertions())).green(),
     style(format!("-{}", stats.deletions())).red()
   ));
