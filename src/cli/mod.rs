@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use dialoguer::Confirm;
 use git2::{
@@ -26,14 +26,24 @@ use crate::config::Config;
 mod base;
 mod commit;
 mod config_cmd;
+mod diff;
 mod graph;
 mod list;
 mod log;
 mod prune;
 mod push;
 mod start;
+mod status;
 mod sync;
 mod update;
+
+/// Slightly shorter way to get a string from bytes
+#[macro_export]
+macro_rules! lossy {
+  ($bytes:expr) => {
+    String::from_utf8_lossy($bytes)
+  };
+}
 
 /// Waits on the child process, returns result
 #[macro_export]
@@ -94,9 +104,8 @@ pub enum Action {
   Prune(prune::Args),
 
   // ==== DISPLAY / INFO ====
-  #[command(visible_alias = "ls")]
+  Status(status::Args),
   List(list::Args),
-
   Log(log::Args),
   Graph(graph::Args),
 
@@ -130,6 +139,7 @@ impl Cli {
       Action::Push(args) => args.run(self),
       Action::Sync => sync::run(self),
       Action::Prune(args) => args.run(self),
+      Action::Status(args) => args.run(self),
       Action::List(args) => args.run(),
       Action::Log(args) => args.run(self),
       Action::Graph(args) => args.run(self),
@@ -148,7 +158,7 @@ fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Option<Commit<'r
 
   let commit = head
     .peel_to_commit()
-    .expect("Failed to get commit pointed to by HEAD");
+    .context("Failed to get commit pointed to by HEAD")?;
 
   Ok(Some(commit))
 }
@@ -161,11 +171,7 @@ fn get_current_branch(repo: &Repository) -> Result<String> {
     return Err(anyhow!("Not checked out to a branch"));
   }
 
-  let short = head.shorthand().ok_or(anyhow!(
-    "HEAD has no shorthand. Are you checked out to a branch?"
-  ))?;
-
-  Ok(short.to_string())
+  Ok(lossy!(head.shorthand_bytes()).to_string())
 }
 
 /// Returns a list of all local branches
@@ -291,7 +297,8 @@ fn get_remote_callbacks<'repo>() -> RemoteCallbacks<'repo> {
     }
 
     Err(git2::Error::from_str(&format!(
-      "No supported credential type for {url}"
+      "No supported credential type for {}",
+      url
     )))
   });
 

@@ -4,21 +4,11 @@ use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Commit, Delta, Oid, Repository, Signature};
+use git2::{Commit, Oid, Repository, Signature};
 
+use crate::cli::diff::display_diff_summary;
 use crate::cli::{get_current_branch, get_current_commit};
 use crate::open_repo;
-
-macro_rules! delta_filename {
-  ($delta:ident, $file:ident) => {
-    $delta
-      .$file()
-      .path()
-      .expect("Failed to get file path from delta")
-      .display()
-      .to_string()
-  };
-}
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
@@ -203,7 +193,19 @@ impl Args {
       out.push('\n');
     }
 
-    let diff_out = match diff_output(repo, new_id, old_id) {
+    let new_commit = repo
+      .find_commit(*new_id)
+      .context("Failed to find reference to new commit")?;
+    let new_tree = new_commit.tree().ok();
+
+    let old_commit = old_id.and_then(|it| repo.find_commit(*it).ok());
+    let old_tree = old_commit.and_then(|it| it.tree().ok());
+
+    let diff = repo
+      .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
+      .context("Failed to obtain commit changes")?;
+
+    let diff_out = match display_diff_summary(diff) {
       Ok(it) => it,
       Err(_) => style("Failed to get commit changes").red().to_string(),
     };
@@ -213,106 +215,4 @@ impl Args {
     print!("{}", out);
     Ok(())
   }
-}
-
-/// Gets a diff between the given commit and its parent and builds a pretty output
-fn diff_output(repo: &Repository, new_id: &Oid, old_id: Option<&Oid>) -> Result<String> {
-  let mut out = String::new();
-
-  let new_commit = repo
-    .find_commit(*new_id)
-    .context("Failed to find reference to new commit")?;
-  let new_tree = new_commit.tree().ok();
-
-  let old_commit = old_id.and_then(|it| repo.find_commit(*it).ok());
-  let old_tree = old_commit.and_then(|it| it.tree().ok());
-
-  let diff = repo
-    .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
-    .context("Failed to obtain commit changes")?;
-
-  let stats = diff.stats().context("Failed to get diff stats")?;
-
-  // summary
-  out.push_str(&format!(
-    "{} {} changed [{} {}]\n",
-    style(stats.files_changed()).cyan(),
-    if stats.files_changed() == 1 {
-      "file"
-    } else {
-      "files"
-    },
-    style(format!("+{}", stats.insertions())).green(),
-    style(format!("-{}", stats.deletions())).red()
-  ));
-
-  // per-file info
-  struct FileChanges {
-    status: String,
-    name: String,
-    insertions: usize,
-    deletions: usize,
-  }
-  let mut files: Vec<FileChanges> = Vec::new();
-  // we need a mutable pointer to access `files` in multiple callbacks, but since these callbacks
-  // are synchronous it's fine
-  let files_ptr: *mut Vec<FileChanges> = &mut files;
-
-  diff.foreach(
-    &mut |delta, _| {
-      let (status, name) = match delta.status() {
-        Delta::Added => (style("A").green(), delta_filename!(delta, new_file)),
-        Delta::Deleted => (style("D").red(), delta_filename!(delta, old_file)),
-        Delta::Modified => (style("M").yellow(), delta_filename!(delta, new_file)),
-        Delta::Renamed => (
-          style("R").cyan(),
-          format!(
-            "{} -> {}",
-            delta_filename!(delta, old_file),
-            delta_filename!(delta, new_file),
-          ),
-        ),
-        Delta::Copied => (
-          style("C").green(),
-          format!(
-            "{} -> {}",
-            delta_filename!(delta, old_file),
-            delta_filename!(delta, new_file),
-          ),
-        ),
-        _ => (style("?").dim(), delta_filename!(delta, new_file)),
-      };
-      unsafe { &mut *files_ptr }.push(FileChanges {
-        status: status.to_string(),
-        name,
-        insertions: 0,
-        deletions: 0,
-      });
-      true
-    },
-    None,
-    None,
-    Some(&mut |_, _, line| {
-      if let Some(file) = unsafe { &mut *files_ptr }.last_mut() {
-        match line.origin_value() {
-          git2::DiffLineType::Addition => file.insertions += 1,
-          git2::DiffLineType::Deletion => file.deletions += 1,
-          _ => {}
-        }
-      }
-      true
-    }),
-  )?;
-
-  for file in &files {
-    out.push_str(&format!(
-      "  {} {} {} {}\n",
-      file.status,
-      file.name,
-      style(format!("+{}", file.insertions)).green(),
-      style(format!("-{}", file.deletions)).red()
-    ));
-  }
-
-  Ok(out)
 }
