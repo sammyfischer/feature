@@ -19,6 +19,9 @@ pub struct Config {
   /// protected and don't need to be added
   pub protect: Vec<String>,
 
+  /// Hide untracked files in diff outputs
+  pub hide_untracked: bool,
+
   /// Section for formatting config
   pub format: FormatConfig,
 }
@@ -29,6 +32,7 @@ impl Default for Config {
       default_remote: "origin".into(),
       bases: vec!["main".into()],
       protect: vec![],
+      hide_untracked: Default::default(),
       format: Default::default(),
     }
   }

@@ -65,18 +65,16 @@ Housekeeping
 
 - for push, use existing remote name if branch has an upstream
 - fix `feature update --skip`, or consider removing it (along with continue and abort)
-- rethink base/protected branches
-  - protected branches are a decent way to protect non-bases from auto-deletions
-  - maybe there's a better way
+- support non-utf8 strings with lossy conversions
 
 Features
 
+- feature commit
+  - show loading spinner while precommit hook runs
 - feature list
   - highlight current branches for each worktree in cyan
   - submodules
   - custom python function in config dir to build each line
-- feature status
-  - status output matching feature commit diff output
 - feature stash
   - more intuitive options to stash (--all => worktree/index, --unstaged => worktree, --staged => index)
   - action should be a flag, not positional (and should --push by default)

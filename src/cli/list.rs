@@ -79,7 +79,7 @@ impl Widths {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Lists branches", long_about = LONG_ABOUT)]
+#[command(visible_alias = "ls", about = "Lists branches", long_about = LONG_ABOUT)]
 pub struct Args {
   /// Hides hash column
   #[arg(long)]
