@@ -40,19 +40,6 @@ impl Args {
       style(&commit.id().to_string()[..7]).yellow()
     ));
 
-    // signature/author info
-    out.push_str(&format!(" [{}]", match repo.signature() {
-      Ok(it) => {
-        let name = lossy!(it.name_bytes());
-        let email = lossy!(it.email_bytes());
-        format!("{} {}", style(name).cyan(), style(email).dim())
-      }
-      Err(_) => style("No author info").red().to_string(),
-    }));
-
-    // end first line
-    out.push('\n');
-
     // commit message
     if let Some(it) = commit.summary_bytes() {
       let msg = lossy!(it);
@@ -61,11 +48,29 @@ impl Args {
       } else {
         msg
       };
+      out.push(' ');
       out.push_str(&line);
-      out.push('\n');
     }
 
-    print!("{}", out);
+    // end first line
+    println!(
+      "{}",
+      if Term::stdout().is_term() {
+        truncate_str(&out, get_term_width(), &style("\u{2026}").dim().to_string())
+      } else {
+        Cow::Borrowed(&*out)
+      }
+    );
+
+    // signature/author info
+    println!("{}", match repo.signature() {
+      Ok(it) => {
+        let name = lossy!(it.name_bytes());
+        let email = lossy!(it.email_bytes());
+        format!("{} {}", style(name).cyan(), style(email).dim())
+      }
+      Err(_) => style("No author info").red().to_string(),
+    });
 
     let tree = commit.tree().ok();
 
@@ -79,7 +84,7 @@ impl Args {
     // if there are changes to print
     if stats.files_changed() != 0 {
       println!();
-      println!("{}", style("Staged").green());
+      print!("{} - ", style("Staged").green());
       print!("{}", match display_diff_summary(diff) {
         Ok(it) => it,
         Err(_) => "Failed to get summary of staged changes".to_string(),
@@ -87,7 +92,6 @@ impl Args {
     }
 
     // unstaged changes
-    // TODO: setting --hide-untracked=false in cli should override config
     let mut opts = if self.hide_untracked || cli.config.hide_untracked {
       None
     } else {
@@ -97,7 +101,7 @@ impl Args {
     };
 
     let diff = repo
-      .diff_tree_to_workdir(tree.as_ref(), opts.as_mut())
+      .diff_index_to_workdir(None, opts.as_mut())
       .context("Failed to get unstaged changes")?;
 
     let stats = diff.stats().context("Failed to get unstaged changes")?;
@@ -105,7 +109,7 @@ impl Args {
     // if there are changes to print
     if stats.files_changed() != 0 {
       println!();
-      println!("{}", style("Unstaged").red());
+      print!("{} - ", style("Unstaged").red());
       print!("{}", match display_diff_summary(diff) {
         Ok(it) => it,
         Err(_) => "Failed to get summary of unstaged changes".to_string(),
