@@ -121,7 +121,7 @@ impl Args {
       return Ok(());
     }
 
-    print!("Running precommit hook...");
+    print!("Running precommit hook\u{2026}");
 
     let output = Command::new(script).output()?;
 
