@@ -58,10 +58,10 @@ fn sets_feature_base_using_remote() {
   local.git(&["push", "-u", "origin", "main"]).success();
 
   local.feature(&["start", "topic"]).success();
-  let proc = local
+  let cmd = local
     .git(&["config", "branch.topic.feature-base"])
     .success();
-  assert_eq!(get_stdout!(proc).trim(), "refs/remotes/origin/main");
+  assert_eq!(get_stdout!(cmd).trim(), "refs/remotes/origin/main");
 }
 
 /// Branch names should correctly follow the specified template
