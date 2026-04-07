@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euxo pipefail
+set -euo pipefail
 
 # get staged files (filter only added, copied, modified)
 staged=$(git diff --cached --name-only --diff-filter=ACM)
@@ -18,6 +18,6 @@ staged_rs=$(echo "$staged" | grep '\.rs$' || true)
 
 # lint and test if there are staged rust files
 if [ -n "$staged_rs" ]; then
-  cargo clippy
+  cargo clippy -- -D warnings
   cargo test
 fi

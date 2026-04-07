@@ -1,5 +1,6 @@
 //! Commit subcommand
 
+use std::io::Write;
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
@@ -8,7 +9,7 @@ use git2::{Commit, Oid, Repository, Signature};
 
 use crate::cli::diff::display_diff_summary;
 use crate::cli::{get_current_branch, get_current_commit};
-use crate::open_repo;
+use crate::{lossy, open_repo};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
@@ -36,12 +37,28 @@ impl Args {
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;
+    let commit_tree = current_commit.as_ref().and_then(|it| it.tree().ok());
 
     let signature = repo
       .signature()
       .expect("Failed to get default commit signature");
 
-    let mut index = repo.index().expect("Failed to get current index");
+    let mut index = repo.index().context("Failed to get staged changes")?;
+
+    let staged_diff = repo
+      .diff_tree_to_index(commit_tree.as_ref(), Some(&index), None)
+      .context("Failed to analyze staged changes")?;
+
+    let staged_stats = staged_diff
+      .stats()
+      .context("Failed to analyze staged changes")?;
+
+    if staged_stats.files_changed() == 0 {
+      return Err(anyhow!(
+        "Nothing to commit! Stage some changes with `git add ...`"
+      ));
+    }
+
     let tree_id = index.write_tree().expect("Failed to get index tree id");
     let tree = repo.find_tree(tree_id).expect("Failed to get index tree");
 
@@ -93,6 +110,8 @@ impl Args {
 
   fn pre_commit(&self, repo: &Repository) -> Result<()> {
     if self.no_verify {
+      println!("{}", style("Skipping precommit hook").yellow());
+      let _ = std::io::stdout().flush(); // flush is for ux, but isn't a big deal if it fails
       return Ok(());
     }
 
@@ -104,15 +123,22 @@ impl Args {
       return Ok(());
     }
 
+    print!("Running precommit hook\u{2026}");
+    let _ = std::io::stdout().flush();
+
     let output = Command::new(script).output()?;
 
     if output.status.success() {
+      println!(" {}", style("passed!").green());
+      let _ = std::io::stdout().flush();
       Ok(())
     } else {
+      println!(" {}", style("failed!").red());
+      let _ = std::io::stdout().flush();
       eprintln!("Precommit output:");
       eprintln!();
-      eprintln!("{}", String::from_utf8_lossy(&output.stderr));
-      Err(anyhow!("Precommit hooks failed"))
+      eprintln!("{}", lossy!(&output.stderr));
+      Err(anyhow!("Precommit hook failed"))
     }
   }
 
