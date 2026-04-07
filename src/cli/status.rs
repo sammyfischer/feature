@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use anyhow::{Context, Result};
 use console::{Term, style, truncate_str};
-use git2::DiffOptions;
+use git2::{DiffOptions, ErrorCode};
 
 use crate::cli::diff::display_diff_summary;
 use crate::cli::{Cli, get_term_width};
@@ -25,7 +25,17 @@ impl Args {
     let mut out = String::new();
 
     // HEAD info
-    let head = repo.head().context("Failed to find HEAD reference")?;
+    let head = match repo.head() {
+      Ok(it) => Ok(it),
+      Err(e) if e.code() == ErrorCode::UnbornBranch => {
+        // this is an empty repo, nothing else useful to print
+        println!("No commits yet");
+        return Ok(());
+      }
+      Err(e) => Err(e),
+    }
+    .context("Failed to find HEAD reference")?;
+
     let commit = head
       .peel_to_commit()
       .context("Failed to get commit at HEAD")?;
