@@ -34,6 +34,14 @@ fn no_message_fails() {
   repo.feature(&["commit", ""]).failure();
 }
 
+/// Should fail if there are no staged changes
+#[test]
+fn fails_on_empty_index() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+  repo.feature(&["commit", "nothing"]).failure();
+}
+
 /// Committing with a failing pre-commit script should not go through
 #[test]
 fn pre_commit_can_fail() {
