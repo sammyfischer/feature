@@ -33,13 +33,6 @@ fn create_conflicts() -> TestRepo {
   repo
 }
 
-/// Gets a list of commits, listing only their subject lines, for the given branch. If no branch is
-/// specified, list all branches
-fn get_subject_log(repo: &TestRepo, branch: &str) -> String {
-  let proc = repo.git(&["log", "--pretty=format:%s", branch]).success();
-  get_stdout!(proc)
-}
-
 /// Gets the subject line of a commit given its hash
 fn hash_to_subject(repo: &TestRepo, hash: &str) -> String {
   // --no-patch removes the diff output, which git show includes by default
@@ -67,7 +60,7 @@ fn rebases_changes() {
   repo.feature(&["update"]).success();
 
   assert_eq!(
-    get_subject_log(&repo, "feature"),
+    repo.list_commit_subjects("feature"),
     "X\nB\nA",
     "feature should be rebased onto main"
   );
@@ -102,7 +95,7 @@ fn rebase_continues() {
   repo.feature(&["update", "-c"]).success();
   assert!(!repo.is_rebase_active(), "Rebase should not be active");
 
-  assert_eq!(get_subject_log(&repo, "feature"), "BX\nA")
+  assert_eq!(repo.list_commit_subjects("feature"), "BX\nA")
 }
 
 /// If the rebase stops due to a conflict, the remaining steps should be written to git-rebase-todo.
@@ -185,7 +178,7 @@ fn git_rebase_continues() {
   repo.git(&["rebase", "--continue"]).success();
   assert!(!repo.is_rebase_active(), "Rebase should not be active");
 
-  assert_eq!(get_subject_log(&repo, "feature"), "Y\nBX\nA")
+  assert_eq!(repo.list_commit_subjects("feature"), "Y\nBX\nA")
 }
 
 /// Feature should abort the rebase when running with -a
@@ -201,12 +194,12 @@ fn rebase_aborts() {
   assert!(!repo.is_rebase_active(), "Rebase should not be active");
 
   assert_eq!(
-    get_subject_log(&repo, "feature"),
+    repo.list_commit_subjects("feature"),
     "X\nA",
     "feature's history should not have changed"
   );
   assert_eq!(
-    get_subject_log(&repo, "main"),
+    repo.list_commit_subjects("main"),
     "B\nA",
     "main's history should not have changed"
   );
@@ -252,5 +245,5 @@ fn git_rebase_skips() {
   repo.git(&["rebase", "--skip"]).success();
   assert!(!repo.is_rebase_active(), "Rebase should not be active");
 
-  assert_eq!(get_subject_log(&repo, "feature"), "Y\nC\nB\nA",);
+  assert_eq!(repo.list_commit_subjects("feature"), "Y\nC\nB\nA",);
 }

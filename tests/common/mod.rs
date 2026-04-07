@@ -149,16 +149,22 @@ impl TestRepo {
   /// refs/heads/feature2 refs/remotes/origin/feature2
   /// ```
   pub fn list_branches_and_upstreams(&self) -> String {
-    let proc = self
+    let cmd = self
       .git(&["branch", "--format=%(refname) %(upstream)"])
       .success();
-    get_stdout!(proc)
+    get_stdout!(cmd)
   }
 
   /// Lists just the commit hashes of a particular branch
   pub fn list_commits_on_branch(&self, branch: &str) -> String {
-    let proc = self.git(&["log", "--pretty=format:%h", branch]);
-    get_stdout!(proc)
+    let cmd = self.git(&["log", "--pretty=format:%h", branch]);
+    get_stdout!(cmd)
+  }
+
+  /// Lists just the commit subject-lines of a branch
+  pub fn list_commit_subjects(&self, branch: &str) -> String {
+    let cmd = self.git(&["log", "--pretty=format:%s", branch]).success();
+    get_stdout!(cmd)
   }
 
   /// Creates a pre-commit hook file with the given script.
@@ -206,13 +212,13 @@ impl TestRemote {
   }
 
   pub fn list_branches(&self) -> String {
-    let proc = self.git(&["branch", "--format=%(refname)"]).success();
-    get_stdout!(proc)
+    let cmd = self.git(&["branch", "--format=%(refname)"]).success();
+    get_stdout!(cmd)
   }
 
   /// Lists just the commit hashes of a particular branch
   pub fn list_commits_on_branch(&self, branch: &str) -> String {
-    let proc = self.git(&["log", "--pretty=format:%h", branch]);
-    get_stdout!(proc)
+    let cmd = self.git(&["log", "--pretty=format:%h", branch]);
+    get_stdout!(cmd)
   }
 }

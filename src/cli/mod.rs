@@ -17,8 +17,6 @@ use git2::{
   FetchPrune,
   RemoteCallbacks,
   Repository,
-  Status,
-  StatusOptions,
 };
 
 use crate::config::Config;
@@ -192,38 +190,6 @@ fn get_all_branches(repo: &Repository) -> Result<Vec<String>> {
   }
 
   Ok(output)
-}
-
-/// Whether there are any uncommitted changes
-#[allow(unused)]
-fn has_local_changes(repo: &Repository) -> Result<bool> {
-  let mut opts = StatusOptions::new();
-  opts.include_untracked(false);
-
-  let statuses = repo
-    .statuses(Some(&mut opts))
-    .expect("Failed to get repository statuses");
-
-  for entry in &statuses {
-    let status = entry.status();
-
-    if status.intersects(
-      Status::INDEX_NEW
-        | Status::INDEX_MODIFIED
-        | Status::INDEX_DELETED
-        | Status::INDEX_RENAMED
-        | Status::INDEX_TYPECHANGE
-        | Status::WT_MODIFIED
-        | Status::WT_DELETED
-        | Status::WT_RENAMED
-        | Status::WT_TYPECHANGE,
-    ) {
-      // return true immediately if any of the above changes are found
-      return Ok(true);
-    }
-  }
-
-  Ok(false)
 }
 
 /// Fetches all remote branches

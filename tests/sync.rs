@@ -6,7 +6,7 @@ mod common;
 fn updates_all_bases() {
   let (local, remote) = TestRepo::new_with_remote();
   local.init_commit();
-  local.feature(&["push"]);
+  local.feature(&["push"]).success();
 
   local.write_file(".gitignore", "feature.toml");
   local.git(&["add", "."]).success();
@@ -40,12 +40,7 @@ fn updates_all_bases() {
     local2.feature(&["push"]).success();
   }
 
-  // sync local and check that they're all updated
-  let output = {
-    let proc = local.feature(&["sync"]);
-    String::from_utf8(proc.get_output().stdout.clone()).expect("Sync output should exist")
-  };
-  println!("{}", output);
+  local.feature(&["sync"]);
 
   for branch in bases {
     assert_eq!(
@@ -55,11 +50,26 @@ fn updates_all_bases() {
       branch
     );
   }
+}
 
-  // local is checked out to main, so it should've been skipped
-  assert_ne!(
-    local.list_commits_on_branch("main"),
-    local2.list_commits_on_branch("main"),
-    "main should have been skipped by sync"
+#[test]
+fn updates_current_branch() {
+  let (local, remote) = TestRepo::new_with_remote();
+  local.write_file("A.txt", "A");
+  local.commit_all("A");
+  local.feature(&["push"]).success();
+
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file("B.txt", "B");
+  local2.commit_all("B");
+  local2.feature(&["push"]).success();
+
+  let cmd = local.feature(&["sync"]);
+  println!("{}", get_stdout!(cmd));
+
+  assert_eq!(
+    local.list_commit_subjects("main"),
+    "B\nA",
+    "Currently checked-out base should be updated"
   );
 }

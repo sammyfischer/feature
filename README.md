@@ -38,24 +38,21 @@ feature config append bases <branch_name>
 
 > Hint: `append` and `remove` are the subcommands feature uses to modify arrays in the config. `bases` is the key being modified.
 
-Base branches should be an exact reflection of their remote counterpart. They're not meant to be directly committed into. All work should be done on another branch and rebased/merged onto the base from the remote server.
-
-Base branches are meant to reflect protected branches on services like GitHub. For this reason, the sync command force-updates local bases from their remote, since the remote is the single source of truth.
-
-> The sync command force updates `refs/heads/<branch>` and `refs/remotes/<remote>/<branch>`
+Base branches should be an exact reflection of their remote counterpart. They're not meant to be directly committed to. All work should be done on another branch and rebased/merged onto the base from the remote server.
 
 ## Feature workflow
 
 Here's a summary of the feature workflow:
 
-1. Switch to a base branch. Optionally, tell feature that it's a base with `feature base ...`.
+1. Switch to a base branch. Optionally, tell feature that it's a base with `feature config append bases <branch_name>`.
 2. Start feature branch with `feature start ...`.
-3. Implement feature and commit with `feature commit ...`.
-4. If some time has passed, or you know that there are new changes on the base branch, run `feature update`.
-5. Push changes to remote with `feature push`.
-6. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
-7. Sync all local bases with `feature sync`.
-8. Switch off of the feature branch and run `feature prune` to clean up all merged branches.
+3. If it's a new day, check `feature st` to remember where you are and what changes you have.
+4. Implement feature and commit with `feature commit ...`.
+5. If some time has passed, or you know that there are new changes on the base branch, run `feature update`.
+6. Push changes to remote with `feature push`.
+7. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
+8. Update all bases with `feature sync`.
+9. Switch off of the feature branch and run `feature prune` to clean up merged branches.
 
 As implied by some of the steps, feature is generally designed to complement central remotes where multiple people work from. Using it with a local repo is less useful, but some of the commands (start, commit, log, graph) will still be very useful.
 
