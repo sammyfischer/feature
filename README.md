@@ -1,71 +1,60 @@
 # Feature
 
-A command line wrapper for git.
-
-Feature makes it easier to work with feature branches. It:
-
-- simplifies common sequences of commands into single commands
-- improves common usages of existing commands (committing, creating branches, viewing git log)
-- automatically tracks feature branches and their base branch
+A cli that enhances git.
 
 ## Install
 
 Clone the repo and run `cargo install --path .` from the projects root. If you have just, run `just install`.
 
-## Config
+## Docs
 
-Feature supports both a project/local config file and a global/user config file.
+- [List of commands](./docs/commands.md)
+- [Config files](./docs/config.md)
 
-The project file takes precedence and is designed to be tracked by version control. It should contain project-specific config for all developers on the team to use, e.g. names of base branches and common formatting options.
+## What is feature?
 
-The global config file exists in your platforms standard location. There you can customize your own general preferences.
+Feature's main purposes are:
 
-Use `feature config create` to create a project config file with all defaults. Use `feature config create -g` to do the same with a global config file. Each command outputs the location of the newly created file. It's not recommended to leave this as-is. Customize the values you want and delete keys where you want to use the lower-level config values instead.
+- to simplify existing git commands
+- to automate more complex tasks, like pruning merged branches
+- to prettify and simplify command outputs
 
-> The default config includes an empty array for protected branches. When configs get layered and merged together, empty arrays will overwrite the entire array set at lower levels. In other words, if you have protected branches in your global config, and your project contains an empty `protect` array, then no branches will be protected.
+Feature uses the concept of a base branch in a lot of places. A base branch is the branch which a feature branch started from, and is intended to be merged back into when complete.
 
-## Base branches
+Feature uses these base branches automatically in places where it makes sense. For example, `feature update` rebases the current branch onto its base, no arguments needed. `feature prune` checks branches against their base to see if they can be safely deleted.
 
-Feature uses the concept of a base branch in a lot of places. A base branch is a branch that feature branches are typically based off of, and subsequently merged back into when the feature is complete.
+While feature's functionality is generally meant to work with the concept of feature and base branches, there are some commands that are useful in general:
 
-In order to start feature branches, you need to set base branches in the config (by default, "main" is a base branch, so you don't need to add that on a fresh feature installation).
-
-You can add a base branch by running:
-
-```bash
-feature config append bases <branch_name>
-```
-
-> Hint: `append` and `remove` are the subcommands feature uses to modify arrays in the config. `bases` is the key being modified.
-
-Base branches should be an exact reflection of their remote counterpart. They're not meant to be directly committed to. All work should be done on another branch and rebased/merged onto the base from the remote server.
+- `start` and `commit` take all trailing command line args and put them together to form a branch name or commit message, respectively.
+- `commit`, `status`, and `list` print a customized outupt that is much more detailed, compact, and colorful than git's default output
 
 ## Feature workflow
 
 Here's a summary of the feature workflow:
 
-1. Switch to a base branch. Optionally, tell feature that it's a base with `feature config append bases <branch_name>`.
+1. Switch to a base branch. Optionally, tell feature that it's a base with `feature config append bases <branch_name>`, or edit the config file directly.
 2. Start feature branch with `feature start ...`.
-3. If it's a new day, check `feature st` to remember where you are and what changes you have.
-4. Implement feature and commit with `feature commit ...`.
-5. If some time has passed, or you know that there are new changes on the base branch, run `feature update`.
-6. Push changes to remote with `feature push`.
-7. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
-8. Update all bases with `feature sync`.
-9. Switch off of the feature branch and run `feature prune` to clean up merged branches.
-
-As implied by some of the steps, feature is generally designed to complement central remotes where multiple people work from. Using it with a local repo is less useful, but some of the commands (start, commit, log, graph) will still be very useful.
+3. Begin implementing the feature
+4. If it's a new day, check `feature st` to remember where you were and what changes you have.
+5. Finish and commit with `feature commit ...`.
+6. If some time has passed, or you know that there are new changes on the base branch, run `feature update`.
+7. Push changes to remote with `feature push`.
+8. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
+9. Switch back to the base branch with `git switch <base>`
+10. Update all bases with `feature sync`.
+11. Clean up branches with `feature prune`.
 
 ## Todo list
 
-Housekeeping
-
-- fix `feature update --skip`, or consider removing it (along with continue and abort)
-- support non-utf8 strings with lossy conversions
-
-Features
+### Housekeeping
 
 - add `feature start --from` to start from a particular base
+- remote `feature update --skip`, consider removing continue and abort since they don't do anything useful
+- make `feature base <base> <branch>` look more like `feature base base --branch <branch>`, to avoid confusing positionals
+- support non-utf8 strings with lossy conversions
+
+### Features
+
 - status
   - show upstream ahead/behind (blue)
   - show base ahead/behind (magenta)
@@ -82,12 +71,8 @@ Features
   - concatenate args as message
   - stashes could be given easier-to-type names (refs/stashes/name), this may affect compatibility with regular git stash commands
   - pretty output
+- update
+  - print conflicted files upon rebase conflicts, like git status output
 - mod (submodule commands)
   - sync/prune all modules
   - create a single branch in all modules for features whose work will span across them
-- interactive tui for rebase
-  - would only activate upon conflicts
-  - make changes in the editor and save them
-  - menu pops up with conflicted files, use arrow keys and space to toggle them as resolved/unresolved
-  - enter to amend commit and continue
-  - keybinds to skip and abort (something hard to accidentally press e.g. ctrl+q)
