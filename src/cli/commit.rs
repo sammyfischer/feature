@@ -1,5 +1,6 @@
 //! Commit subcommand
 
+use std::io::Write;
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
@@ -110,6 +111,7 @@ impl Args {
   fn pre_commit(&self, repo: &Repository) -> Result<()> {
     if self.no_verify {
       println!("{}", style("Skipping precommit hook").yellow());
+      let _ = std::io::stdout().flush(); // flush is for ux, but isn't a big deal if it fails
       return Ok(());
     }
 
@@ -122,14 +124,17 @@ impl Args {
     }
 
     print!("Running precommit hook\u{2026}");
+    let _ = std::io::stdout().flush();
 
     let output = Command::new(script).output()?;
 
     if output.status.success() {
       println!(" {}", style("passed!").green());
+      let _ = std::io::stdout().flush();
       Ok(())
     } else {
       println!(" {}", style("failed!").red());
+      let _ = std::io::stdout().flush();
       eprintln!("Precommit output:");
       eprintln!();
       eprintln!("{}", lossy!(&output.stderr));
