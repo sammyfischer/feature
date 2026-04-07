@@ -112,6 +112,7 @@ fn fails_when_remote_changes() {
   local.feature(&["push"]).failure();
 }
 
+/// Base branches should be pushed if they're fast-forwardable
 #[test]
 fn pushes_base_branch() {
   let (local, remote) = TestRepo::new_with_remote();
@@ -135,5 +136,103 @@ fn refuses_to_force_push_base_branch() {
     local.list_commits_on_branch("main"),
     remote.list_commits_on_branch("main"),
     "Local and remote main should be different after push fails"
+  );
+}
+
+/// Pushes to a remote other than the default
+#[test]
+fn pushes_to_different_remote() {
+  let local = TestRepo::new();
+  let remote_a = TestRemote::new();
+  let remote_b = TestRemote::new();
+
+  local
+    .git(&["remote", "add", "remote-a", path_str!(remote_a.path())])
+    .success();
+  local
+    .git(&["remote", "add", "remote-b", path_str!(remote_b.path())])
+    .success();
+
+  local.init_commit();
+  local.feature(&["start", "to", "remote", "a"]).success();
+  local.write_file("a.txt", "a");
+  local.commit_all("a");
+  local.feature(&["push", "--remote", "remote-a"]).success();
+
+  local.git(&["switch", "main"]).success();
+  local.feature(&["start", "to", "remote", "b"]).success();
+  local.write_file("b.txt", "b");
+  local.commit_all("b");
+  local.feature(&["push", "--remote", "remote-b"]).success();
+
+  let cmd = local
+    .git(&["branch", "--list", "--format=%(refname) %(upstream)"])
+    .success();
+  let stdout = get_stdout!(cmd);
+
+  assert!(
+    stdout.contains("refs/heads/to-remote-a refs/remotes/remote-a/to-remote-a"),
+    "Branch a should be pushed to remote a"
+  );
+
+  assert!(
+    stdout.contains("refs/heads/to-remote-b refs/remotes/remote-b/to-remote-b"),
+    "Branch b should be pushed to remote b"
+  );
+}
+
+/// If a branch has an existing upstream other than default, it should push to that with no args
+#[test]
+fn pushes_to_existing_different_remote() {
+  let local = TestRepo::new();
+  let remote_a = TestRemote::new();
+
+  local
+    .git(&["remote", "add", "remote-a", path_str!(remote_a.path())])
+    .success();
+
+  local.init_commit();
+  local.feature(&["start", "to", "remote", "a"]).success();
+  local
+    .git(&["push", "-u", "remote-a", "to-remote-a"])
+    .success();
+  local.write_file("a.txt", "a");
+  local.commit_all("a");
+  local.feature(&["push"]).success();
+
+  let cmd = local
+    .git(&["branch", "--list", "--format=%(refname) %(upstream)"])
+    .success();
+  let stdout = get_stdout!(cmd);
+
+  assert!(
+    stdout.contains("refs/heads/to-remote-a refs/remotes/remote-a/to-remote-a"),
+    "Branch a should be pushed to remote a"
+  );
+}
+
+/// User should be able to choose upstream name with `--upstream`
+#[test]
+fn pushes_with_custom_upstream() {
+  let local = TestRepo::new();
+  let remote = TestRemote::new();
+  local.init_commit();
+  local
+    .git(&["remote", "add", "the-origin", path_str!(remote.path())])
+    .success();
+
+  local.feature(&["start", "branch"]).success();
+  local
+    .feature(&["push", "-u", "custom-name", "-r", "the-origin"])
+    .success();
+
+  let cmd = local
+    .git(&["branch", "--list", "--format=%(refname) %(upstream)"])
+    .success();
+  let stdout = get_stdout!(cmd);
+
+  assert!(
+    stdout.contains("refs/heads/branch refs/remotes/the-origin/custom-name"),
+    "Upstream should use the custom name"
   );
 }

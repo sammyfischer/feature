@@ -8,10 +8,8 @@ if [ -z "$staged" ]; then
   exit 0
 fi
 
-# format staged files
-echo "$staged" | xargs dprint fmt
-# add staged files to apply new formatting changes
-echo "$staged" | xargs git add
+# check formatting
+dprint check --staged --allow-no-files
 
 # get staged rust files
 staged_rs=$(echo "$staged" | grep '\.rs$' || true)

@@ -5,12 +5,10 @@ mod common;
 #[test]
 fn updates_all_bases() {
   let (local, remote) = TestRepo::new_with_remote();
-  local.init_commit();
-  local.feature(&["push"]).success();
-
   local.write_file(".gitignore", "feature.toml");
-  local.git(&["add", "."]).success();
-  local.feature(&["commit", "added", "gitignore"]).success();
+  local.commit_all("A");
+
+  local.feature(&["push"]).success();
 
   let bases = ["dev", "test"];
 
@@ -18,9 +16,10 @@ fn updates_all_bases() {
   for branch in bases {
     local.git(&["switch", "-c", branch]).success();
     local.write_file(&format!("{}.txt", branch), branch);
-    local.git(&["add", "."]).success();
-    local.feature(&["commit", "impl", branch]).success();
+    local.commit_all("B");
+
     local.feature(&["push"]).success();
+
     local
       .feature(&["config", "append", "bases", branch])
       .success();
@@ -35,8 +34,8 @@ fn updates_all_bases() {
       &format!("{}-2.txt", branch),
       &format!("added to {}", branch),
     );
-    local2.git(&["add", "."]).success();
-    local2.feature(&["commit", "modified", branch]).success();
+    local2.commit_all("C");
+
     local2.feature(&["push"]).success();
   }
 
@@ -44,8 +43,8 @@ fn updates_all_bases() {
 
   for branch in bases {
     assert_eq!(
-      local.list_commits_on_branch(branch),
-      local2.list_commits_on_branch(branch),
+      local.list_commit_subjects(branch),
+      local2.list_commit_subjects(branch),
       "{} should be the same on local and local2",
       branch
     );
@@ -64,8 +63,7 @@ fn updates_current_branch() {
   local2.commit_all("B");
   local2.feature(&["push"]).success();
 
-  let cmd = local.feature(&["sync"]);
-  println!("{}", get_stdout!(cmd));
+  local.feature(&["sync"]);
 
   assert_eq!(
     local.list_commit_subjects("main"),

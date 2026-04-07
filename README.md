@@ -60,27 +60,30 @@ As implied by some of the steps, feature is generally designed to complement cen
 
 Housekeeping
 
-- for push, use existing remote name if branch has an upstream
 - fix `feature update --skip`, or consider removing it (along with continue and abort)
 - support non-utf8 strings with lossy conversions
 
 Features
 
-- feature commit
-  - show loading spinner while precommit hook runs
-- feature list
+- add `feature start --from` to start from a particular base
+- status
+  - show upstream ahead/behind (blue)
+  - show base ahead/behind (magenta)
+  - make branch name green (instead of blue)
+  - show current worktree if applicable
+  - submodules
+- list
   - highlight current branches for each worktree in cyan
   - submodules
   - custom python function in config dir to build each line
-- feature stash
-  - more intuitive options to stash (--all => worktree/index, --unstaged => worktree, --staged => index)
+- stash
+  - more intuitive options to stash (--all => workdir/index, --unstaged => workdir, --staged => index)
   - action should be a flag, not positional (and should --push by default)
   - concatenate args as message
   - stashes could be given easier-to-type names (refs/stashes/name), this may affect compatibility with regular git stash commands
   - pretty output
-- feature mod (submodule commands)
+- mod (submodule commands)
   - sync/prune all modules
-  - `feature status` that intelligently displays module statuses too
   - create a single branch in all modules for features whose work will span across them
 - interactive tui for rebase
   - would only activate upon conflicts

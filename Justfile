@@ -22,7 +22,7 @@ test target="":
 
 # format with dprint
 fmt:
-  dprint fmt
+  dprint fmt --diff
 
 # lint with clippy
 lint:
