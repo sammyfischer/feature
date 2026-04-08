@@ -4,8 +4,8 @@ use anyhow::{Result, anyhow};
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
-use crate::cli::get_user_confirmation;
 use crate::config;
+use crate::util::term::get_user_confirmation;
 
 /// Loads the right config document
 macro_rules! load {

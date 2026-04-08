@@ -1,8 +1,12 @@
 //! Diff related functionality (not a subcommand)
 
+use std::borrow::Cow;
+
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Delta, Diff, DiffLineType};
+use git2::{Delta, Diff, DiffLineType, Oid};
+
+use crate::lossy;
 
 macro_rules! delta_filename {
   ($delta:ident, $file:ident) => {
@@ -13,6 +17,14 @@ macro_rules! delta_filename {
       .display()
       .to_string()
   };
+}
+
+pub fn trim_hash(id: &Oid) -> Cow<'_, str> {
+  lossy!(&id.as_bytes()[..7])
+}
+
+pub fn display_hash(id: &Oid) -> String {
+  style(trim_hash(id)).yellow().to_string()
 }
 
 /// Builds a pretty output to summarize the changes of this diff.
@@ -28,15 +40,14 @@ pub fn display_diff_summary(diff: Diff) -> Result<String> {
 
   // summary
   out.push_str(&format!(
-    "{} {} changed [{} {}]\n",
+    "{} {} changed [{}]\n",
     style(stats.files_changed()).cyan(),
     if stats.files_changed() == 1 {
       "file"
     } else {
       "files"
     },
-    style(format!("+{}", stats.insertions())).green(),
-    style(format!("-{}", stats.deletions())).red()
+    display_plus_minus(stats.insertions(), stats.deletions())
   ));
 
   // per-file info
@@ -103,13 +114,26 @@ pub fn display_diff_summary(diff: Diff) -> Result<String> {
 
   for file in &files {
     out.push_str(&format!(
-      "  {} {} {} {}\n",
+      "  {} {} {}\n",
       file.status,
       file.name,
-      style(format!("+{}", file.insertions)).green(),
-      style(format!("-{}", file.deletions)).red()
+      display_plus_minus(file.insertions, file.deletions),
     ));
   }
 
   Ok(out)
+}
+
+/// Displays two numbers like `+p -m` where the first part is green and the second part is red.
+///
+/// The numbers are passed in as a tuple, where the first number is the plus and second is the
+/// minus.
+///
+/// This is used to print ahead/behind and insertions/deletions.
+pub fn display_plus_minus(plus: usize, minus: usize) -> String {
+  format!(
+    "{} {}",
+    style(format!("+{}", plus)).green(),
+    style(format!("-{}", minus)).red()
+  )
 }

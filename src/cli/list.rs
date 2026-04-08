@@ -1,9 +1,17 @@
-use anyhow::{Context, Result, anyhow};
-use console::{Term, measure_text_width, pad_str, style, truncate_str};
-use git2::{Branch, ErrorCode, Repository};
+use anyhow::{Context, Result};
+use console::{Alignment, measure_text_width, pad_str, style, truncate_str};
+use git2::{Branch, Repository};
 
-use crate::cli::{get_current_branch, get_term_width};
-use crate::{data, open_repo};
+use crate::util::branch::{
+  branch_to_name,
+  get_ahead_behind,
+  get_current_branch_name,
+  get_upstream,
+  name_to_branch,
+};
+use crate::util::display::{display_plus_minus, trim_hash};
+use crate::util::term::{get_term_width, is_term};
+use crate::{data, lossy, open_repo};
 
 const LONG_ABOUT: &str = r"Lists all branches.
 
@@ -130,7 +138,7 @@ impl Args {
       }
     }
 
-    let current = get_current_branch(&repo).ok();
+    let current = get_current_branch_name(&repo).ok();
     let max_widths = Widths::max();
     let line_tail = style("\u{2026}").dim().to_string();
     let trunc_tail = "\u{2026}";
@@ -231,7 +239,7 @@ impl Args {
         line.push_str(&row.subject);
       }
 
-      if Term::stdout().is_term() {
+      if is_term() {
         line = truncate_str(&line, term_width, &line_tail).to_string();
       }
 
@@ -258,76 +266,44 @@ impl Args {
       branch_name
     ))?;
 
-    row.hash = branch_commit.id().to_string()[..7].to_string();
+    row.hash = trim_hash(&branch_commit.id()).to_string();
 
-    match branch.upstream() {
-      Ok(it) => {
-        let upstream_name = it
-          .name()
-          .context("Failed to get upstream name")?
-          .expect("Upstream name is not valid utf-8")
-          .to_string();
+    if let Some(upstream) = get_upstream(branch)? {
+      let upstream_name = branch_to_name(&upstream)?;
+      let (a, b) = get_ahead_behind(repo, branch, &upstream).with_context(|| {
+        format!(
+          "Failed to get ahead/behind between {} and {}",
+          &branch_name, &upstream_name
+        )
+      })?;
 
-        row.upstream = upstream_name.clone();
-
-        let upstream_commit = it.get().peel_to_commit().context(format!(
-          "Failed to get commit pointed to by {}",
-          upstream_name
-        ))?;
-
-        let (ahead, behind) = repo
-          .graph_ahead_behind(branch_commit.id(), upstream_commit.id())
-          .context(format!(
-            "Faled to calculate ahead/behind against upstream {}",
-            upstream_name
-          ))?;
-
-        // handling colors here bc we don't need to do any width calculations on this
-        row.ab_upstream = format!(
-          "{} {}",
-          style(format!("+{}", ahead)).green(),
-          style(format!("-{}", behind)).red()
-        );
-      }
-      Err(e) if e.code() == ErrorCode::NotFound => {}
-      Err(e) => return Err(anyhow!(e)),
+      row.upstream = upstream_name.to_string();
+      row.ab_upstream = display_plus_minus(a, b);
     }
 
-    let base_name = data::get_feature_base(&data::git_config(repo)?, branch_name);
+    let base_name = data::get_short_feature_base(&data::git_config(repo)?, branch_name);
     if let Some(base_name) = base_name {
-      row.base = base_name
-        .strip_prefix("refs/remotes/")
-        .unwrap_or(&base_name)
-        .to_string();
+      row.base = base_name.clone();
 
-      let base = repo.revparse_single(&base_name).context(format!(
-        "Failed to get reference to base branch {}",
-        base_name
-      ))?;
+      let base = name_to_branch(repo, &base_name)
+        .with_context(|| format!("Failed to get reference to base branch {}", base_name))?;
 
-      let base_commit = base
-        .peel_to_commit()
-        .context(format!("Failed to get commit pointed to by {}", base_name))?;
+      let (a, b) = get_ahead_behind(repo, branch, &base).with_context(|| {
+        format!(
+          "Failed to get ahead/behind between {} and {}",
+          &branch_name, &base_name
+        )
+      })?;
 
-      let (ahead, behind) = repo
-        .graph_ahead_behind(branch_commit.id(), base_commit.id())
-        .context(format!(
-          "Failed to calculate ahead/behind against base {}",
-          base_name
-        ))?;
-
-      row.ab_base = format!(
-        "{} {}",
-        style(format!("+{}", ahead)).green(),
-        style(format!("-{}", behind)).red()
-      );
+      row.ab_base = display_plus_minus(a, b);
     }
 
-    let subject = branch_commit
-      .summary()
-      .expect("Commit message should be valid utf-8");
-
-    row.subject = subject.to_string();
+    row.subject = lossy!(
+      branch_commit
+        .summary_bytes()
+        .context("Commit has no summary")?
+    )
+    .to_string();
 
     Ok(row)
   }
@@ -335,5 +311,5 @@ impl Args {
 
 #[inline(always)]
 fn fix_width(s: &str, width: usize, tail: &str) -> String {
-  pad_str(s, width, console::Alignment::Left, Some(tail)).to_string()
+  pad_str(s, width, Alignment::Left, Some(tail)).to_string()
 }

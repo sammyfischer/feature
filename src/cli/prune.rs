@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use console::style;
 use git2::{BranchType, Repository};
 
-use crate::cli::{Cli, fetch_all, get_all_branches, get_current_branch};
+use crate::cli::Cli;
+use crate::util::branch::{fetch_all, get_all_branch_names, get_current_branch_name};
+use crate::util::display::trim_hash;
 use crate::{await_child, data, git, open_repo};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
@@ -28,7 +30,7 @@ impl Args {
     fetch_all(&repo)?;
 
     // get list of all branches
-    let branches = get_all_branches(&repo)?;
+    let branches = get_all_branch_names(&repo)?;
 
     if self.dry_run {
       println!("Deletion candidates:")
@@ -60,7 +62,7 @@ impl Args {
     }
 
     // skip current branch
-    if &get_current_branch(repo).context("Failed to get current branch")? == branch_name {
+    if &get_current_branch_name(repo).context("Failed to get current branch")? == branch_name {
       // not necessarily an error, but the user should know that a non-base non-protected branch was
       // skipped and may manually need to be deleted
       println!("Skipping currently checked-out branch: {}", branch_name);
@@ -95,9 +97,7 @@ impl Args {
       let commit = branch
         .get()
         .peel_to_commit()
-        .with_context(|| format!("Failed to get commit pointed to by {}", branch_name))?
-        .id()
-        .to_string();
+        .with_context(|| format!("Failed to get commit pointed to by {}", branch_name))?;
 
       branch
         .delete()
@@ -107,7 +107,7 @@ impl Args {
         "{} {} {}",
         style("Deleted").red(),
         branch_name,
-        &style(&format!("(was {})", &commit[..7])).dim()
+        &style(&format!("(was {})", &trim_hash(&commit.id()))).dim()
       );
 
       // git2 can't remove entire config sections, but git provides a command to do so

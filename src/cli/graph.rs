@@ -4,8 +4,9 @@ use std::str::Lines;
 use anyhow::{Context, Result};
 use console::{style, truncate_str};
 
-use crate::cli::{Cli, get_term_width, paginate};
+use crate::cli::Cli;
 use crate::git;
+use crate::util::term::{get_term_width, paginate};
 
 const LONG_ABOUT: &str = r"View a graph of commits.
 

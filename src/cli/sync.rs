@@ -1,9 +1,11 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{BranchType, FetchOptions, ObjectType, Repository, Status, StatusOptions};
+use git2::{FetchOptions, ObjectType, Repository, Status, StatusOptions};
 
-use crate::cli::{Cli, fetch_all, get_current_branch, get_remote_callbacks};
-use crate::{lossy, open_repo};
+use crate::cli::Cli;
+use crate::open_repo;
+use crate::util::branch::{branch_to_name, fetch_all, get_current_branch_name, name_to_branch};
+use crate::util::get_remote_callbacks;
 
 pub const LONG_ABOUT: &str = r"Updates all base branches with their remotes.
 
@@ -14,7 +16,7 @@ pub fn run(cli: &Cli) -> Result<()> {
   let repo = open_repo!();
   fetch_all(&repo)?;
 
-  let current_branch = get_current_branch(&repo).context("Failed to get current branch")?;
+  let current_branch = get_current_branch_name(&repo).context("Failed to get current branch")?;
   let bases = &cli.config.bases;
 
   let mut opts = FetchOptions::new();
@@ -55,9 +57,9 @@ pub fn run(cli: &Cli) -> Result<()> {
 /// Merges a branch with its upstream if it can be fast-forwarded. Set `current` to true when
 /// fast-forwarding the currently checked-out branch.
 fn fast_forward(repo: &Repository, branch_name: &str, current: bool) -> Result<()> {
-  let branch = repo.find_branch(branch_name, BranchType::Local)?;
+  let branch = name_to_branch(repo, branch_name)?;
   let upstream = branch.upstream()?;
-  let upstream_name = lossy!(upstream.name_bytes()?);
+  let upstream_name = branch_to_name(&upstream)?;
 
   let branch_tip = branch.get().peel_to_commit()?;
   let upstream_tip = upstream.get().peel_to_commit()?;

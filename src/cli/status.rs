@@ -1,12 +1,14 @@
 use std::borrow::Cow;
 
 use anyhow::{Context, Result};
-use console::{Term, style, truncate_str};
+use console::{style, truncate_str};
 use git2::{DiffOptions, ErrorCode};
 
-use crate::cli::diff::display_diff_summary;
-use crate::cli::{Cli, get_term_width};
-use crate::{lossy, open_repo};
+use crate::cli::Cli;
+use crate::util::branch::{branch_to_name, get_ahead_behind, get_upstream, name_to_branch};
+use crate::util::display::{display_diff_summary, display_hash, display_plus_minus};
+use crate::util::term::{get_term_width, is_term};
+use crate::{data, lossy, open_repo};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -40,20 +42,24 @@ impl Args {
       .peel_to_commit()
       .context("Failed to get commit at HEAD")?;
 
+    let branch_name;
+
     out.push_str(&format!(
       "{} -> {}",
       if head.is_branch() {
-        style(lossy!(head.shorthand_bytes())).blue()
+        branch_name = Some(lossy!(head.shorthand_bytes()));
+        style(lossy!(head.shorthand_bytes())).green()
       } else {
+        branch_name = None;
         style(Cow::Borrowed("Detached HEAD")).red()
       },
-      style(&commit.id().to_string()[..7]).yellow()
+      display_hash(&commit.id())
     ));
 
     // commit message
     if let Some(it) = commit.summary_bytes() {
       let msg = lossy!(it);
-      let line = if Term::stdout().is_term() {
+      let line = if is_term() {
         truncate_str(&msg, get_term_width(), &style("\u{2026}").dim().to_string())
       } else {
         msg
@@ -65,7 +71,7 @@ impl Args {
     // end first line
     println!(
       "{}",
-      if Term::stdout().is_term() {
+      if is_term() {
         truncate_str(&out, get_term_width(), &style("\u{2026}").dim().to_string())
       } else {
         Cow::Borrowed(&*out)

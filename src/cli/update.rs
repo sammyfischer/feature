@@ -5,7 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{ErrorCode, Rebase, Repository};
 
-use crate::cli::get_current_branch;
+use crate::util::branch::get_current_branch_name;
 use crate::{data, open_repo};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
@@ -84,7 +84,7 @@ impl Args {
     }
 
     let config = data::git_config(&repo)?;
-    let branch_name = get_current_branch(&repo)?;
+    let branch_name = get_current_branch_name(&repo)?;
 
     let base_name = match &self.base {
       Some(it) => it.clone(),

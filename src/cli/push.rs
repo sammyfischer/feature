@@ -2,7 +2,9 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{ErrorCode, PushOptions};
 
-use crate::cli::{Cli, get_current_branch, get_remote_callbacks};
+use crate::cli::Cli;
+use crate::util::branch::get_current_branch_name;
+use crate::util::get_remote_callbacks;
 use crate::{lossy, open_repo};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -24,7 +26,7 @@ pub struct Args {
 impl Args {
   pub fn run(&self, cli: &Cli) -> Result<()> {
     let repo = open_repo!();
-    let branch_name = get_current_branch(&repo)?;
+    let branch_name = get_current_branch_name(&repo)?;
 
     // allow pushing bases, but as fast-forward only. the remote can still choose to reject
     if cli.config.bases.contains(&branch_name) && self.force {

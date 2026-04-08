@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result, anyhow};
 
-use crate::cli::get_current_branch;
+use crate::util::branch::{get_current_branch_name, get_upstream, name_to_branch};
 use crate::{data, open_repo};
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
@@ -27,25 +27,28 @@ impl Args {
     let repo = open_repo!();
     let mut config = data::git_config(&repo)?;
 
-    let branch_name = self.branch.clone().unwrap_or(get_current_branch(&repo)?);
+    let branch_name = match &self.branch {
+      Some(it) => it,
+      None => &get_current_branch_name(&repo)?,
+    };
 
-    let base = repo
-      .find_branch(&self.base, git2::BranchType::Local)
-      .context("Failed to get reference to base branch")?;
+    let base = name_to_branch(&repo, &self.base)
+      .with_context(|| format!("Failed to get base branch {}", &self.base))?;
 
     let feature_base_name = {
       // we want the upstream of the base, e.g. refs/remotes/origin/main
-      let base_upstream = base.upstream();
+      let base_upstream = get_upstream(&base)
+        .with_context(|| format!("Failed to check if {} has an upstream", &self.base))?;
 
       match base_upstream {
-        Ok(it) => it
+        Some(it) => it
           .get()
           .name()
           .ok_or(anyhow!("Failed to get upstream name of base branch"))?
           .to_string(),
 
         // if there is no upstream, we can just use the actual base branch
-        Err(_) => base
+        None => base
           .get()
           .name()
           .ok_or(anyhow!("Failed to get full name of base branch"))?
@@ -53,7 +56,7 @@ impl Args {
       }
     };
 
-    data::set_feature_base(&mut config, &branch_name, &feature_base_name)?;
+    data::set_feature_base(&mut config, branch_name, &feature_base_name)?;
 
     Ok(())
   }

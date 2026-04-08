@@ -4,9 +4,11 @@ use anyhow::{Result, anyhow};
 use console::style;
 use git2::{ErrorCode, Repository};
 
-use crate::cli::{Cli, get_current_branch, get_current_commit};
+use crate::cli::Cli;
 use crate::config::Config;
 use crate::templater::{LongVar, ShortVar, Templater};
+use crate::util::branch::get_current_branch_name;
+use crate::util::get_current_commit;
 use crate::{data, open_repo};
 
 const LONG_ABOUT: &str = r"Creates and switches to a new branch.
@@ -54,7 +56,7 @@ impl Args {
   pub fn run(&self, cli: &Cli) -> Result<()> {
     let repo = open_repo!();
 
-    let base_name = get_current_branch(&repo)?;
+    let base_name = get_current_branch_name(&repo)?;
     if !cli.config.bases.contains(&base_name) {
       return Err(anyhow!(NOT_ON_BASE_MSG));
     }

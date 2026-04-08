@@ -7,8 +7,9 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
-use crate::cli::diff::display_diff_summary;
-use crate::cli::{get_current_branch, get_current_commit};
+use crate::util::branch::get_current_branch_name;
+use crate::util::display::{display_diff_summary, trim_hash};
+use crate::util::get_current_commit;
 use crate::{lossy, open_repo};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
@@ -175,12 +176,12 @@ impl Args {
         " {}",
         if self.amend {
           let old = match &old_id {
-            Some(it) => &it.to_string()[..7],
+            Some(it) => &trim_hash(it),
             None => "unknown",
           };
-          format!("{} -> {}", old, &new_id.to_string()[..7])
+          format!("{} -> {}", old, trim_hash(new_id))
         } else {
-          new_id.to_string()[..7].to_string()
+          trim_hash(new_id).to_string()
         }
       ))
       .yellow()
@@ -188,7 +189,7 @@ impl Args {
     );
 
     // branch
-    out.push_str(&format!(" on {}", match get_current_branch(repo) {
+    out.push_str(&format!(" on {}", match get_current_branch_name(repo) {
       Ok(it) => style(it).blue().to_string(),
       Err(_) => style("unknown").red().to_string(),
     }));
