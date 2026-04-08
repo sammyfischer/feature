@@ -1,11 +1,17 @@
 use std::borrow::Cow;
 
 use anyhow::{Context, Result};
-use console::{style, truncate_str};
+use console::{measure_text_width, pad_str, style, truncate_str};
 use git2::{DiffOptions, ErrorCode};
 
 use crate::cli::Cli;
-use crate::util::branch::{branch_to_name, get_ahead_behind, get_upstream, name_to_branch};
+use crate::util::branch::{
+  branch_to_name,
+  get_ahead_behind,
+  get_upstream,
+  name_to_branch,
+  name_to_remote_branch,
+};
 use crate::util::display::{display_diff_summary, display_hash, display_plus_minus};
 use crate::util::term::{get_term_width, is_term};
 use crate::{data, lossy, open_repo};
@@ -77,6 +83,64 @@ impl Args {
         Cow::Borrowed(&*out)
       }
     );
+
+    // upstream and base ahead/behind
+    if head.is_branch() {
+      let branch_name =
+        branch_name.context("Branch name should exist when HEAD is not detached")?;
+      let branch = name_to_branch(&repo, &branch_name)?;
+
+      let mut rows: Vec<[String; 2]> = Vec::new();
+      let mut label_width = 0usize;
+
+      let upstream = get_upstream(&branch)?;
+      if let Some(upstream) = upstream {
+        let upstream_name = branch_to_name(&upstream)?;
+        let (a, b) = get_ahead_behind(&repo, &branch, &upstream)
+          .context("Failed to get ahead/behind for upstream")?;
+
+        let row = [
+          style("Upstream").blue().to_string(),
+          format!(
+            "{}{} {}{}",
+            style("[").dim(),
+            style(&upstream_name),
+            display_plus_minus(a, b),
+            style("]").dim(),
+          ),
+        ];
+        label_width = measure_text_width(&row[0]);
+        rows.push(row);
+      }
+
+      let base_name = data::get_short_feature_base(&data::git_config(&repo)?, &branch_name);
+      if let Some(base_name) = base_name {
+        let base = name_to_remote_branch(&repo, &base_name)?;
+        let (a, b) =
+          get_ahead_behind(&repo, &branch, &base).context("Failed to get ahead/behind for base")?;
+
+        let row = [
+          style("Base").magenta().to_string(),
+          format!(
+            "{}{} {}{}",
+            style("[").dim(),
+            style(&base_name),
+            display_plus_minus(a, b),
+            style("]").dim(),
+          ),
+        ];
+        label_width = label_width.max(measure_text_width(&row[0]));
+        rows.push(row);
+      }
+
+      for row in rows {
+        println!(
+          "  {} {}",
+          pad_str(&row[0], label_width, console::Alignment::Left, None),
+          &row[1]
+        );
+      }
+    }
 
     // signature/author info
     println!("{}", match repo.signature() {

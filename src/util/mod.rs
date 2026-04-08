@@ -1,3 +1,5 @@
+//! Helper functions that may be found useful in many places
+
 use anyhow::{Context, Result};
 use git2::{Commit, Cred, CredentialType, ErrorCode, RemoteCallbacks, Repository};
 

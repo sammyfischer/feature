@@ -1,3 +1,5 @@
+//! Helper functions pertaining to branches
+
 use std::borrow::Cow;
 
 use anyhow::{Context, Result, anyhow};
@@ -13,6 +15,13 @@ pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
 pub fn name_to_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Branch<'repo>> {
   let branch = repo
     .find_branch(name, BranchType::Local)
+    .with_context(|| format!("Failed to find branch named {}", name))?;
+  Ok(branch)
+}
+
+pub fn name_to_remote_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Branch<'repo>> {
+  let branch = repo
+    .find_branch(name, BranchType::Remote)
     .with_context(|| format!("Failed to find branch named {}", name))?;
   Ok(branch)
 }

@@ -56,9 +56,6 @@ Here's a summary of the feature workflow:
 ### Features
 
 - status
-  - show upstream ahead/behind (blue)
-  - show base ahead/behind (magenta)
-  - make branch name green (instead of blue)
   - show current worktree if applicable
   - submodules
 - list

@@ -1,3 +1,5 @@
+//! Helper functions pertaining to the terminal
+
 use std::io::Write;
 use std::process::{Command, Stdio};
 
