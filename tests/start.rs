@@ -17,8 +17,7 @@ fn start_creates_branch() {
     repo.feature(&args).success();
 
     // check current branch name
-    let cmd = repo.git(&["branch", "--show-current"]).success();
-    assert_eq!(get_stdout!(cmd).trim(), expected.to_string());
+    assert_eq!(repo.get_current_branch(), expected.to_string());
   }
 }
 
@@ -37,6 +36,36 @@ fn only_starts_on_base_branch() {
 
   repo.feature(&["start", "feature1"]).success();
   repo.feature(&["start", "feature2"]).failure();
+}
+
+/// If the user specifies `--from` as a valid base, then start should start from that branch
+#[test]
+fn starts_from_specified_base() {
+  let repo = TestRepo::new();
+  repo.write_file("a.txt", "A");
+  repo.commit_all("A");
+
+  repo.git(&["switch", "-c", "dev"]).success();
+  repo.write_file("b.txt", "B");
+  repo.commit_all("B");
+
+  repo
+    .feature(&["config", "append", "bases", "main", "dev"])
+    .success();
+
+  repo
+    .feature(&["start", "--from", "main", "main-feature"])
+    .success();
+
+  // check that main-feature started from main
+  assert_eq!(
+    repo.list_commit_subjects("main"),
+    repo.list_commit_subjects("main-feature"),
+    "main and main-feature should have the same commit history"
+  );
+
+  // double check that we are checked out to the right branch
+  assert_eq!(repo.get_current_branch(), "main-feature");
 }
 
 /// If the base branch has no upstream, feature should set it as the feature-base
@@ -82,15 +111,13 @@ branch = "%(user)%(sep)%(base)%(sep)%s"
     .feature(&["start", "--format=%(user)/%s", "--sep=-", "new", "branch"])
     .success();
 
-  let cmd = repo.git(&["branch", "--show-current"]).success();
-  assert_eq!(get_stdout!(cmd).trim(), "test/new-branch");
+  assert_eq!(repo.get_current_branch(), "test/new-branch");
 
   // with config file options
   repo.git(&["switch", "main"]).success();
   repo.feature(&["start", "new", "branch"]).success();
 
-  let cmd = repo.git(&["branch", "--show-current"]).success();
-  assert_eq!(get_stdout!(cmd).trim(), "test_main_new_branch");
+  assert_eq!(repo.get_current_branch(), "test_main_new_branch");
 }
 
 /// Tests more complex substitutions in the branch name template
@@ -115,8 +142,7 @@ fn advanced_custom_formats() {
       .feature(&["start", &format!("--format={}", template), "new", "branch"])
       .success();
 
-    let cmd = repo.git(&["branch", "--show-current"]).success();
-    assert_eq!(get_stdout!(cmd).trim(), expected.to_string());
+    assert_eq!(repo.get_current_branch(), expected.to_string());
     repo.git(&["switch", "main"]).success();
   }
 
