@@ -1,12 +1,8 @@
-//! Diff related functionality (not a subcommand)
-
-use std::borrow::Cow;
+//! Helper functions to display formatted strings
 
 use anyhow::{Context, Result};
 use console::style;
 use git2::{Delta, Diff, DiffLineType, Oid};
-
-use crate::lossy;
 
 macro_rules! delta_filename {
   ($delta:ident, $file:ident) => {
@@ -19,8 +15,8 @@ macro_rules! delta_filename {
   };
 }
 
-pub fn trim_hash(id: &Oid) -> Cow<'_, str> {
-  lossy!(&id.as_bytes()[..7])
+pub fn trim_hash(id: &Oid) -> String {
+  id.to_string()[..7].to_string()
 }
 
 pub fn display_hash(id: &Oid) -> String {
@@ -40,14 +36,16 @@ pub fn display_diff_summary(diff: Diff) -> Result<String> {
 
   // summary
   out.push_str(&format!(
-    "{} {} changed [{}]\n",
+    "{} {} changed {}{}{}\n",
     style(stats.files_changed()).cyan(),
     if stats.files_changed() == 1 {
       "file"
     } else {
       "files"
     },
-    display_plus_minus(stats.insertions(), stats.deletions())
+    style("[").dim(),
+    display_plus_minus(stats.insertions(), stats.deletions()),
+    style("]").dim()
   ));
 
   // per-file info
