@@ -48,7 +48,6 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
-- remote `feature update --skip`, consider removing continue and abort since they don't do anything useful
 - support non-utf8 strings with lossy conversions
 
 ### Features
