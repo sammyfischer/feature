@@ -74,13 +74,12 @@ pub enum Action {
   // ==== FEATURE BRANCH WORKFLOW / SINGLE BRANCH ACTIONS ====
   Start(start::Args),
   Commit(commit::Args),
+  Base(base::Args),
   Update(update::Args),
   Push(push::Args),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
-  #[command(about = "Syncs all base branches with their remotes", long_about = sync::LONG_ABOUT)]
-  Sync,
-
+  Sync(sync::Args),
   Prune(prune::Args),
 
   // ==== DISPLAY / INFO ====
@@ -95,8 +94,6 @@ pub enum Action {
     #[command(subcommand)]
     args: config_cmd::Args,
   },
-
-  Base(base::Args),
 }
 
 pub struct Cli {
@@ -115,16 +112,16 @@ impl Cli {
     match &self.args.action {
       Action::Start(args) => args.run(self),
       Action::Commit(args) => args.run(),
+      Action::Base(args) => args.run(),
       Action::Update(args) => args.run(),
       Action::Push(args) => args.run(self),
-      Action::Sync => sync::run(self),
+      Action::Sync(args) => args.run(self),
       Action::Prune(args) => args.run(self),
       Action::Status(args) => args.run(self),
       Action::List(args) => args.run(),
       Action::Log(args) => args.run(self),
       Action::Graph(args) => args.run(self),
       Action::Config { args } => args.run(),
-      Action::Base(args) => args.run(),
     }
   }
 }
