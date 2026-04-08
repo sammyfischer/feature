@@ -1,14 +1,18 @@
 //! Start subcommand
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{ErrorCode, Repository};
+use git2::Repository;
 
 use crate::cli::Cli;
 use crate::config::Config;
 use crate::templater::{LongVar, ShortVar, Templater};
-use crate::util::branch::get_current_branch_name;
-use crate::util::get_current_commit;
+use crate::util::branch::{
+  branch_to_commit,
+  get_current_branch_name,
+  get_upstream,
+  name_to_branch,
+};
 use crate::{data, open_repo};
 
 const LONG_ABOUT: &str = r"Creates and switches to a new branch.
@@ -18,7 +22,7 @@ doesn't already exist.
 Supports several custom formatting options that can be specified in the command
 line or config file.";
 
-const NOT_ON_BASE_MSG: &str = r"Must call start from a base branch. You can add a base branche with:
+const NOT_ON_BASE_MSG: &str = r"Must start from a base branch. You can add a base branch with:
 
 `feature config append bases <BRANCH_NAME>`";
 
@@ -35,6 +39,10 @@ const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Starts a new feature branch", long_about = LONG_ABOUT)]
 pub struct Args {
+  /// Display the branch name, after joining args and performing template replacements
+  #[arg(long)]
+  pub dry_run: bool,
+
   /// The separator to use when joining words
   #[arg(long)]
   pub sep: Option<String>,
@@ -43,9 +51,9 @@ pub struct Args {
   #[arg(long, visible_alias = "fmt", long_help = FORMAT_HELP_MSG)]
   pub format: Option<String>,
 
-  /// Just print the branch name, after joining args and performing template replacements
+  /// Which base branch to start from
   #[arg(long)]
-  pub dry_run: bool,
+  pub from: Option<String>,
 
   /// Words to join together as branch name
   #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
@@ -56,69 +64,58 @@ impl Args {
   pub fn run(&self, cli: &Cli) -> Result<()> {
     let repo = open_repo!();
 
-    let base_name = get_current_branch_name(&repo)?;
+    let base_name = self
+      .from
+      .as_ref()
+      .unwrap_or(&get_current_branch_name(&repo)?)
+      .clone();
     if !cli.config.bases.contains(&base_name) {
       return Err(anyhow!(NOT_ON_BASE_MSG));
     }
 
+    let base = name_to_branch(&repo, &base_name)?;
+
     let branch_name = self.build_branch_name(&repo, &cli.config, &base_name)?;
 
     if self.dry_run {
-      print_branch_message(&branch_name, &base_name);
+      display_branch_creation(&branch_name, &base_name);
       return Ok(());
     }
 
     // find commit to create branch on
-    let current_commit = get_current_commit(&repo)
-      .expect("Failed to find current commit")
-      .ok_or(anyhow!(EMPTY_REPO_MSG))?;
+    let start_commit = branch_to_commit(&base)?.context(EMPTY_REPO_MSG)?;
 
     // create branch
     let branch = repo
-      .branch(&branch_name, &current_commit, false)
-      .expect("Failed to create branch");
+      .branch(&branch_name, &start_commit, false)
+      .context("Failed to create branch")?;
 
-    print_branch_message(&branch_name, &base_name);
+    display_branch_creation(&branch_name, &base_name);
 
     // get tree to checkout
     let tree = branch
       .get()
       .peel_to_tree()
-      .expect("Failed to get branch as tree to checkout");
+      .context("Failed to get branch as tree to checkout")?;
 
     // checkout branch
     repo
       .checkout_tree(tree.as_object(), None)
-      .expect("Failed to switch to branch");
+      .context("Failed to switch to branch")?;
 
     // update HEAD
     repo
       .set_head(&format!("refs/heads/{}", branch_name))
-      .unwrap_or_else(|_| {
-        panic!(
-          "Failed to update HEAD to new branch {0}. Run: \
+      .context(format!(
+        "Failed to update HEAD to new branch {0}. Run: \
           \
           `git switch {0}`",
-          branch_name
-        )
-      });
-
-    // getting info to modify config
-    let base = repo
-      .find_branch(&base_name, git2::BranchType::Local)
-      .unwrap_or_else(|_| panic!("Failed to get reference to base branch {}", base_name));
+        branch_name
+      ))?;
 
     let feature_base_name = {
       // we want the upstream of the base, e.g. refs/remotes/origin/main
-      let base_upstream = match base.upstream() {
-        Ok(it) => Some(it),
-        Err(e) if e.code() == ErrorCode::NotFound => None,
-        Err(e) => {
-          return Err(
-            anyhow!(e).context(format!("Failed to check if {} has an upstream", base_name)),
-          );
-        }
-      };
+      let base_upstream = get_upstream(&base)?;
 
       match base_upstream {
         Some(it) => it
@@ -184,7 +181,7 @@ impl Args {
 }
 
 #[inline(always)]
-fn print_branch_message(branch_name: &str, base_name: &str) {
+fn display_branch_creation(branch_name: &str, base_name: &str) {
   println!(
     "{} {} {}",
     style("Created").green(),

@@ -140,6 +140,11 @@ impl TestRepo {
     self.git(&["commit", "-m", "initial commit"]).success();
   }
 
+  pub fn get_current_branch(&self) -> String {
+    let cmd = self.git(&["branch", "--show-current"]);
+    get_stdout!(cmd).trim().to_string()
+  }
+
   /// Gets a list of branches and their upstream tracking branch, via `git branch
   /// --format='%(refname) %(upstream)'`. The format looks like:
   ///

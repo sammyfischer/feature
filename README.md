@@ -48,9 +48,6 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
-- add `feature start --from` to start from a particular base
-- remote `feature update --skip`, consider removing continue and abort since they don't do anything useful
-- make `feature base <base> <branch>` look more like `feature base <base> --branch <branch>`, to avoid confusing positionals
 - support non-utf8 strings with lossy conversions
 
 ### Features

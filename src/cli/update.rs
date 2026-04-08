@@ -6,6 +6,7 @@ use console::style;
 use git2::{ErrorCode, Rebase, Repository};
 
 use crate::util::branch::get_current_branch_name;
+use crate::util::display::display_hash;
 use crate::{data, open_repo};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
@@ -20,7 +21,7 @@ const MERGE_CONFLICT_MSG: &str = r"Merge conflict encountered! To resolve, do th
 
 Alternatively, you can:
 `feature update -a` to abort the entire rebase
-`feature update -s` to skip the conflicting commit and continue";
+Use `git rebase` commands to control the rebase";
 
 const NO_BASE_MSG: &str = r"No base branch found. You can either:
 
@@ -30,8 +31,8 @@ Set the base branch permanently: `feature base <BASE_BRANCH>`";
 const COMMIT_FAILED_MSG: &str = r"Failed to apply commit. You can:
 
 `feature update -c` the rebase to try continuing
-`feature update -s` to skip applying this commit
-`feature update -a` to abort the rebase";
+`feature update -a` to abort the rebase
+Use `git rebase` commands to control the rebase";
 
 const NO_SIGNATURE_MSG: &str = r"Failed to get default commit signature. Try setting them in your git config:
 
@@ -68,10 +69,6 @@ impl Args {
 
     if self.r#continue {
       return self.rebase_continue(&repo);
-    }
-
-    if self.skip {
-      return self.rebase_skip(&repo);
     }
 
     if self.abort {
@@ -135,11 +132,11 @@ impl Args {
   /// Runs the given rebase until it finishes or encounters a conflict
   fn rebase(&self, repo: &Repository, rebase: &mut Rebase) -> Result<()> {
     while let Some(op) = rebase.next() {
-      op.context("Failed to get next rebase operation")?;
+      let id = op.context("Failed to get next rebase operation")?.id();
 
       let index = repo
         .index()
-        .expect("Failed to get index to build rebase commit on");
+        .context("Failed to get index to build rebase commit on")?;
 
       if index.has_conflicts() {
         println!("{}", MERGE_CONFLICT_MSG);
@@ -151,10 +148,12 @@ impl Args {
 
       rebase
         .commit(None, &signature, None)
-        .expect(COMMIT_FAILED_MSG);
+        .context(COMMIT_FAILED_MSG)?;
+
+      println!("{} commit {}", style("Applied").green(), display_hash(&id));
     }
 
-    rebase.finish(None).expect("Failed to finish rebase");
+    rebase.finish(None).context("Failed to finish rebase")?;
     Ok(())
   }
 
@@ -169,55 +168,8 @@ impl Args {
       return Ok(());
     }
 
-    let mut rebase = repo.open_rebase(None).expect("Failed to open rebase");
-
+    let mut rebase = repo.open_rebase(None).context("Failed to open rebase")?;
     self.rebase(repo, &mut rebase)
-  }
-
-  fn rebase_skip(&self, repo: &Repository) -> Result<()> {
-    if self.dry_run {
-      if self.is_rebase_active(repo)? {
-        println!("There is an active rebase, this command would skip the current commit")
-      } else {
-        println!("There is no active rebase, this command would fail")
-      }
-
-      return Ok(());
-    }
-
-    let mut rebase = repo.open_rebase(None).expect("Failed to open rebase");
-
-    // call next once to skip, forward any errors
-    if let Some(op) = rebase.next()
-      && let Err(e) = op
-      && e.code() != ErrorCode::Conflict
-    {
-      // propagate errors
-      return Err(anyhow!("Unknown error when rebasing: {}", e));
-    };
-
-    // for debugging, remove when skip is fixed:
-    // println!("Remaining operations:");
-    // for i in rebase.operation_current().unwrap()..rebase.len() {
-    //   let Some(op) = rebase.nth(i) else {
-    //     continue;
-    //   };
-    //   let cmd = match op.kind().unwrap() {
-    //     git2::RebaseOperationType::Pick => "pick",
-    //     git2::RebaseOperationType::Reword => "reword",
-    //     git2::RebaseOperationType::Edit => "edit",
-    //     git2::RebaseOperationType::Squash => "squash",
-    //     git2::RebaseOperationType::Fixup => "fixup",
-    //     git2::RebaseOperationType::Exec => "exec",
-    //   };
-    //   println!("{} {}", cmd, op.id());
-    // }
-
-    // finish the rebase
-    self.rebase(repo, &mut rebase)?;
-
-    // if no errors, exit successfully
-    Ok(())
   }
 
   /// Opens and aborts an existing rebase
@@ -231,9 +183,9 @@ impl Args {
       return Ok(());
     }
 
-    let mut rebase = repo.open_rebase(None).expect("Failed to open rebase");
-
-    rebase.abort().expect("Failed to abort rebase");
+    let mut rebase = repo.open_rebase(None).context("Failed to open rebase")?;
+    rebase.abort().context("Failed to abort rebase")?;
+    println!("{} rebase", style("Aborted").green());
     Ok(())
   }
 
@@ -246,12 +198,12 @@ impl Args {
     }
   }
 
-  /// Dumps remaining rebase steps into the git-rebase-todo. Allows the user to perform a `git
-  /// rebase --skip` after, which relies on this file.
+  /// Dumps remaining rebase steps into the git-rebase-todo. Allows the user to use native git
+  /// rebase commands.
   fn dump_rebase(&self, repo: &Repository, rebase: &mut Rebase) -> Result<()> {
     let current = rebase
       .operation_current()
-      .expect("No current rebase operation");
+      .expect("There should be a current rebase operation");
 
     let total = rebase.len();
     let mut buf = String::new();
@@ -273,17 +225,17 @@ impl Args {
 
     // git uses the git-rebase-todo file to continue an existing rebase
     let path = rebase_data_dir.join("git-rebase-todo");
-    fs::write(&path, &buf).expect("Failed to write remaining operations to file");
+    fs::write(&path, &buf).context("Failed to write remaining operations to file")?;
 
     // libgit2 uses a file called current which just stores the current oid
     let id = rebase
       .nth(current)
-      .expect("Failed to get current rebase operation")
+      .expect("There should be a current rebase operation")
       .id()
       .to_string();
 
     fs::write(rebase_data_dir.join("current"), id)
-      .expect("Failed to write current rebase operation to file");
+      .context("Failed to write current rebase operation to file")?;
 
     Ok(())
   }

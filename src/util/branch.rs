@@ -3,7 +3,16 @@
 use std::borrow::Cow;
 
 use anyhow::{Context, Result, anyhow};
-use git2::{AutotagOption, Branch, BranchType, ErrorCode, FetchOptions, FetchPrune, Repository};
+use git2::{
+  AutotagOption,
+  Branch,
+  BranchType,
+  Commit,
+  ErrorCode,
+  FetchOptions,
+  FetchPrune,
+  Repository,
+};
 
 use crate::lossy;
 use crate::util::get_remote_callbacks;
@@ -24,6 +33,17 @@ pub fn name_to_remote_branch<'repo>(repo: &'repo Repository, name: &str) -> Resu
     .find_branch(name, BranchType::Remote)
     .with_context(|| format!("Failed to find branch named {}", name))?;
   Ok(branch)
+}
+
+pub fn branch_to_commit<'repo>(branch: &Branch<'repo>) -> Result<Option<Commit<'repo>>> {
+  match branch.get().peel_to_commit() {
+    Ok(it) => Ok(Some(it)),
+    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
+    Err(e) => Err(anyhow!(e).context(format!(
+      "Failed to get commit at branch {}",
+      branch_to_name(branch).unwrap_or(Cow::Borrowed("<unknown>"))
+    ))),
+  }
 }
 
 pub fn get_upstream<'repo>(branch: &Branch<'repo>) -> Result<Option<Branch<'repo>>> {
