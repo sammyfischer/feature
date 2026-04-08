@@ -8,12 +8,18 @@ use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
 use crate::util::branch::get_current_branch_name;
-use crate::util::display::{display_diff_summary, trim_hash};
-use crate::util::get_current_commit;
+use crate::util::display::{display_diff_summary, display_signature, trim_hash};
+use crate::util::{get_current_commit, get_signature};
 use crate::{lossy, open_repo};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
+
+const NO_SIGN_MSG: &str = r"Could not find a default signature!
+
+You must specify author information in order to commit:
+git config user.name <name>
+git config user.email <email>";
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Commit staged changes")]
@@ -39,11 +45,7 @@ impl Args {
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;
     let commit_tree = current_commit.as_ref().and_then(|it| it.tree().ok());
-
-    let signature = repo
-      .signature()
-      .expect("Failed to get default commit signature");
-
+    let signature = get_signature(&repo)?.ok_or(anyhow!(NO_SIGN_MSG))?;
     let mut index = repo.index().context("Failed to get staged changes")?;
 
     let staged_diff = repo
@@ -60,8 +62,10 @@ impl Args {
       ));
     }
 
-    let tree_id = index.write_tree().expect("Failed to get index tree id");
-    let tree = repo.find_tree(tree_id).expect("Failed to get index tree");
+    let tree_id = index.write_tree().context("Failed to get index tree")?;
+    let tree = repo
+      .find_tree(tree_id)
+      .context("Failed to get index tree")?;
 
     // all the info needed for amend
     if self.amend {
@@ -79,7 +83,7 @@ impl Args {
         )
         .expect("Failed to amend commit");
 
-      self.print_output(&repo, Some(&current_commit.id()), &new_id, &signature, &msg)?;
+      self.display_commit(&repo, Some(&current_commit.id()), &new_id, &signature, &msg)?;
       return Ok(());
     }
 
@@ -105,7 +109,7 @@ impl Args {
       )
       .expect("Failed to commit");
 
-    self.print_output(&repo, old_id.as_ref(), &new_id, &signature, &msg)?;
+    self.display_commit(&repo, old_id.as_ref(), &new_id, &signature, &msg)?;
     Ok(())
   }
 
@@ -152,7 +156,7 @@ impl Args {
   /// - `signature` - The signature used on the commit
   /// - `msg` - The commit message, which may be empty for amends
   /// - `amend` - Whether or not the commit was an amend
-  fn print_output(
+  fn display_commit(
     &self,
     repo: &Repository,
     old_id: Option<&Oid>,
@@ -195,21 +199,7 @@ impl Args {
     }));
 
     // signature
-    out.push_str(&format!(
-      " as {} {}",
-      style(
-        signature
-          .name()
-          .expect("Default signature name should be valid utf-8")
-      )
-      .cyan(),
-      style(
-        signature
-          .email()
-          .expect("Default signature email should be valid utf-8")
-      )
-      .dim()
-    ));
+    out.push_str(&format!(" as {}", display_signature(Some(signature))));
 
     out.push('\n');
 
