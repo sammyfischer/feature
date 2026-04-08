@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{BranchType, Repository};
+use git2::{BranchType, Oid, Repository};
 
 use crate::cli::Cli;
 use crate::util::branch::{fetch_all, get_all_branch_names, get_current_branch_name};
@@ -20,6 +20,7 @@ base contains the branch's commit history already).";
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Deletes merged feature branches", long_about = LONG_ABOUT)]
 pub struct Args {
+  /// Display output but don't delete any branches. Will still fetch all remotes.
   #[arg(long)]
   dry_run: bool,
 }
@@ -29,98 +30,111 @@ impl Args {
     let repo = open_repo!();
     fetch_all(&repo)?;
 
-    // get list of all branches
-    let branches = get_all_branch_names(&repo)?;
-
     if self.dry_run {
-      println!("Deletion candidates:")
-    }
-
-    for branch_name in branches {
-      if let Err(e) = self.safe_delete_branch(cli, &repo, &branch_name) {
-        eprintln!("{}", e);
-      }
-    }
-
-    Ok(())
-  }
-
-  /// Deletes a branch if:
-  /// - it's not a base branch
-  /// - it's not a protected branch
-  /// - it's not the current branch
-  /// - it's changes are merged into its base
-  fn safe_delete_branch(&self, cli: &Cli, repo: &Repository, branch_name: &String) -> Result<()> {
-    // skip base branches
-    if cli.config.bases.contains(branch_name) {
-      return Ok(());
-    }
-
-    // skip other protected branches
-    if cli.config.protect.contains(branch_name) {
-      return Ok(());
-    }
-
-    // skip current branch
-    if &get_current_branch_name(repo).context("Failed to get current branch")? == branch_name {
-      // not necessarily an error, but the user should know that a non-base non-protected branch was
-      // skipped and may manually need to be deleted
-      println!("Skipping currently checked-out branch: {}", branch_name);
-      return Ok(());
-    }
-
-    let config = repo.config().context("Failed to get git config")?;
-
-    // find base branch from db, else skip
-    let base_name = data::get_feature_base(&config, branch_name)
-      .context("Cannot prune branches without a base")?;
-
-    // detect if branch is merged (i.e. has no commits that aren't on its base)
-    let is_merged = is_merged(repo, branch_name, &base_name).with_context(|| {
-      format!(
-        "Failed to determine if {} is merged into {}",
-        branch_name, base_name
-      )
-    })?;
-
-    if is_merged {
-      // in dry-run mode, print the branch name but don't delete
-      if self.dry_run {
-        println!("{}", branch_name);
-        return Ok(());
-      }
-
-      let mut branch = repo
-        .find_branch(branch_name, BranchType::Local)
-        .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
-
-      let commit = branch
-        .get()
-        .peel_to_commit()
-        .with_context(|| format!("Failed to get commit pointed to by {}", branch_name))?;
-
-      branch
-        .delete()
-        .with_context(|| format!("Failed to delete branch {}", branch_name))?;
-
       println!(
-        "{} {} {}",
-        style("Deleted").red(),
-        branch_name,
-        &style(&format!("(was {})", &trim_hash(&commit.id()))).dim()
+        "{}",
+        style("Running in dry-run mode, nothing will be deleted").dim()
       );
-
-      // git2 can't remove entire config sections, but git provides a command to do so
-      let key = format!("branch.{}", branch_name);
-      let mut child = git!("config", "--remove-section", key)
-        .spawn()
-        .context("Failed to call git")?;
-
-      await_child!(child, "Git")?;
     }
 
-    Ok(())
+    prune_branches(cli, &repo, self.dry_run)
   }
+}
+
+pub fn prune_branches(cli: &Cli, repo: &Repository, dry_run: bool) -> Result<()> {
+  let branches = get_all_branch_names(repo)?;
+
+  for branch_name in branches {
+    if let Err(e) = safe_delete_branch(cli, repo, &branch_name, dry_run) {
+      eprintln!("{}", e);
+    }
+  }
+
+  Ok(())
+}
+
+/// Deletes a branch if:
+/// - it's not a base branch
+/// - it's not a protected branch
+/// - it's not the current branch
+/// - it's changes are merged into its base
+fn safe_delete_branch(
+  cli: &Cli,
+  repo: &Repository,
+  branch_name: &String,
+  dry_run: bool,
+) -> Result<()> {
+  // skip base branches
+  if cli.config.bases.contains(branch_name) {
+    return Ok(());
+  }
+
+  // skip other protected branches
+  if cli.config.protect.contains(branch_name) {
+    return Ok(());
+  }
+
+  // skip current branch
+  if &get_current_branch_name(repo).context("Failed to get current branch")? == branch_name {
+    // not necessarily an error, but the user should know that a non-base non-protected branch was
+    // skipped and may manually need to be deleted
+    println!(
+      "{}",
+      style(format!(
+        "Skipping currently checked-out branch: {}",
+        branch_name
+      ))
+      .dim()
+    );
+    return Ok(());
+  }
+
+  let config = repo.config().context("Failed to get git config")?;
+
+  // find base branch from db, else skip
+  let base_name =
+    data::get_feature_base(&config, branch_name).context("Cannot prune branches without a base")?;
+
+  // detect if branch is merged (i.e. has no commits that aren't on its base)
+  let is_merged = is_merged(repo, branch_name, &base_name).with_context(|| {
+    format!(
+      "Failed to determine if {} is merged into {}",
+      branch_name, base_name
+    )
+  })?;
+
+  if is_merged {
+    let mut branch = repo
+      .find_branch(branch_name, BranchType::Local)
+      .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
+
+    let commit = branch
+      .get()
+      .peel_to_commit()
+      .with_context(|| format!("Failed to get commit pointed to by {}", branch_name))?;
+
+    // in dry-run mode, display output but don't delete
+    if dry_run {
+      display_deletion(branch_name, &commit.id());
+      return Ok(());
+    }
+
+    branch
+      .delete()
+      .with_context(|| format!("Failed to delete branch {}", branch_name))?;
+
+    display_deletion(branch_name, &commit.id());
+
+    // git2 can't remove entire config sections, but git provides a command to do so
+    let key = format!("branch.{}", branch_name);
+    let mut child = git!("config", "--remove-section", key)
+      .spawn()
+      .context("Failed to call git")?;
+
+    await_child!(child, "Git")?;
+  }
+
+  Ok(())
 }
 
 /// Whether branch is merged into base. A branch is considered merged if:
@@ -140,4 +154,13 @@ fn is_merged(repo: &Repository, branch_name: &str, base_name: &str) -> Result<bo
   // whether branch is a descendant of base. if it is, then there are newer unmerged commits
   let is_descendant = repo.graph_descendant_of(branch_commit, base_commit)?;
   Ok(!is_descendant)
+}
+
+fn display_deletion(branch_name: &str, commit_id: &Oid) {
+  println!(
+    "{} {} {}",
+    style("Deleted").red(),
+    branch_name,
+    &style(&format!("(was {})", &trim_hash(commit_id))).dim()
+  );
 }

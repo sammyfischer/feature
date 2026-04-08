@@ -7,7 +7,7 @@ use crate::util::branch::{
   get_ahead_behind,
   get_current_branch_name,
   get_upstream,
-  name_to_branch,
+  name_to_remote_branch,
 };
 use crate::util::display::{display_plus_minus, trim_hash};
 use crate::util::term::{get_term_width, is_term};
@@ -285,7 +285,7 @@ impl Args {
     if let Some(base_name) = base_name {
       row.base = base_name.clone();
 
-      let base = name_to_branch(repo, &base_name)
+      let base = name_to_remote_branch(repo, &base_name)
         .with_context(|| format!("Failed to get reference to base branch {}", base_name))?;
 
       let (a, b) = get_ahead_behind(repo, branch, &base).with_context(|| {

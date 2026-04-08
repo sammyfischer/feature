@@ -39,7 +39,7 @@ fn updates_all_bases() {
     local2.feature(&["push"]).success();
   }
 
-  local.feature(&["sync"]);
+  local.feature(&["sync"]).success();
 
   for branch in bases {
     assert_eq!(
@@ -63,11 +63,33 @@ fn updates_current_branch() {
   local2.commit_all("B");
   local2.feature(&["push"]).success();
 
-  local.feature(&["sync"]);
+  local.feature(&["sync"]).success();
 
   assert_eq!(
     local.list_commit_subjects("main"),
     "B\nA",
     "Currently checked-out base should be updated"
+  );
+}
+
+/// Dry run should not update any branches
+#[test]
+fn dry_run_doesnt_update() {
+  let (local, remote) = TestRepo::new_with_remote();
+  local.write_file("A.txt", "A");
+  local.commit_all("A");
+  local.feature(&["push"]).success();
+
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file("B.txt", "B");
+  local2.commit_all("B");
+  local2.feature(&["push"]).success();
+
+  local.feature(&["sync", "--dry-run"]).success();
+
+  assert_eq!(
+    local.list_commit_subjects("main"),
+    "A",
+    "Main should not be updated"
   );
 }

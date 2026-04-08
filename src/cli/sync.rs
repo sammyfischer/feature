@@ -1,62 +1,86 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{FetchOptions, ObjectType, Repository, Status, StatusOptions};
+use git2::{FetchOptions, ObjectType, Oid, Repository, Status, StatusOptions};
 
 use crate::cli::Cli;
+use crate::cli::prune::prune_branches;
 use crate::open_repo;
 use crate::util::branch::{branch_to_name, fetch_all, get_current_branch_name, name_to_branch};
 use crate::util::get_remote_callbacks;
 
-pub const LONG_ABOUT: &str = r"Updates all base branches with their remotes.
+const LONG_ABOUT: &str = r"Updates all base branches with their remotes, then prunes merged feature
+branches.
 
-Fast-forwards local branches (e.g. refs/heads/*) and force-updates remotes
-(e.g. refs/remotes/origin/*).";
+Base branches are fast-forwarded, meaning they may fail to update if their
+history is diverged from upstream. That must be resolved manually.";
 
-pub fn run(cli: &Cli) -> Result<()> {
-  let repo = open_repo!();
-  fetch_all(&repo)?;
+#[derive(clap::Args, Clone, Debug)]
+#[command(about = "Syncs all base branches with their remotes", long_about = LONG_ABOUT)]
+pub struct Args {
+  /// Display output but don't modify any branches. Will still fetch all remotes.
+  #[arg(long)]
+  pub dry_run: bool,
 
-  let current_branch = get_current_branch_name(&repo).context("Failed to get current branch")?;
-  let bases = &cli.config.bases;
+  /// Don't prune after updating
+  #[arg(long)]
+  pub no_prune: bool,
+}
 
-  let mut opts = FetchOptions::new();
-  opts.remote_callbacks(get_remote_callbacks());
+impl Args {
+  pub fn run(&self, cli: &Cli) -> Result<()> {
+    let repo = open_repo!();
+    fetch_all(&repo)?;
 
-  for branch_name in bases {
-    let is_current = branch_name == &current_branch;
-    if is_current {
-      // check for local changes
-      if has_local_changes(&repo)? {
-        eprintln!(
-          r"Cannot update {} with uncommitted changes. You resolve this by:
+    if self.dry_run {
+      println!(
+        "{}",
+        style("Running in dry-run mode, no branches will be updated or deleted").dim()
+      );
+    }
 
-1. Stashing changes
-  git stash push <message>
+    let current_branch = get_current_branch_name(&repo).context("Failed to get current branch")?;
+    let bases = &cli.config.bases;
+
+    let mut opts = FetchOptions::new();
+    opts.remote_callbacks(get_remote_callbacks());
+
+    for branch_name in bases {
+      let is_current = branch_name == &current_branch;
+      if is_current {
+        // check for local changes
+        if has_local_changes(&repo)? {
+          eprintln!(
+            r"Cannot update {} with uncommitted changes. You resolve this by:
+
+1. Stashing the changes
+  git stash push -m <message>
   feature sync or git pull
 
-2. Resetting and discarding the changes
+2. Discarding the changes
   git reset --hard <upstream_name>
 ",
-          branch_name
-        );
+            branch_name
+          );
+          continue;
+        }
+      }
+
+      if let Err(e) = fast_forward(&repo, branch_name, is_current, self.dry_run) {
+        eprintln!("Failed to update: {}", e);
         continue;
       }
     }
 
-    if let Err(e) = fast_forward(&repo, branch_name, is_current) {
-      eprintln!("Failed to update: {}", e);
-      continue;
+    if !self.no_prune {
+      prune_branches(cli, &repo, self.dry_run)?;
     }
-
-    println!("{} {}", style("Updated").green(), branch_name);
+    Ok(())
   }
-
-  Ok(())
 }
 
 /// Merges a branch with its upstream if it can be fast-forwarded. Set `current` to true when
 /// fast-forwarding the currently checked-out branch.
-fn fast_forward(repo: &Repository, branch_name: &str, current: bool) -> Result<()> {
+fn fast_forward(repo: &Repository, branch_name: &str, current: bool, dry_run: bool) -> Result<()> {
   let branch = name_to_branch(repo, branch_name)?;
   let upstream = branch.upstream()?;
   let upstream_name = branch_to_name(&upstream)?;
@@ -91,6 +115,11 @@ project with others, or the branch has branch protections on the remote).",
     ));
   }
 
+  if dry_run {
+    display_update(branch_name, &branch_tip.id());
+    return Ok(());
+  }
+
   if current {
     // to update the current branch, we also need to update HEAD. this is just a hard reset
     let obj = repo.find_object(upstream_tip.id(), Some(ObjectType::Commit))?;
@@ -102,6 +131,7 @@ project with others, or the branch has branch protections on the remote).",
       .set_target(upstream_tip.id(), "feature sync fast-forward")?;
   }
 
+  display_update(branch_name, &branch_tip.id());
   Ok(())
 }
 
@@ -134,4 +164,13 @@ fn has_local_changes(repo: &Repository) -> Result<bool> {
   }
 
   Ok(false)
+}
+
+fn display_update(branch_name: &str, commit_id: &Oid) {
+  println!(
+    "{} {} {}",
+    style("Updated").green(),
+    branch_name,
+    style(format!("(was {})", commit_id)).dim()
+  );
 }
