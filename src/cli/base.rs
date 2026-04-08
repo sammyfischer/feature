@@ -19,6 +19,7 @@ pub struct Args {
   base: String,
 
   /// The name of the branch whose base is being set. Defaults to current branch
+  #[arg(long)]
   branch: Option<String>,
 }
 
