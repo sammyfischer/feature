@@ -194,7 +194,10 @@ impl Args {
 
     // branch
     out.push_str(&format!(" on {}", match get_current_branch_name(repo) {
-      Ok(it) => style(it).blue().to_string(),
+      Ok(it) => match it {
+        Some(name) => style(name).blue().to_string(),
+        None => style("unknown").red().to_string(),
+      },
       Err(_) => style("unknown").red().to_string(),
     }));
 
@@ -222,7 +225,7 @@ impl Args {
       .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
       .context("Failed to obtain commit changes")?;
 
-    let diff_out = match display_diff_summary(diff) {
+    let diff_out = match display_diff_summary(&diff) {
       Ok(it) => it,
       Err(_) => style("Failed to get commit changes").red().to_string(),
     };

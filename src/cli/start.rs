@@ -23,19 +23,22 @@ doesn't already exist.
 Supports several custom formatting options that can be specified in the command
 line or config file.";
 
-const NOT_ON_BASE_MSG: &str = r"Must start from a base branch. You can add a base branch with:
-
-`feature config append bases <BRANCH_NAME>`";
-
-const EMPTY_REPO_MSG: &str =
-  r"Cannot call start on an empty repository. Create at least one commit first.";
-
 const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
   %%      -> a literal '%'
   %(user) -> user.name found in git config
   %(base) -> base branch name
   %(sep)  -> the separator used to join WORDS
   %s      -> WORDS joined by the separator";
+
+const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a branch or specify one manually
+with the --from option.";
+
+const NOT_ON_BASE_MSG: &str = r"Must start from a base branch. You can add a base branch with:
+
+`feature config append bases <BRANCH_NAME>`";
+
+const EMPTY_REPO_MSG: &str =
+  r"Cannot call start on an empty repository. Create at least one commit first.";
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Starts a new feature branch", long_about = LONG_ABOUT)]
@@ -68,7 +71,7 @@ impl Args {
     let base_name = self
       .from
       .as_ref()
-      .unwrap_or(&get_current_branch_name(&repo)?)
+      .unwrap_or(&get_current_branch_name(&repo)?.context(NOT_ON_BRANCH_MSG)?)
       .clone();
     if !cli.config.bases.contains(&base_name) {
       return Err(anyhow!(NOT_ON_BASE_MSG));

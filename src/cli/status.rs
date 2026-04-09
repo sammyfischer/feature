@@ -169,7 +169,7 @@ impl Args {
     if stats.files_changed() != 0 {
       println!();
       print!("{} - ", style("Staged").green());
-      print!("{}", match display_diff_summary(diff) {
+      print!("{}", match display_diff_summary(&diff) {
         Ok(it) => it,
         Err(_) => "Failed to get summary of staged changes".to_string(),
       });
@@ -194,7 +194,7 @@ impl Args {
     if stats.files_changed() != 0 {
       println!();
       print!("{} - ", style("Unstaged").red());
-      print!("{}", match display_diff_summary(diff) {
+      print!("{}", match display_diff_summary(&diff) {
         Ok(it) => it,
         Err(_) => "Failed to get summary of unstaged changes".to_string(),
       });

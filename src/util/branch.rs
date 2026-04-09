@@ -63,14 +63,17 @@ pub fn get_upstream<'repo>(branch: &Branch<'repo>) -> Result<Option<Branch<'repo
   }
 }
 
-pub fn get_current_branch_name(repo: &Repository) -> Result<String> {
-  let head = repo.head()?;
+pub fn get_current_branch_name(repo: &Repository) -> Result<Option<String>> {
+  match get_head(repo)? {
+    Some(head) => {
+      if !head.is_branch() {
+        return Err(anyhow!("Not checked out to a branch"));
+      }
 
-  if !head.is_branch() {
-    return Err(anyhow!("Not checked out to a branch"));
+      Ok(Some(lossy!(head.shorthand_bytes()).to_string()))
+    }
+    None => Ok(None),
   }
-
-  Ok(lossy!(head.shorthand_bytes()).to_string())
 }
 
 pub fn get_all_branch_names(repo: &Repository) -> Result<Vec<String>> {

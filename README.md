@@ -52,6 +52,10 @@ Here's a summary of the feature workflow:
 
 ### Features
 
+- global flags
+  - `--git-dir`
+  - `--worktree`
+  - `--config` project config file location, not for user config
 - status
   - show current worktree if applicable
   - submodules
@@ -70,3 +74,12 @@ Here's a summary of the feature workflow:
 - mod (submodule commands)
   - sync/prune all modules
   - create a single branch in all modules for features whose work will span across them
+- worktree
+  - open an interactive menu to pick a branch and create a worktree from it
+  - or use specified branch in command line
+- diff
+  - interactive menu to select two things to diff (branch, commit, stash, etc.)
+  - summary mode, prints like status output (print patch by default)
+- reflog
+  - view reflog for a branch, select one to restore to that state
+- blame

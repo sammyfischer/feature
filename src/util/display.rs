@@ -45,7 +45,7 @@ pub fn display_signature(signature: Option<&Signature>) -> String {
 /// changed and total insertions/deletions.
 ///
 /// A newline is included at the end of the string, so you'll most often use this with [print!]
-pub fn display_diff_summary(diff: Diff) -> Result<String> {
+pub fn display_diff_summary(diff: &Diff) -> Result<String> {
   let mut out = String::new();
   let stats = diff.stats().context("Failed to get diff stats")?;
 

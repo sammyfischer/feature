@@ -26,7 +26,8 @@ pub struct Args {
 impl Args {
   pub fn run(&self, cli: &Cli) -> Result<()> {
     let repo = open_repo!();
-    let branch_name = get_current_branch_name(&repo)?;
+    let branch_name =
+      get_current_branch_name(&repo)?.context("Not currently on a branch! Nothing to push.")?;
 
     // allow pushing bases, but as fast-forward only. the remote can still choose to reject
     if cli.config.bases.contains(&branch_name) && self.force {

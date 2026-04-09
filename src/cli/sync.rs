@@ -46,7 +46,7 @@ impl Args {
     opts.remote_callbacks(get_remote_callbacks());
 
     for branch_name in bases {
-      let is_current = branch_name == &current_branch;
+      let is_current = current_branch.as_ref().is_some_and(|it| it == branch_name);
       if is_current {
         // check for local changes
         if has_local_changes(&repo)? {

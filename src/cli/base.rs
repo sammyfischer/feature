@@ -12,6 +12,9 @@ you use other tools you'll have to tell feature which one to use. Base branches
 can't be quickly or reliably determined, so you will have to specify it
 manually for some feature commands to work."#;
 
+const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a branch or specify one manually
+with the --branch option.";
+
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Tell feature which base another branch belongs to", long_about = LONG_ABOUT)]
 pub struct Args {
@@ -30,7 +33,7 @@ impl Args {
 
     let branch_name = match &self.branch {
       Some(it) => it,
-      None => &get_current_branch_name(&repo)?,
+      None => &get_current_branch_name(&repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
     let base = name_to_branch(&repo, &self.base)

@@ -140,7 +140,7 @@ impl Args {
       }
     }
 
-    let current = get_current_branch_name(&repo).ok();
+    let current = get_current_branch_name(&repo)?;
     let max_widths = Widths::max();
     let line_tail = style("\u{2026}").dim().to_string();
     let trunc_tail = "\u{2026}";

@@ -81,7 +81,8 @@ impl Args {
     }
 
     let config = data::git_config(&repo)?;
-    let branch_name = get_current_branch_name(&repo)?;
+    let branch_name =
+      get_current_branch_name(&repo)?.context("Not currently on a branch! Nothing to update.")?;
 
     let base_name = match &self.base {
       Some(it) => it.clone(),
