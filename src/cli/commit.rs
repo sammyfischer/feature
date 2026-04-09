@@ -44,23 +44,8 @@ impl Args {
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;
-    let commit_tree = current_commit.as_ref().and_then(|it| it.tree().ok());
     let signature = get_signature(&repo)?.ok_or(anyhow!(NO_SIGN_MSG))?;
     let mut index = repo.index().context("Failed to get staged changes")?;
-
-    let staged_diff = repo
-      .diff_tree_to_index(commit_tree.as_ref(), Some(&index), None)
-      .context("Failed to analyze staged changes")?;
-
-    let staged_stats = staged_diff
-      .stats()
-      .context("Failed to analyze staged changes")?;
-
-    if staged_stats.files_changed() == 0 {
-      return Err(anyhow!(
-        "Nothing to commit! Stage some changes with `git add ...`"
-      ));
-    }
 
     let tree_id = index.write_tree().context("Failed to get index tree")?;
     let tree = repo
@@ -85,6 +70,22 @@ impl Args {
 
       self.display_commit(&repo, Some(&current_commit.id()), &new_id, &signature, &msg)?;
       return Ok(());
+    }
+
+    let commit_tree = current_commit.as_ref().and_then(|it| it.tree().ok());
+
+    let staged_diff = repo
+      .diff_tree_to_index(commit_tree.as_ref(), Some(&index), None)
+      .context("Failed to analyze staged changes")?;
+
+    let staged_stats = staged_diff
+      .stats()
+      .context("Failed to analyze staged changes")?;
+
+    if staged_stats.files_changed() == 0 {
+      return Err(anyhow!(
+        r#"Nothing to commit! Stage some changes with "git add ...""#
+      ));
     }
 
     // not an amend, must specify a message
