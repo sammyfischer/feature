@@ -25,8 +25,8 @@ pub fn display_hash(id: &Oid) -> String {
   style(trim_hash(id)).yellow().to_string()
 }
 
-/// Displays the name in cyan, email in dim (gray), and "No signature" in red if there is no
-/// configured signature. Errors if any error (other than not having a signature) is encountered.
+/// Displays the name in cyan, email in dim (gray), and "no one" in red if there is no configured
+/// signature. Errors if any error (other than not having a signature) is encountered.
 pub fn display_signature(signature: Option<&Signature>) -> String {
   match signature {
     Some(it) => {
@@ -34,7 +34,7 @@ pub fn display_signature(signature: Option<&Signature>) -> String {
       let email = lossy!(it.email_bytes());
       format!("{} {}", style(name).cyan(), style(email).dim())
     }
-    None => style("No signature").red().to_string(),
+    None => style("no one").red().to_string(),
   }
 }
 

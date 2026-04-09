@@ -45,11 +45,11 @@ impl Args {
           .peel_to_commit()
           .context("Failed to get commit at HEAD")?;
 
-        // display branc name or detached head indicator
+        // display branch name or detached head indicator
         let display_branch = if head.is_branch() {
           let name = lossy!(head.shorthand_bytes()).to_string();
           branch_name = Some(name.clone());
-          style(&name).green().to_string()
+          format!("On {}", style(&name).green())
         } else {
           style("Detached HEAD").red().to_string()
         };
@@ -150,6 +150,7 @@ impl Args {
     // signature/author info
     println!("{}", display_signature(get_signature(&repo)?.as_ref()));
 
+    // get current tree to diff from
     let tree = match &head {
       Some(head) => {
         let commit = head.peel_to_commit()?;
