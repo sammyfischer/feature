@@ -50,10 +50,6 @@ pub struct Args {
   #[arg(short, long)]
   r#continue: bool,
 
-  /// Skip current patch
-  #[arg(short, long)]
-  skip: bool,
-
   /// Abort an active rebase
   #[arg(short, long)]
   abort: bool,

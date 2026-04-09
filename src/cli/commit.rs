@@ -232,7 +232,7 @@ impl Args {
 
     out.push('\n'); // double space
     out.push_str(&diff_out);
-    print!("{}", out);
+    println!("{}", out);
     Ok(())
   }
 }

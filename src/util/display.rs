@@ -38,20 +38,10 @@ pub fn display_signature(signature: Option<&Signature>) -> String {
   }
 }
 
-/// Builds a pretty output to summarize the changes of this diff.
-///
-/// This displays each file that was changed, what type of change it was (created, modified, etc.),
-/// and an insertion/deletion count. It also prints a summary line with the total number of files
-/// changed and total insertions/deletions.
-///
-/// A newline is included at the end of the string, so you'll most often use this with [print!]
-pub fn display_diff_summary(diff: &Diff) -> Result<String> {
-  let mut out = String::new();
+pub fn display_diff_summary_header(diff: &Diff) -> Result<String> {
   let stats = diff.stats().context("Failed to get diff stats")?;
-
-  // summary
-  out.push_str(&format!(
-    "{} {} changed {}{}{}\n",
+  Ok(format!(
+    "{} {} changed {}{}{}",
     style(stats.files_changed()).cyan(),
     if stats.files_changed() == 1 {
       "file"
@@ -61,7 +51,21 @@ pub fn display_diff_summary(diff: &Diff) -> Result<String> {
     style("[").dim(),
     display_plus_minus(stats.insertions(), stats.deletions()),
     style("]").dim()
-  ));
+  ))
+}
+
+/// Builds a pretty output to summarize the changes of this diff.
+///
+/// This displays each file that was changed, what type of change it was (created, modified, etc.),
+/// and an insertion/deletion count. It also prints a summary line with the total number of files
+/// changed and total insertions/deletions.
+///
+/// A newline is included at the end of the string, so you'll most often use this with [print!]
+pub fn display_diff_summary(diff: &Diff) -> Result<String> {
+  let mut out = String::new();
+
+  // summary
+  out.push_str(&display_diff_summary_header(diff)?);
 
   // per-file info
   struct FileChanges {
@@ -127,7 +131,7 @@ pub fn display_diff_summary(diff: &Diff) -> Result<String> {
 
   for file in &files {
     out.push_str(&format!(
-      "  {} {} {}\n",
+      "\n  {} {} {}",
       file.status,
       file.name,
       display_plus_minus(file.insertions, file.deletions),

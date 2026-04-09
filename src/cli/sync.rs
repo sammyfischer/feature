@@ -1,12 +1,12 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{FetchOptions, ObjectType, Oid, Repository, Status, StatusOptions};
+use git2::{Diff, FetchOptions, ObjectType, Oid, Repository, Status, StatusOptions};
 
 use crate::cli::Cli;
 use crate::cli::prune::prune_branches;
 use crate::open_repo;
 use crate::util::branch::{branch_to_name, fetch_all, get_current_branch_name, name_to_branch};
-use crate::util::display::trim_hash;
+use crate::util::display::{display_diff_summary_header, trim_hash};
 use crate::util::get_remote_callbacks;
 
 const LONG_ABOUT: &str = r"Updates all base branches with their remotes, then prunes merged feature
@@ -116,8 +116,14 @@ project with others, or the branch has branch protections on the remote).",
     ));
   }
 
+  let diff = repo.diff_tree_to_tree(
+    Some(&branch.get().peel_to_tree()?),
+    Some(&upstream.get().peel_to_tree()?),
+    None,
+  )?;
+
   if dry_run {
-    display_update(branch_name, &branch_tip.id());
+    display_update(branch_name, &diff, &branch_tip.id())?;
     return Ok(());
   }
 
@@ -132,7 +138,7 @@ project with others, or the branch has branch protections on the remote).",
       .set_target(upstream_tip.id(), "feature sync fast-forward")?;
   }
 
-  display_update(branch_name, &branch_tip.id());
+  display_update(branch_name, &diff, &branch_tip.id())?;
   Ok(())
 }
 
@@ -167,11 +173,13 @@ fn has_local_changes(repo: &Repository) -> Result<bool> {
   Ok(false)
 }
 
-fn display_update(branch_name: &str, commit_id: &Oid) {
+fn display_update(branch_name: &str, diff: &Diff, commit_id: &Oid) -> Result<()> {
   println!(
-    "{} {} {}",
+    "{} {} {} | {}",
     style("Updated").green(),
     branch_name,
-    style(format!("(was {})", trim_hash(commit_id))).dim()
+    style(format!("(was {})", trim_hash(commit_id))).dim(),
+    display_diff_summary_header(diff)?
   );
+  Ok(())
 }
