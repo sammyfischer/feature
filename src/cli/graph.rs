@@ -5,8 +5,8 @@ use anyhow::{Context, Result};
 use console::{style, truncate_str};
 
 use crate::cli::Cli;
-use crate::git;
 use crate::util::term::{get_term_width, paginate};
+use crate::{git, lossy};
 
 const LONG_ABOUT: &str = r"View a graph of commits.
 
@@ -47,7 +47,7 @@ impl Args {
     .output()
     .context("Failed to get git output")?;
 
-    let string_output = String::from_utf8(output.stdout).expect("Git output should be valid utf-8");
+    let string_output = lossy!(&output.stdout);
 
     // if stdout is not a terminal, just print and return
     if !std::io::stdout().is_terminal() {

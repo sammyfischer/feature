@@ -1,8 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use console::{Alignment, measure_text_width, pad_str, style, truncate_str};
 use git2::{Branch, Repository};
 
 use crate::util::branch::{
+  branch_to_commit,
   branch_to_name,
   get_ahead_behind,
   get_current_branch_name,
@@ -114,19 +115,20 @@ impl Args {
 
     // the width each column will be
     let mut col_widths = Row::header().widths();
-    col_widths.hash = 7; // every hash is 7 characters
 
     for (branch, _) in branches.flatten() {
       let row = self.build_branch_line(&repo, &branch);
       match row {
         Ok(row) => {
           let branch_width = row.branch.len();
+          let hash_width = row.hash.len();
           let upstream_width = row.upstream.len();
           let ab_upstream_width = measure_text_width(&row.ab_upstream);
           let base_width = row.base.len();
           let ab_base_width = measure_text_width(&row.ab_base);
 
           col_widths.branch = col_widths.branch.max(branch_width);
+          col_widths.hash = col_widths.hash.max(hash_width);
           col_widths.upstream = col_widths.upstream.max(upstream_width);
           col_widths.ab_upstream = col_widths.ab_upstream.max(ab_upstream_width);
           col_widths.base = col_widths.base.max(base_width);
@@ -172,7 +174,7 @@ impl Args {
           break 'hash;
         }
 
-        let hash = fix_width(&row.hash, 7, trunc_tail);
+        let hash = fix_width(&row.hash, col_widths.hash, trunc_tail);
         line.push(' ');
 
         if i == 0 {
@@ -253,18 +255,11 @@ impl Args {
 
   fn build_branch_line(&self, repo: &Repository, branch: &Branch) -> Result<Row> {
     let mut row = Row::new();
-
-    let branch_name = branch
-      .name()
-      .context("Failed to get branch name")?
-      .expect("Branch name is not valid utf-8");
-
+    let branch_name = branch_to_name(branch)?;
     row.branch = branch_name.to_string();
 
-    let branch_commit = branch.get().peel_to_commit().context(format!(
-      "Failed to get commit pointed to by {}",
-      branch_name
-    ))?;
+    let branch_commit =
+      branch_to_commit(branch)?.ok_or(anyhow!("Branch does not point to a commit"))?;
 
     row.hash = trim_hash(&branch_commit.id()).to_string();
 
@@ -281,7 +276,7 @@ impl Args {
       row.ab_upstream = display_plus_minus(a, b);
     }
 
-    let base_name = data::get_short_feature_base(&data::git_config(repo)?, branch_name);
+    let base_name = data::get_short_feature_base(&data::git_config(repo)?, &branch_name);
     if let Some(base_name) = base_name {
       row.base = base_name.clone();
 

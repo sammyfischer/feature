@@ -13,7 +13,8 @@ use crate::util::branch::{
   get_upstream,
   name_to_branch,
 };
-use crate::{data, open_repo};
+use crate::util::get_signature;
+use crate::{data, lossy, open_repo};
 
 const LONG_ABOUT: &str = r"Creates and switches to a new branch.
 This command does no checks to validate the branch name or verify that it
@@ -118,18 +119,10 @@ impl Args {
       let base_upstream = get_upstream(&base)?;
 
       match base_upstream {
-        Some(it) => it
-          .get()
-          .name()
-          .expect("Failed to get upstream name of base branch")
-          .to_string(),
+        Some(it) => lossy!(it.get().name_bytes()).to_string(),
 
         // if there is no upstream, we can just use the actual base branch
-        None => base
-          .get()
-          .name()
-          .expect("Failed to get full refname of base branch")
-          .to_string(),
+        None => lossy!(base.get().name_bytes()).to_string(),
       }
     };
 
@@ -166,12 +159,13 @@ impl Args {
     let mut templater = Templater::new()
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
-        repo
-          .signature()
-          .expect("Failed to get default commit signature")
-          .name()
-          .expect("Signature name should be valid utf-8")
-          .to_string()
+        lossy!(
+          get_signature(repo)
+            .expect("Failed to get default commit signature")
+            .expect("Specify a username with git config user.name <name>")
+            .name_bytes()
+        )
+        .to_string()
       }))
       .long(LongVar::eager("base", base_name))
       .long(LongVar::eager("sep", sep));

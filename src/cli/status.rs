@@ -1,18 +1,23 @@
-use std::borrow::Cow;
-
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{DiffOptions, ErrorCode};
+use git2::DiffOptions;
 
 use crate::cli::Cli;
 use crate::util::branch::{
   branch_to_name,
   get_ahead_behind,
+  get_head,
   get_upstream,
   name_to_branch,
   name_to_remote_branch,
 };
-use crate::util::display::{display_diff_summary, display_hash, display_plus_minus};
+use crate::util::display::{
+  display_diff_summary,
+  display_hash,
+  display_plus_minus,
+  display_signature,
+};
+use crate::util::get_signature;
 use crate::util::term::{get_term_width, is_term};
 use crate::{data, lossy, open_repo};
 
@@ -30,69 +35,67 @@ pub struct Args {
 impl Args {
   pub fn run(&self, cli: &Cli) -> Result<()> {
     let repo = open_repo!();
-    let mut out = String::new();
+    let head = get_head(&repo)?;
+    let mut branch_name = None;
 
-    // HEAD info
-    let head = match repo.head() {
-      Ok(it) => Ok(it),
-      Err(e) if e.code() == ErrorCode::UnbornBranch => {
-        // this is an empty repo, nothing else useful to print
-        println!("No commits yet");
-        return Ok(());
+    let first_line = match &head {
+      // there are commits in the repo
+      Some(head) => {
+        let commit = head
+          .peel_to_commit()
+          .context("Failed to get commit at HEAD")?;
+
+        // display branc name or detached head indicator
+        let display_branch = if head.is_branch() {
+          let name = lossy!(head.shorthand_bytes()).to_string();
+          branch_name = Some(name.clone());
+          style(&name).green().to_string()
+        } else {
+          style("Detached HEAD").red().to_string()
+        };
+
+        format!(
+          "{} -> {} {}",
+          display_branch,
+          display_hash(&commit.id()),
+          lossy!(
+            commit
+              .summary_bytes()
+              .context("Failed to get commit message")?
+          )
+        )
       }
-      Err(e) => Err(e),
-    }
-    .context("Failed to find HEAD reference")?;
 
-    let commit = head
-      .peel_to_commit()
-      .context("Failed to get commit at HEAD")?;
-
-    let branch_name;
-
-    out.push_str(&format!(
-      "{} -> {}",
-      if head.is_branch() {
-        branch_name = Some(lossy!(head.shorthand_bytes()));
-        style(lossy!(head.shorthand_bytes())).green()
-      } else {
-        branch_name = None;
-        style(Cow::Borrowed("Detached HEAD")).red()
-      },
-      display_hash(&commit.id())
-    ));
-
-    // commit message
-    if let Some(it) = commit.summary_bytes() {
-      let msg = lossy!(it);
-      let line = if is_term() {
-        truncate_str(&msg, get_term_width(), &style("\u{2026}").dim().to_string())
-      } else {
-        msg
-      };
-      out.push(' ');
-      out.push_str(&line);
-    }
+      // head points to nothing, no commits in repo
+      None => style("No commits yet").dim().to_string(),
+    };
 
     // end first line
-    println!(
-      "{}",
-      if is_term() {
-        truncate_str(&out, get_term_width(), &style("\u{2026}").dim().to_string())
-      } else {
-        Cow::Borrowed(&*out)
-      }
-    );
+    if is_term() {
+      println!(
+        "{}",
+        truncate_str(
+          &first_line,
+          get_term_width(),
+          &style("\u{2026}").dim().to_string()
+        )
+      );
+    } else {
+      println!("{}", first_line);
+    }
 
-    // upstream and base ahead/behind
-    if head.is_branch() {
+    // upstream and base ahead/behind if we're on a branch
+    if head.as_ref().is_some_and(|it| it.is_branch()) {
       let branch_name =
         branch_name.context("Branch name should exist when HEAD is not detached")?;
       let branch = name_to_branch(&repo, &branch_name)?;
 
       let mut rows: Vec<[String; 2]> = Vec::new();
+      // the label is either "Upstream" or "Base", these are printed with alignment so the branch
+      // names are lined up
       let mut label_width = 0usize;
 
+      // upstream row
       let upstream = get_upstream(&branch)?;
       if let Some(upstream) = upstream {
         let upstream_name = branch_to_name(&upstream)?;
@@ -113,6 +116,7 @@ impl Args {
         rows.push(row);
       }
 
+      // base row
       let base_name = data::get_short_feature_base(&data::git_config(&repo)?, &branch_name);
       if let Some(base_name) = base_name {
         let base = name_to_remote_branch(&repo, &base_name)?;
@@ -133,6 +137,7 @@ impl Args {
         rows.push(row);
       }
 
+      // print with everything after the row label aligned
       for row in rows {
         println!(
           "  {} {}",
@@ -143,16 +148,15 @@ impl Args {
     }
 
     // signature/author info
-    println!("{}", match repo.signature() {
-      Ok(it) => {
-        let name = lossy!(it.name_bytes());
-        let email = lossy!(it.email_bytes());
-        format!("{} {}", style(name).cyan(), style(email).dim())
-      }
-      Err(_) => style("No author info").red().to_string(),
-    });
+    println!("{}", display_signature(get_signature(&repo)?.as_ref()));
 
-    let tree = commit.tree().ok();
+    let tree = match &head {
+      Some(head) => {
+        let commit = head.peel_to_commit()?;
+        Some(commit.tree()?)
+      }
+      None => None,
+    };
 
     // staged changes
     let diff = repo

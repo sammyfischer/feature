@@ -11,11 +11,20 @@ use git2::{
   ErrorCode,
   FetchOptions,
   FetchPrune,
+  Reference,
   Repository,
 };
 
 use crate::lossy;
 use crate::util::get_remote_callbacks;
+
+pub fn get_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
+  match repo.head() {
+    Ok(it) => Ok(Some(it)),
+    Err(e) if e.code() == ErrorCode::UnbornBranch => Ok(None),
+    Err(e) => Err(anyhow!(e).context("Failed to get reference to HEAD")),
+  }
+}
 
 pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
   Ok(lossy!(&branch.name_bytes()?))
@@ -24,7 +33,7 @@ pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
 pub fn name_to_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Branch<'repo>> {
   let branch = repo
     .find_branch(name, BranchType::Local)
-    .with_context(|| format!("Failed to find branch named {}", name))?;
+    .context(format!("Failed to find branch named {}", name))?;
   Ok(branch)
 }
 

@@ -1,7 +1,7 @@
 //! Helper functions that may be found useful in many places
 
-use anyhow::{Context, Result};
-use git2::{Commit, Cred, CredentialType, ErrorCode, RemoteCallbacks, Repository};
+use anyhow::{Context, Result, anyhow};
+use git2::{Commit, Cred, CredentialType, ErrorCode, RemoteCallbacks, Repository, Signature};
 
 pub mod branch;
 pub mod display;
@@ -19,6 +19,14 @@ pub fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Option<Commi
     .context("Failed to get commit pointed to by HEAD")?;
 
   Ok(Some(commit))
+}
+
+pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<'repo>>> {
+  match repo.signature() {
+    Ok(it) => Ok(Some(it)),
+    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
+    Err(e) => Err(anyhow!(e).context("Failed to get default signature")),
+  }
 }
 
 /// Gets remote callbacks to use for remote operations with git2

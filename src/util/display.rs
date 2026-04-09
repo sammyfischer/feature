@@ -2,7 +2,9 @@
 
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Delta, Diff, DiffLineType, Oid};
+use git2::{Delta, Diff, DiffLineType, Oid, Signature};
+
+use crate::lossy;
 
 macro_rules! delta_filename {
   ($delta:ident, $file:ident) => {
@@ -21,6 +23,19 @@ pub fn trim_hash(id: &Oid) -> String {
 
 pub fn display_hash(id: &Oid) -> String {
   style(trim_hash(id)).yellow().to_string()
+}
+
+/// Displays the name in cyan, email in dim (gray), and "No signature" in red if there is no
+/// configured signature. Errors if any error (other than not having a signature) is encountered.
+pub fn display_signature(signature: Option<&Signature>) -> String {
+  match signature {
+    Some(it) => {
+      let name = lossy!(it.name_bytes());
+      let email = lossy!(it.email_bytes());
+      format!("{} {}", style(name).cyan(), style(email).dim())
+    }
+    None => style("No signature").red().to_string(),
+  }
 }
 
 /// Builds a pretty output to summarize the changes of this diff.
