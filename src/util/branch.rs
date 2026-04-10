@@ -92,6 +92,21 @@ pub fn get_all_branch_names(repo: &Repository) -> Result<Vec<String>> {
   Ok(output)
 }
 
+pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
+  let mut names = Vec::new();
+
+  for name in repo.worktrees()?.iter().flatten() {
+    let wt = repo.find_worktree(name)?;
+    let wt_repo = Repository::open_from_worktree(&wt)?;
+    let branch = get_current_branch_name(&wt_repo)?;
+    if let Some(branch) = branch {
+      names.push(branch);
+    }
+  }
+
+  Ok(names)
+}
+
 pub fn get_ahead_behind<'repo>(
   repo: &'repo Repository,
   branch: &Branch<'repo>,

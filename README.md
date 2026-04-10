@@ -58,19 +58,16 @@ Here's a summary of the feature workflow:
   - `--config` project config file location, not for user config
 - status
   - show current worktree if applicable
-  - submodules
-- list
-  - highlight current branches for each worktree in cyan
-  - submodules
-  - custom python function in config dir to build each line
 - stash
   - more intuitive options to stash (--all => workdir/index, --unstaged => workdir, --staged => index)
   - action should be a flag, not positional (and should --push by default)
   - concatenate args as message
-  - stashes could be given easier-to-type names (refs/stashes/name), this may affect compatibility with regular git stash commands
   - pretty output
 - update
   - print conflicted files upon rebase conflicts, like git status output
+- submodule aware output
+  - status
+  - list
 - mod (submodule commands)
   - sync/prune all modules
   - create a single branch in all modules for features whose work will span across them

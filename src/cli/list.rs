@@ -8,6 +8,7 @@ use crate::util::branch::{
   get_ahead_behind,
   get_current_branch_name,
   get_upstream,
+  get_worktree_branch_names,
   name_to_remote_branch,
 };
 use crate::util::display::{display_plus_minus, trim_hash};
@@ -141,6 +142,7 @@ impl Args {
     }
 
     let current = get_current_branch_name(&repo)?;
+    let wt_branches = get_worktree_branch_names(&repo)?;
     let max_widths = Widths::max();
     let line_tail = style("\u{2026}").dim().to_string();
     let trunc_tail = "\u{2026}";
@@ -164,6 +166,8 @@ impl Args {
 
         if current.as_ref().is_some_and(|it| it == &row.branch) {
           line.push_str(&style(&branch).green().to_string());
+        } else if wt_branches.contains(&row.branch) {
+          line.push_str(&style(&branch).cyan().to_string());
         } else {
           line.push_str(&branch);
         }
