@@ -52,6 +52,11 @@ Here's a summary of the feature workflow:
 
 ### Features
 
+- in-progress operations
+  - merge
+  - cherry pick
+  - bisect
+  - revert
 - global flags
   - `--git-dir`
   - `--worktree`
@@ -63,8 +68,6 @@ Here's a summary of the feature workflow:
   - action should be a flag, not positional (and should --push by default)
   - concatenate args as message
   - pretty output
-- update
-  - print conflicted files upon rebase conflicts, like git status output
 - submodule aware output
   - status
   - list

@@ -59,11 +59,7 @@ impl Args {
           .find('/')
           .context("Upstream name has an invalid format")?;
 
-        let upstream_name = name
-          .split_off(split_at)
-          .strip_prefix('/')
-          .context("Upstream name has an invalid format")?
-          .to_string();
+        let upstream_name = name.split_off(split_at).trim_prefix('/').to_string();
         let remote_name = name;
         (upstream_name, remote_name)
       }

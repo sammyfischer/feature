@@ -269,7 +269,7 @@ impl Args {
 
     if let Some(upstream) = get_upstream(branch)? {
       let upstream_name = branch_to_name(&upstream)?;
-      let (a, b) = get_ahead_behind(repo, branch, &upstream).with_context(|| {
+      let (a, b) = get_ahead_behind(repo, branch.get(), upstream.get()).with_context(|| {
         format!(
           "Failed to get ahead/behind between {} and {}",
           &branch_name, &upstream_name
@@ -287,7 +287,7 @@ impl Args {
       let base = name_to_remote_branch(repo, &base_name)
         .with_context(|| format!("Failed to get reference to base branch {}", base_name))?;
 
-      let (a, b) = get_ahead_behind(repo, branch, &base).with_context(|| {
+      let (a, b) = get_ahead_behind(repo, branch.get(), base.get()).with_context(|| {
         format!(
           "Failed to get ahead/behind between {} and {}",
           &branch_name, &base_name

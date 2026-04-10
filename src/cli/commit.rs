@@ -8,7 +8,8 @@ use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
 use crate::util::branch::get_current_branch_name;
-use crate::util::display::{display_diff_summary, display_signature, trim_hash};
+use crate::util::diff::DiffSummary;
+use crate::util::display::{display_signature, trim_hash};
 use crate::util::{get_current_commit, get_signature};
 use crate::{lossy, open_repo};
 
@@ -226,8 +227,10 @@ impl Args {
       .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
       .context("Failed to obtain commit changes")?;
 
-    let diff_out = match display_diff_summary(&diff) {
-      Ok(it) => it,
+    let summary = DiffSummary::new(&diff);
+
+    let diff_out = match summary {
+      Ok(it) => it.to_string(),
       Err(_) => style("Failed to get commit changes").red().to_string(),
     };
 

@@ -11,6 +11,7 @@ use git2::{
   ErrorCode,
   FetchOptions,
   FetchPrune,
+  Oid,
   Reference,
   Repository,
 };
@@ -53,6 +54,24 @@ pub fn branch_to_commit<'repo>(branch: &Branch<'repo>) -> Result<Option<Commit<'
       branch_to_name(branch).unwrap_or(Cow::Borrowed("<unknown>"))
     ))),
   }
+}
+
+/// Iterates through all local (refs/heads/*) and remote (refs/remotes/*) branches to find one that
+/// points to the given commit
+pub fn commit_to_branch<'repo>(
+  repo: &'repo Repository,
+  commit_id: &Oid,
+) -> Result<Option<Branch<'repo>>> {
+  let branches = repo.branches(None)?;
+
+  for (branch, _) in branches.flatten() {
+    let id = branch.get().peel_to_commit()?.id();
+    if commit_id == &id {
+      return Ok(Some(branch));
+    }
+  }
+
+  Ok(None)
 }
 
 pub fn get_upstream<'repo>(branch: &Branch<'repo>) -> Result<Option<Branch<'repo>>> {
@@ -109,17 +128,15 @@ pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
 
 pub fn get_ahead_behind<'repo>(
   repo: &'repo Repository,
-  branch: &Branch<'repo>,
-  upstream: &Branch<'repo>,
+  branch: &Reference<'repo>,
+  upstream: &Reference<'repo>,
 ) -> Result<(usize, usize)> {
   let branch_tip = branch
-    .get()
     .peel_to_commit()
     .context("Failed to get branch commit when getting ahead/behind")?
     .id();
 
   let upstream_tip = upstream
-    .get()
     .peel_to_commit()
     .context("Failed to get upstream commit when getting ahead/behind")?
     .id();

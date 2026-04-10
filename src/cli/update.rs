@@ -6,22 +6,24 @@ use console::style;
 use git2::{ErrorCode, Rebase, Repository};
 
 use crate::util::branch::get_current_branch_name;
+use crate::util::diff::DiffSummary;
 use crate::util::display::display_hash;
+use crate::util::get_current_commit;
 use crate::{data, open_repo};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
 rebase.";
 
-const MERGE_CONFLICT_MSG: &str = r"Merge conflict encountered! To resolve, do the following:
+const MERGE_CONFLICT_MSG: &str = r#"Merge conflict encountered! To resolve, do the following:
 
 1. Edit the files to resolve conflicts
-2. `git add <file>` for each resolved file
+2. "git add <file>" for each resolved file
 3. Either create a new commit with the changes, or amend the previous commit
-4. `feature update -c` to continue the rebase
+4. "feature update -c" to continue the rebase
 
 Alternatively, you can:
-`feature update -a` to abort the entire rebase
-Use `git rebase` commands to control the rebase";
+"feature update -a" to abort the entire rebase
+Use "git rebase" commands to control the rebase"#;
 
 const NO_BASE_MSG: &str = r"No base branch found. You can either:
 
@@ -118,8 +120,8 @@ impl Args {
       style(branch_name).blue(),
       style(
         base_name
-          .strip_prefix("refs/remotes/")
-          .unwrap_or(&base_name)
+          .trim_prefix("refs/remotes/")
+          .trim_prefix("refs/heads/")
       )
       .magenta()
     );
@@ -136,9 +138,27 @@ impl Args {
         .context("Failed to get index to build rebase commit on")?;
 
       if index.has_conflicts() {
-        println!("{}", MERGE_CONFLICT_MSG);
+        let commit = get_current_commit(repo)?;
+        match commit {
+          Some(commit) => {
+            let tree = commit.tree()?;
+            let diff = repo.diff_tree_to_index(Some(&tree), Some(&index), None)?;
+            let summary = DiffSummary::new(&diff)?;
+
+            println!(
+              "{} - {}\n",
+              style("Conflicts").yellow(),
+              if summary.num_files != 0 {
+                summary.display_conflicts()
+              } else {
+                style("none").green().to_string()
+              }
+            );
+          }
+          None => println!("Failed to display conflicts"),
+        }
         self.dump_rebase(repo, rebase)?;
-        return Ok(());
+        return Err(anyhow!(MERGE_CONFLICT_MSG));
       }
 
       let signature = repo.signature().context(NO_SIGNATURE_MSG)?;

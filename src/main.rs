@@ -1,3 +1,5 @@
+#![feature(trim_prefix_suffix)]
+
 use anyhow::Result;
 
 use crate::cli::Cli;

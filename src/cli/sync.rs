@@ -6,7 +6,8 @@ use crate::cli::Cli;
 use crate::cli::prune::prune_branches;
 use crate::open_repo;
 use crate::util::branch::{branch_to_name, fetch_all, get_current_branch_name, name_to_branch};
-use crate::util::display::{display_diff_summary_header, trim_hash};
+use crate::util::diff::DiffSummary;
+use crate::util::display::trim_hash;
 use crate::util::get_remote_callbacks;
 
 const LONG_ABOUT: &str = r"Updates all base branches with their remotes, then prunes merged feature
@@ -179,7 +180,7 @@ fn display_update(branch_name: &str, diff: &Diff, commit_id: &Oid) -> Result<()>
     style("Updated").green(),
     branch_name,
     style(format!("(was {})", trim_hash(commit_id))).dim(),
-    display_diff_summary_header(diff)?
+    DiffSummary::new(diff)?.display_header()
   );
   Ok(())
 }
