@@ -55,8 +55,6 @@ Here's a summary of the feature workflow:
 
 ### Features
 
-- in-progress operations
-  - bisect
 - add timestamps to some outputs maybe
 - global flags
   - `--git-dir`

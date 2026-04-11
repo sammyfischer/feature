@@ -86,7 +86,7 @@ pub fn get_current_branch_name(repo: &Repository) -> Result<Option<String>> {
   match get_head(repo)? {
     Some(head) => {
       if !head.is_branch() {
-        return Err(anyhow!("Not checked out to a branch"));
+        return Ok(None);
       }
 
       Ok(Some(lossy!(head.shorthand_bytes()).to_string()))

@@ -53,6 +53,9 @@ impl Args {
       } else if is_revert_active(&repo) {
         // active revert
         display_revert_header(&repo)?
+      } else if is_bisect_active(&repo) {
+        // active bisect
+        display_bisect_header(&repo)?
       } else {
         // nothing else
         display_normal_header(&repo, head.as_ref())?
@@ -390,7 +393,7 @@ fn display_pick_header(repo: &Repository) -> Result<String> {
   let cherry_pick_head = fs::read_to_string(&cherry_pick_head_path)?;
   let pick_id = cherry_pick_head.trim();
   let pick_id = Oid::from_str(pick_id).context(format!(
-    "{}  should contain a valid commit hash",
+    "{} should contain a valid commit hash",
     cherry_pick_head_path.to_string_lossy()
   ))?;
 
@@ -446,5 +449,36 @@ fn display_revert_header(repo: &Repository) -> Result<String> {
     style("Reverting").yellow(),
     style(trim_hash(&revert_commit.id())).blue(),
     style(current).magenta()
+  ))
+}
+
+fn is_bisect_active(repo: &Repository) -> bool {
+  let dir = repo.path();
+  dir.join("BISECT_START").exists() || dir.join("BISECT_LOG").exists()
+}
+
+fn display_bisect_header(repo: &Repository) -> Result<String> {
+  // current branch if it was detected, else current commit
+  let current = get_current_branch_name(repo)?.unwrap_or(
+    trim_hash(
+      &get_current_commit(repo)?
+        .expect("HEAD should point to a commit during an ongoing revert")
+        .id(),
+    )
+    .to_string(),
+  );
+
+  let start_path = repo.path().join("BISECT_START");
+  let start = fs::read_to_string(&start_path)?.trim().to_string();
+  let start = match Oid::from_str(&start) {
+    Ok(it) => trim_hash(&it),
+    Err(_) => start,
+  };
+
+  Ok(format!(
+    "{} on {} {}",
+    style("Bisecting").yellow(),
+    style(&current).blue(),
+    style(&format!("(started from {})", start)).dim()
   ))
 }
