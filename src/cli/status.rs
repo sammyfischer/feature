@@ -50,6 +50,9 @@ impl Args {
       } else if is_cherry_pick_active(&repo) {
         // active cherry pick
         display_pick_header(&repo)?
+      } else if is_revert_active(&repo) {
+        // active revert
+        display_revert_header(&repo)?
       } else {
         // nothing else
         display_normal_header(&repo, head.as_ref())?
@@ -69,7 +72,11 @@ impl Args {
     };
 
     // conflicted changes
-    if rebase_dir.is_some() || is_merge_active(&repo) || is_cherry_pick_active(&repo) {
+    if rebase_dir.is_some()
+      || is_merge_active(&repo)
+      || is_cherry_pick_active(&repo)
+      || is_revert_active(&repo)
+    {
       let commit =
         get_current_commit(&repo)?.expect("There must be a current commit during a rebase");
       let tree = commit.tree()?;
@@ -414,4 +421,30 @@ fn display_pick_diff(repo: &Repository) -> Result<String> {
   let diff = repo.diff_tree_to_index(Some(&pick_tree), None, None)?;
   let summary = DiffSummary::new(&diff)?.non_conflicts();
   Ok(format!("{} - {}", style("Resolved").green(), summary))
+}
+
+fn is_revert_active(repo: &Repository) -> bool {
+  repo.path().join("REVERT_HEAD").exists()
+}
+
+fn display_revert_header(repo: &Repository) -> Result<String> {
+  let revert_head = repo.find_reference("REVERT_HEAD")?;
+  let revert_commit = revert_head.peel_to_commit()?;
+
+  // current branch if it was detected, else current commit
+  let current = get_current_branch_name(repo)?.unwrap_or(
+    trim_hash(
+      &get_current_commit(repo)?
+        .expect("HEAD should point to a commit during an ongoing revert")
+        .id(),
+    )
+    .to_string(),
+  );
+
+  Ok(format!(
+    "{} changes from {} onto {}",
+    style("Reverting").yellow(),
+    style(trim_hash(&revert_commit.id())).blue(),
+    style(current).magenta()
+  ))
 }
