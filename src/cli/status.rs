@@ -16,7 +16,13 @@ use crate::util::branch::{
   name_to_branch,
 };
 use crate::util::diff::DiffSummary;
-use crate::util::display::{display_hash, display_plus_minus, display_signature, trim_hash};
+use crate::util::display::{
+  display_hash,
+  display_plus_minus,
+  display_signature,
+  display_time_relative,
+  trim_hash,
+};
 use crate::util::term::{get_term_width, is_term};
 use crate::util::{get_current_commit, get_signature};
 use crate::{data, lossy, open_repo};
@@ -178,16 +184,19 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         style("Detached HEAD").red().to_string()
       };
 
-      format!(
-        "{} -> {} {}",
-        display_branch,
+      let display_time = format!("({})", display_time_relative(&commit.time())?);
+
+      let display_commit = format!(
+        "{} {} {}",
         display_hash(&commit.id()),
-        lossy!(
-          commit
-            .summary_bytes()
-            .context("Failed to get commit message")?
-        )
-      )
+        style(display_time).dim(),
+        match commit.summary_bytes() {
+          Some(msg) => lossy!(msg).to_string(),
+          None => style("Failed to get commit message").red().to_string(),
+        }
+      );
+
+      format!("{} -> {}", display_branch, display_commit)
     }
 
     // head points to nothing, no commits in repo
@@ -316,10 +325,12 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   let onto = onto.trim();
 
   // this must be parseable as an id
-  let base_id = Oid::from_str(onto).context(format!(
-    "{} should contain a valid commit hash",
-    onto_path.to_string_lossy()
-  ))?;
+  let base_id = Oid::from_str(onto).with_context(|| {
+    format!(
+      "{} should contain a valid commit hash",
+      onto_path.to_string_lossy()
+    )
+  })?;
 
   // try to find a matching branch, but don't error
   let base = match commit_to_branch(repo, &base_id) {
@@ -351,10 +362,12 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
   let merge_head_path = repo.path().join("MERGE_HEAD");
   let merge_head = fs::read_to_string(&merge_head_path)?;
   let merge_head = merge_head.trim();
-  let other_commit = Oid::from_str(merge_head).context(format!(
-    "{} should contain a valid commit hash",
-    merge_head_path.to_string_lossy()
-  ))?;
+  let other_commit = Oid::from_str(merge_head).with_context(|| {
+    format!(
+      "{} should contain a valid commit hash",
+      merge_head_path.to_string_lossy()
+    )
+  })?;
 
   // current branch if it was detected, else current commit
   let current = get_current_branch_name(repo)?.unwrap_or(
@@ -392,10 +405,12 @@ fn display_pick_header(repo: &Repository) -> Result<String> {
   let cherry_pick_head_path = repo.path().join("CHERRY_PICK_HEAD");
   let cherry_pick_head = fs::read_to_string(&cherry_pick_head_path)?;
   let pick_id = cherry_pick_head.trim();
-  let pick_id = Oid::from_str(pick_id).context(format!(
-    "{} should contain a valid commit hash",
-    cherry_pick_head_path.to_string_lossy()
-  ))?;
+  let pick_id = Oid::from_str(pick_id).with_context(|| {
+    format!(
+      "{} should contain a valid commit hash",
+      cherry_pick_head_path.to_string_lossy()
+    )
+  })?;
 
   // current branch if it was detected, else current commit
   let current = get_current_branch_name(repo)?.unwrap_or(

@@ -55,7 +55,6 @@ Here's a summary of the feature workflow:
 
 ### Features
 
-- add timestamps to some outputs maybe
 - global flags
   - `--git-dir`
   - `--worktree`

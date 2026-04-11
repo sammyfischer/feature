@@ -34,12 +34,12 @@ struct Row {
 }
 
 impl Row {
-  #[inline(always)]
+  #[inline]
   fn new() -> Self {
     Self::default()
   }
 
-  #[inline(always)]
+  #[inline]
   fn header() -> Self {
     Self {
       branch: "Branch".into(),
@@ -75,7 +75,7 @@ struct Widths {
 }
 
 impl Widths {
-  #[inline(always)]
+  #[inline]
   fn max() -> Self {
     Self {
       branch: 30,
@@ -308,7 +308,7 @@ impl Args {
   }
 }
 
-#[inline(always)]
+#[inline]
 fn fix_width(s: &str, width: usize, tail: &str) -> String {
   pad_str(s, width, Alignment::Left, Some(tail)).to_string()
 }

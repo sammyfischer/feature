@@ -1,8 +1,9 @@
 //! Helper functions to display formatted strings. Diff-realted display functions can be found in
 //! [super::diff]
 
+use anyhow::{Context, Result};
 use console::style;
-use git2::{Oid, Signature};
+use git2::{Oid, Signature, Time};
 
 use crate::lossy;
 
@@ -10,8 +11,48 @@ pub fn trim_hash(id: &Oid) -> String {
   id.to_string()[..7].to_string()
 }
 
+/// Displays a trimmed hash in yellow
 pub fn display_hash(id: &Oid) -> String {
   style(trim_hash(id)).yellow().to_string()
+}
+
+/// Displays a human-readable relative time
+pub fn display_time_relative(time: &Time) -> Result<String> {
+  let now = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .context("Failed to get current time")?
+    .as_secs() as i64;
+
+  let secs = now - time.seconds();
+
+  const HOUR: i64 = 60 * 60;
+  const DAY: i64 = HOUR * 24;
+  const WEEK: i64 = DAY * 7;
+  const MONTH: i64 = WEEK * 4;
+  const YEAR: i64 = MONTH * 12;
+
+  // this should match git log's relative time format
+  Ok(match secs {
+    s if s < 60 => "just now".to_string(),
+
+    s if s < 120 => "1 minute ago".to_string(),
+    s if s < HOUR => format!("{} minutes ago", s / 60),
+
+    s if s < HOUR * 2 => "1 hour ago".to_string(),
+    s if s < DAY => format!("{} hours ago", s / HOUR),
+
+    s if s < DAY * 2 => "yesterday".to_string(),
+    s if s < WEEK => format!("{} days ago", s / DAY),
+
+    s if s < WEEK * 2 => "1 week ago".to_string(),
+    s if s < MONTH => format!("{} weeks ago", s / WEEK),
+
+    s if s < MONTH * 2 => "1 month ago".to_string(),
+    s if s < YEAR => format!("{} months ago", s / MONTH),
+
+    s if s < YEAR * 2 => "1 year ago".to_string(),
+    s => format!("{} years ago", s / YEAR),
+  })
 }
 
 /// Displays the name in cyan, email in dim (gray), and "no one" in red if there is no configured

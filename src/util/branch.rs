@@ -34,7 +34,7 @@ pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
 pub fn name_to_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Branch<'repo>> {
   let branch = repo
     .find_branch(name, BranchType::Local)
-    .context(format!("Failed to find branch named {}", name))?;
+    .with_context(|| format!("Failed to find branch named {}", name))?;
   Ok(branch)
 }
 
