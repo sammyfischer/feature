@@ -53,7 +53,6 @@ Here's a summary of the feature workflow:
 ### Features
 
 - in-progress operations
-  - merge
   - cherry pick
   - bisect
   - revert

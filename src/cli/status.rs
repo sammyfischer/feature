@@ -10,6 +10,7 @@ use crate::util::branch::{
   branch_to_name,
   commit_to_branch,
   get_ahead_behind,
+  get_current_branch_name,
   get_head,
   get_upstream,
   name_to_branch,
@@ -38,10 +39,15 @@ impl Args {
 
     let rebase_dir = get_rebase_dir(&repo);
 
-    // check for active rebase
+    // display header line depending on current state
     if let Some(dir) = rebase_dir.as_ref() {
-      println!("{}", display_rebase_info(&repo, dir)?);
+      // active rebase
+      println!("{}", display_rebase_header(&repo, dir)?);
+    } else if is_merge_active(&repo) {
+      // active merge
+      println!("{}", display_merge_header(&repo)?);
     } else {
+      // nothing else
       println!("{}", display_normal_header(&repo, head.as_ref())?);
     }
 
@@ -58,7 +64,7 @@ impl Args {
     };
 
     // conflicted changes
-    if rebase_dir.is_some() {
+    if rebase_dir.is_some() || is_merge_active(&repo) {
       let commit =
         get_current_commit(&repo)?.expect("There must be a current commit during a rebase");
       let tree = commit.tree()?;
@@ -261,7 +267,7 @@ fn get_rebase_dir(repo: &Repository) -> Option<PathBuf> {
   Some(dir)
 }
 
-fn display_rebase_info(repo: &Repository, dir: &Path) -> Result<String> {
+fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   let msgnum =
     fs::read_to_string(dir.join("msgnum")).context("Failed to get current step number")?;
   let current = msgnum.trim();
@@ -304,5 +310,45 @@ fn display_rebase_info(repo: &Repository, dir: &Path) -> Result<String> {
     style(&branch).blue(),
     style(&base.unwrap_or(trim_hash(&base_id))).magenta(),
     progress
+  ))
+}
+
+fn is_merge_active(repo: &Repository) -> bool {
+  repo.path().join("MERGE_HEAD").exists()
+}
+
+/// Displays a summary of an ongoing merge
+///
+/// - `current` - a string representation of where the user is. This will usually be a branch, but
+///   can be a hash in detached head state
+fn display_merge_header(repo: &Repository) -> Result<String> {
+  let merge_head = fs::read_to_string(repo.path().join("MERGE_HEAD"))?;
+  let merge_head = merge_head.trim();
+  let other_commit = Oid::from_str(merge_head)?;
+
+  // current branch if it was detected, else current commit
+  let current = get_current_branch_name(repo)?.unwrap_or(
+    trim_hash(
+      &get_current_commit(repo)?
+        .expect("HEAD should point to a commit during an ongoing merge")
+        .id(),
+    )
+    .to_string(),
+  );
+
+  // get the branch pointed to by MERGE_HEAD, else just use the hash
+  let base = match commit_to_branch(repo, &other_commit)? {
+    Some(branch) => match branch.name_bytes() {
+      Ok(name) => lossy!(name).to_string(),
+      Err(_) => "unknown".to_string(),
+    },
+    None => trim_hash(&other_commit),
+  };
+
+  Ok(format!(
+    "{} {} with {}",
+    style("Merging").yellow(),
+    style(current).blue(),
+    style(base).magenta()
   ))
 }
