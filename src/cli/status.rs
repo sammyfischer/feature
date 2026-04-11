@@ -36,20 +36,25 @@ impl Args {
   pub fn run(&self, cli: &Cli) -> Result<()> {
     let repo = open_repo!();
     let head = get_head(&repo)?;
-
     let rebase_dir = get_rebase_dir(&repo);
 
     // display header line depending on current state
-    if let Some(dir) = rebase_dir.as_ref() {
-      // active rebase
-      println!("{}", display_rebase_header(&repo, dir)?);
-    } else if is_merge_active(&repo) {
-      // active merge
-      println!("{}", display_merge_header(&repo)?);
-    } else {
-      // nothing else
-      println!("{}", display_normal_header(&repo, head.as_ref())?);
-    }
+    println!(
+      "{}",
+      if let Some(dir) = rebase_dir.as_ref() {
+        // active rebase
+        display_rebase_header(&repo, dir)?
+      } else if is_merge_active(&repo) {
+        // active merge
+        display_merge_header(&repo)?
+      } else if is_cherry_pick_active(&repo) {
+        // active cherry pick
+        display_pick_header(&repo)?
+      } else {
+        // nothing else
+        display_normal_header(&repo, head.as_ref())?
+      }
+    );
 
     // signature/author info
     println!("{}", display_signature(get_signature(&repo)?.as_ref()));
@@ -64,7 +69,7 @@ impl Args {
     };
 
     // conflicted changes
-    if rebase_dir.is_some() || is_merge_active(&repo) {
+    if rebase_dir.is_some() || is_merge_active(&repo) || is_cherry_pick_active(&repo) {
       let commit =
         get_current_commit(&repo)?.expect("There must be a current commit during a rebase");
       let tree = commit.tree()?;
@@ -80,6 +85,13 @@ impl Args {
           style("none").green().to_string()
         }
       );
+    }
+
+    if is_cherry_pick_active(&repo) {
+      println!("\n{}", display_pick_diff(&repo)?);
+      // cherry picked changes have no difference with head (except for conflicts), so the remaining
+      // diffs can be skipped
+      return Ok(());
     }
 
     // staged changes
@@ -135,7 +147,7 @@ impl Args {
   }
 }
 
-/// Header lines to display when there's no active state (rebase, etc.)
+/// Displays a header when there is no other active operation (e.g. rebase/merge conflicts)
 fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<String> {
   let mut out = String::new();
   let mut branch_name = None;
@@ -267,6 +279,8 @@ fn get_rebase_dir(repo: &Repository) -> Option<PathBuf> {
   Some(dir)
 }
 
+/// Displays a header line for an active rebase. Includes the source and destination branches, and
+/// the current progress.
 fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   let msgnum =
     fs::read_to_string(dir.join("msgnum")).context("Failed to get current step number")?;
@@ -283,14 +297,19 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
     style("]").dim()
   );
 
-  let head_name = fs::read_to_string(dir.join("head-name")).context("Failed to get branch name")?;
+  let head_name_path = dir.join("head-name");
+  let head_name = fs::read_to_string(&head_name_path).context("Failed to get branch name")?;
   let branch = head_name.trim().trim_prefix("refs/heads/");
 
-  let onto = fs::read_to_string(dir.join("onto")).context("Failed to get base commit")?;
+  let onto_path = dir.join("onto");
+  let onto = fs::read_to_string(&onto_path).context("Failed to get base commit")?;
   let onto = onto.trim();
 
   // this must be parseable as an id
-  let base_id = Oid::from_str(onto)?;
+  let base_id = Oid::from_str(onto).context(format!(
+    "{} should contain a valid commit hash",
+    onto_path.to_string_lossy()
+  ))?;
 
   // try to find a matching branch, but don't error
   let base = match commit_to_branch(repo, &base_id) {
@@ -318,13 +337,14 @@ fn is_merge_active(repo: &Repository) -> bool {
 }
 
 /// Displays a summary of an ongoing merge
-///
-/// - `current` - a string representation of where the user is. This will usually be a branch, but
-///   can be a hash in detached head state
 fn display_merge_header(repo: &Repository) -> Result<String> {
-  let merge_head = fs::read_to_string(repo.path().join("MERGE_HEAD"))?;
+  let merge_head_path = repo.path().join("MERGE_HEAD");
+  let merge_head = fs::read_to_string(&merge_head_path)?;
   let merge_head = merge_head.trim();
-  let other_commit = Oid::from_str(merge_head)?;
+  let other_commit = Oid::from_str(merge_head).context(format!(
+    "{} should contain a valid commit hash",
+    merge_head_path.to_string_lossy()
+  ))?;
 
   // current branch if it was detected, else current commit
   let current = get_current_branch_name(repo)?.unwrap_or(
@@ -351,4 +371,47 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
     style(current).blue(),
     style(base).magenta()
   ))
+}
+
+fn is_cherry_pick_active(repo: &Repository) -> bool {
+  repo.path().join("CHERRY_PICK_HEAD").exists()
+}
+
+/// Displays a header line for an active cherry-pick conflict
+fn display_pick_header(repo: &Repository) -> Result<String> {
+  let cherry_pick_head_path = repo.path().join("CHERRY_PICK_HEAD");
+  let cherry_pick_head = fs::read_to_string(&cherry_pick_head_path)?;
+  let pick_id = cherry_pick_head.trim();
+  let pick_id = Oid::from_str(pick_id).context(format!(
+    "{}  should contain a valid commit hash",
+    cherry_pick_head_path.to_string_lossy()
+  ))?;
+
+  // current branch if it was detected, else current commit
+  let current = get_current_branch_name(repo)?.unwrap_or(
+    trim_hash(
+      &get_current_commit(repo)?
+        .expect("HEAD should point to a commit during an ongoing cherry-pick")
+        .id(),
+    )
+    .to_string(),
+  );
+
+  Ok(format!(
+    "{} {} onto {}",
+    style("Picking").yellow(),
+    style(trim_hash(&pick_id)).blue(),
+    style(current).magenta()
+  ))
+}
+
+/// Cherry-picks are a little wierd in that they don't modify the index. The result is that status
+/// will show nothing once all conflicts are resolved. Instead, it may be useful to the user to show
+/// what they've actually changed with respect to the commit they picked.
+fn display_pick_diff(repo: &Repository) -> Result<String> {
+  let pick_head = repo.find_reference("CHERRY_PICK_HEAD")?;
+  let pick_tree = pick_head.peel_to_tree()?;
+  let diff = repo.diff_tree_to_index(Some(&pick_tree), None, None)?;
+  let summary = DiffSummary::new(&diff)?.non_conflicts();
+  Ok(format!("{} - {}", style("Resolved").green(), summary))
 }

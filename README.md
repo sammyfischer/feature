@@ -48,20 +48,29 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
+- fix: if a merge is active, commit should correctly select both parent commits
+  - something similar for rebase
+  - cherry picks work differently, maybe prevent commits during active cherry pick
 - support non-utf8 strings with lossy conversions
 
 ### Features
 
 - in-progress operations
-  - cherry pick
   - bisect
   - revert
+- add timestamps to some outputs maybe
 - global flags
   - `--git-dir`
   - `--worktree`
   - `--config` project config file location, not for user config
 - status
   - show current worktree if applicable
+  - advice line
+    - for ongoing operations, a short tip about what to do next could be nice
+- configurable advice
+  - like git, have advice config to turn off long advice messages
+- undo
+  - uses reflog, undoes latest change
 - stash
   - more intuitive options to stash (--all => workdir/index, --unstaged => workdir, --staged => index)
   - action should be a flag, not positional (and should --push by default)
