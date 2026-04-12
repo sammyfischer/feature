@@ -5,6 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{ErrorCode, Rebase, Repository};
 
+use crate::util::advice::{NO_SIGNATURE_MSG, REBASE_CONFLICT_ADVICE};
 use crate::util::branch::get_current_branch_name;
 use crate::util::diff::DiffSummary;
 use crate::util::display::display_hash;
@@ -14,32 +15,16 @@ use crate::{data, open_repo};
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
 rebase.";
 
-const MERGE_CONFLICT_MSG: &str = r#"Merge conflict encountered! To resolve, do the following:
+const NO_BASE_MSG: &str = r#"No base branch found. You can:
 
-1. Edit the files to resolve conflicts
-2. "git add <file>" for each resolved file
-3. Either create a new commit with the changes, or amend the previous commit
-4. "feature update -c" to continue the rebase
+• Manually specify the base branch: "feature update <BASE_BRANCH>"
+• Set the base branch permanently: "feature base <BASE_BRANCH>""#;
 
-Alternatively, you can:
-"feature update -a" to abort the entire rebase
-Use "git rebase" commands to control the rebase"#;
+const COMMIT_FAILED_MSG: &str = r#"Failed to apply commit. You can:
 
-const NO_BASE_MSG: &str = r"No base branch found. You can either:
-
-Manually specify the base branch: `feature update <BASE_BRANCH>`
-Set the base branch permanently: `feature base <BASE_BRANCH>`";
-
-const COMMIT_FAILED_MSG: &str = r"Failed to apply commit. You can:
-
-`feature update -c` the rebase to try continuing
-`feature update -a` to abort the rebase
-Use `git rebase` commands to control the rebase";
-
-const NO_SIGNATURE_MSG: &str = r"Failed to get default commit signature. Try setting them in your git config:
-
-`git config user.name <name>`
-`git config user.email <email>`";
+• Try to continue with "git rebase --continue"
+• Skip applying the current commit with "git rebase --skip"
+• Abort the rebase with "git rebase --abort""#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Updates this branch with its base", long_about = LONG_ABOUT)]
@@ -145,8 +130,10 @@ impl Args {
             let diff = repo.diff_tree_to_index(Some(&tree), Some(&index), None)?;
             let summary = DiffSummary::new(&diff)?;
 
+            eprintln!("{}", REBASE_CONFLICT_ADVICE);
+
             println!(
-              "{} - {}\n",
+              "\n{} - {}",
               style("Conflicts").yellow(),
               if summary.num_files != 0 {
                 summary.display_conflicts()
@@ -158,7 +145,7 @@ impl Args {
           None => println!("Failed to display conflicts"),
         }
         self.dump_rebase(repo, rebase)?;
-        return Err(anyhow!(MERGE_CONFLICT_MSG));
+        return Err(anyhow!("Rebase conflicts"));
       }
 
       let signature = repo.signature().context(NO_SIGNATURE_MSG)?;

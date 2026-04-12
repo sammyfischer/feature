@@ -89,11 +89,7 @@ pub enum Action {
   Graph(graph::Args),
 
   // ==== META / FEATURE COMMANDS ====
-  /// Interact with feature config
-  Config {
-    #[command(subcommand)]
-    args: config_cmd::Args,
-  },
+  Config(config_cmd::Args),
 }
 
 pub struct Cli {
@@ -121,7 +117,7 @@ impl Cli {
       Action::List(args) => args.run(),
       Action::Log(args) => args.run(self),
       Action::Graph(args) => args.run(self),
-      Action::Config { args } => args.run(),
+      Action::Config(args) => args.run(),
     }
   }
 }

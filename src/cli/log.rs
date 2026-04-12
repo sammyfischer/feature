@@ -5,8 +5,8 @@ use crate::{await_child, git};
 
 const LONG_ABOUT: &str = r"View commit logs.
 
-The aim of this command is to view and inspect all
-commits. Unlike graph, this does not truncate lines.
+The aim of this command is to view and inspect all commits. Unlike graph, this
+does not truncate lines.
 
 The default format shows a short hash, branch/HEAD info, commit subject line,
 and author name and time.";

@@ -65,7 +65,7 @@ impl Args {
 fn truncate_lines(lines: &mut Lines) -> Vec<String> {
   let mut out: Vec<String> = Vec::new();
   let term_width = get_term_width();
-  let tail = style("\u{2026}").dim().to_string();
+  let tail = style("…").dim().to_string();
 
   // truncate each line to term width
   for line in lines {

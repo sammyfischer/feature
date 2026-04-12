@@ -15,12 +15,7 @@ use crate::util::display::{display_plus_minus, trim_hash};
 use crate::util::term::{get_term_width, is_term};
 use crate::{data, lossy, open_repo};
 
-const LONG_ABOUT: &str = r"Lists all branches.
-
-The default format is similar to `git branch -vv`. Formats can be specified
-with a template string.
-
-List the template replacements here.";
+const LONG_ABOUT: &str = r#"Lists all branches. The format is similar to "git branch -vv"."#;
 
 #[derive(Default)]
 struct Row {
@@ -144,8 +139,8 @@ impl Args {
     let current = get_current_branch_name(&repo)?;
     let wt_branches = get_worktree_branch_names(&repo)?;
     let max_widths = Widths::max();
-    let line_tail = style("\u{2026}").dim().to_string();
-    let trunc_tail = "\u{2026}";
+    let line_tail = style("…").dim().to_string();
+    let trunc_tail = "…";
     let term_width = get_term_width();
     let mut out = String::new();
 

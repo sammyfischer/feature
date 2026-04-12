@@ -8,10 +8,10 @@ use crate::util::display::trim_hash;
 use crate::{await_child, data, git, open_repo};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
-- have a known base branch
-- are an ancestor of their base branch
-- aren't a base or protected branch
-- aren't the current branch
+• have a known base branch
+• are an ancestor of their base branch
+• aren't a base or protected branch
+• aren't the current branch
 
 These checks should prevent most accidental deletions, and at least ensure that
 any deleted branches were redundant (being an ancestor of the base means the

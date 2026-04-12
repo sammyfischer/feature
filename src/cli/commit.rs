@@ -7,6 +7,7 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
+use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::get_current_branch_name;
 use crate::util::diff::DiffSummary;
 use crate::util::display::{display_signature, trim_hash};
@@ -15,12 +16,6 @@ use crate::{lossy, open_repo};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
-
-const NO_SIGN_MSG: &str = r"Could not find a default signature!
-
-You must specify author information in order to commit:
-git config user.name <name>
-git config user.email <email>";
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Commit staged changes")]
@@ -45,7 +40,7 @@ impl Args {
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;
-    let signature = get_signature(&repo)?.ok_or(anyhow!(NO_SIGN_MSG))?;
+    let signature = get_signature(&repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
     let mut index = repo.index().context("Failed to get staged changes")?;
 
     let tree_id = index.write_tree().context("Failed to get index tree")?;
@@ -85,7 +80,7 @@ impl Args {
 
     if staged_stats.files_changed() == 0 {
       return Err(anyhow!(
-        r#"Nothing to commit! Stage some changes with "git add ...""#
+        r#"Nothing to commit! Stage some changes with "git add …""#
       ));
     }
 
@@ -130,7 +125,7 @@ impl Args {
       return Ok(());
     }
 
-    print!("Running precommit hook\u{2026}");
+    print!("Running precommit hook…");
     let _ = std::io::stdout().flush();
 
     let output = Command::new(script).output()?;

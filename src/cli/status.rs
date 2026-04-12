@@ -6,6 +6,14 @@ use console::{measure_text_width, pad_str, style, truncate_str};
 use git2::{DiffOptions, Oid, Reference, Repository};
 
 use crate::cli::Cli;
+use crate::util::advice::{
+  BISECT_ADVICE,
+  MERGE_CONFLICT_ADVICE,
+  PICK_CONFLICT_ADVICE,
+  REBASE_CONFLICT_ADVICE,
+  REVERT_CONFLICT_ADVICE,
+  STATUS_ADVICE,
+};
 use crate::util::branch::{
   branch_to_name,
   commit_to_branch,
@@ -25,7 +33,7 @@ use crate::util::display::{
 };
 use crate::util::term::{get_term_width, is_term};
 use crate::util::{get_current_commit, get_signature};
-use crate::{data, lossy, open_repo};
+use crate::{data, lossy, open_repo, opt_advice};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -44,32 +52,47 @@ impl Args {
     let head = get_head(&repo)?;
     let rebase_dir = get_rebase_dir(&repo);
 
-    // display header line depending on current state
-    println!(
-      "{}",
-      if let Some(dir) = rebase_dir.as_ref() {
-        // active rebase
-        display_rebase_header(&repo, dir)?
-      } else if is_merge_active(&repo) {
-        // active merge
-        display_merge_header(&repo)?
-      } else if is_cherry_pick_active(&repo) {
-        // active cherry pick
-        display_pick_header(&repo)?
-      } else if is_revert_active(&repo) {
-        // active revert
-        display_revert_header(&repo)?
-      } else if is_bisect_active(&repo) {
-        // active bisect
-        display_bisect_header(&repo)?
-      } else {
-        // nothing else
-        display_normal_header(&repo, head.as_ref())?
-      }
-    );
+    let (header, advice) = if let Some(dir) = rebase_dir.as_ref() {
+      (
+        display_rebase_header(&repo, dir)?,
+        opt_advice!(cli.config.advice.rebase, REBASE_CONFLICT_ADVICE),
+      )
+    } else if is_merge_active(&repo) {
+      (
+        display_merge_header(&repo)?,
+        opt_advice!(cli.config.advice.merge, MERGE_CONFLICT_ADVICE),
+      )
+    } else if is_pick_active(&repo) {
+      (
+        display_pick_header(&repo)?,
+        opt_advice!(cli.config.advice.cherry_pick, PICK_CONFLICT_ADVICE),
+      )
+    } else if is_revert_active(&repo) {
+      (
+        display_revert_header(&repo)?,
+        opt_advice!(cli.config.advice.revert, REVERT_CONFLICT_ADVICE),
+      )
+    } else if is_bisect_active(&repo) {
+      (
+        display_bisect_header(&repo)?,
+        opt_advice!(cli.config.advice.bisect, BISECT_ADVICE),
+      )
+    } else {
+      (
+        display_normal_header(&repo, head.as_ref())?,
+        opt_advice!(cli.config.advice.status, STATUS_ADVICE),
+      )
+    };
+
+    println!("{}", header);
 
     // signature/author info
     println!("{}", display_signature(get_signature(&repo)?.as_ref()));
+
+    // print advice in new paragraph above diffs
+    if let Some(advice) = advice {
+      println!("\n{}", advice);
+    }
 
     // get current tree to diff from
     let tree = match &head {
@@ -83,7 +106,7 @@ impl Args {
     // conflicted changes
     if rebase_dir.is_some()
       || is_merge_active(&repo)
-      || is_cherry_pick_active(&repo)
+      || is_pick_active(&repo)
       || is_revert_active(&repo)
     {
       let commit =
@@ -103,8 +126,19 @@ impl Args {
       );
     }
 
-    if is_cherry_pick_active(&repo) {
-      println!("\n{}", display_pick_diff(&repo)?);
+    if is_pick_active(&repo) {
+      // cherry picks are weird bc they show no diff with head when you stage changes. to show
+      // meaningful changes you have to diff with the picked commit
+      let repo: &Repository = &repo;
+      let pick_head = repo.find_reference("CHERRY_PICK_HEAD")?;
+      let pick_tree = pick_head.peel_to_tree()?;
+
+      let diff = repo.diff_tree_to_index(Some(&pick_tree), None, None)?;
+      let summary = DiffSummary::new(&diff)?.non_conflicts();
+
+      if summary.num_files != 0 {
+        println!("\n{} - {}", style("Resolved").green(), summary);
+      }
       // cherry picked changes have no difference with head (except for conflicts), so the remaining
       // diffs can be skipped
       return Ok(());
@@ -163,7 +197,9 @@ impl Args {
   }
 }
 
-/// Displays a header when there is no other active operation (e.g. rebase/merge conflicts)
+/// Displays a header when there is no other active operation (e.g. rebase/merge conflicts). Shows
+/// current branch, commit it points to, and upstream/base info if available. Unlike the others,
+/// this header takes up to 3 lines.
 fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<String> {
   let mut out = String::new();
   let mut branch_name = None;
@@ -207,11 +243,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
   if is_term() {
     out.push_str(&format!(
       "{}",
-      truncate_str(
-        &first_line,
-        get_term_width(),
-        &style("\u{2026}").dim().to_string()
-      )
+      truncate_str(&first_line, get_term_width(), &style("…").dim().to_string())
     ));
   } else {
     out.push_str(&first_line);
@@ -396,7 +428,7 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
   ))
 }
 
-fn is_cherry_pick_active(repo: &Repository) -> bool {
+fn is_pick_active(repo: &Repository) -> bool {
   repo.path().join("CHERRY_PICK_HEAD").exists()
 }
 
@@ -428,17 +460,6 @@ fn display_pick_header(repo: &Repository) -> Result<String> {
     style(trim_hash(&pick_id)).blue(),
     style(current).magenta()
   ))
-}
-
-/// Cherry-picks are a little wierd in that they don't modify the index. The result is that status
-/// will show nothing once all conflicts are resolved. Instead, it may be useful to the user to show
-/// what they've actually changed with respect to the commit they picked.
-fn display_pick_diff(repo: &Repository) -> Result<String> {
-  let pick_head = repo.find_reference("CHERRY_PICK_HEAD")?;
-  let pick_tree = pick_head.peel_to_tree()?;
-  let diff = repo.diff_tree_to_index(Some(&pick_tree), None, None)?;
-  let summary = DiffSummary::new(&diff)?.non_conflicts();
-  Ok(format!("{} - {}", style("Resolved").green(), summary))
 }
 
 fn is_revert_active(repo: &Repository) -> bool {

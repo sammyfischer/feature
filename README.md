@@ -33,10 +33,10 @@ While feature's functionality is generally meant to work with the concept of fea
 Here's a summary of the feature workflow:
 
 1. Switch to a base branch. Optionally, tell feature that it's a base with `feature config append bases <branch_name>`, or edit the config file directly.
-2. Start feature branch with `feature start ...`.
+2. Start feature branch with `feature start …`.
 3. Begin implementing the feature
 4. If it's a new day, check `feature st` to remember where you were and what changes you have.
-5. Finish and commit with `feature commit ...`.
+5. Finish and commit with `feature commit …`.
 6. If some time has passed, or you know that there are new changes on the base branch, run `feature update`.
 7. Push changes to remote with `feature push`.
 8. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
@@ -63,8 +63,6 @@ Here's a summary of the feature workflow:
   - show current worktree if applicable
   - advice line
     - for ongoing operations, a short tip about what to do next could be nice
-- configurable advice
-  - like git, have advice config to turn off long advice messages
 - undo
   - uses reflog, undoes latest change
 - stash

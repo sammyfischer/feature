@@ -24,6 +24,9 @@ pub struct Config {
 
   /// Section for formatting config
   pub format: FormatConfig,
+
+  /// Section for advice config
+  pub advice: AdviceConfig,
 }
 
 impl Default for Config {
@@ -34,6 +37,7 @@ impl Default for Config {
       protect: vec![],
       hide_untracked: Default::default(),
       format: Default::default(),
+      advice: Default::default(),
     }
   }
 }
@@ -62,6 +66,42 @@ impl Default for FormatConfig {
       branch: Default::default(),
       log: "format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)".into(),
       graph: "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s".into(),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AdviceConfig {
+  /// Advice on staging/unstaging
+  pub status: bool,
+
+  /// Advice on rebase conflicts
+  pub rebase: bool,
+
+  /// Advice on merge conflicts
+  pub merge: bool,
+
+  /// Advice on cherry-pick conflicts
+  pub cherry_pick: bool,
+
+  /// Advice on revert conflicts
+  pub revert: bool,
+
+  /// Advice on bisect
+  pub bisect: bool,
+}
+
+impl Default for AdviceConfig {
+  fn default() -> Self {
+    Self {
+      // false bc people generally know how to stage/unstage
+      status: false,
+      rebase: true,
+      merge: true,
+      cherry_pick: true,
+      revert: true,
+      // false bc bisect is a state you enter intentionally
+      bisect: false,
     }
   }
 }
