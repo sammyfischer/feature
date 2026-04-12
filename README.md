@@ -48,9 +48,9 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
-- fix: if a merge is active, commit should correctly select both parent commits
-  - something similar for rebase
-  - cherry picks work differently, maybe prevent commits during active cherry pick
+- warn user when committing during pick/revert, since that's now how you resolve conflicts in those cases
+- configure main as the default branch in tests, many tests rely on this
+  - configure default merge msg if possible
 
 ### Features
 
@@ -75,7 +75,9 @@ Here's a summary of the feature workflow:
   - open an interactive menu to pick a branch and create a worktree from it
   - or use specified branch in command line
 - diff
-  - interactive menu to select two things to diff (branch, commit, stash, etc.)
+  - basic options: --all (default), --staged, --unstaged
+  - one arg: diff arg to workdir
+  - two args: diff arg 1 to arg 2
   - summary mode, prints like status output (print patch by default)
 - reflog
   - view reflog for a branch, select one to restore to that state

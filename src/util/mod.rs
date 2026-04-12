@@ -1,5 +1,8 @@
 //! Helper functions that may be found useful in many places
 
+use std::fs;
+use std::path::Path;
+
 use anyhow::{Context, Result, anyhow};
 use git2::{Commit, Cred, CredentialType, ErrorCode, RemoteCallbacks, Repository, Signature};
 
@@ -29,6 +32,20 @@ pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<
     Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
     Err(e) => Err(anyhow!(e).context("Failed to get default signature")),
   }
+}
+
+/// Reads an entire formatted commit msg file and removes the comments
+pub fn read_commit_msg(path: &Path) -> Result<String> {
+  let text = fs::read_to_string(path)?;
+  let mut real_lines = Vec::new();
+
+  for line in text.lines() {
+    if !line.starts_with('#') {
+      real_lines.push(line);
+    }
+  }
+
+  Ok(real_lines.join("\n"))
 }
 
 /// Gets remote callbacks to use for remote operations with git2

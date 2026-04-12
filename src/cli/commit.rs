@@ -8,10 +8,10 @@ use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
 use crate::util::advice::NO_SIGNATURE_MSG;
-use crate::util::branch::get_current_branch_name;
+use crate::util::branch::{get_current_branch_name, get_merge_head};
 use crate::util::diff::DiffSummary;
 use crate::util::display::{display_signature, trim_hash};
-use crate::util::{get_current_commit, get_signature};
+use crate::util::{get_current_commit, get_signature, read_commit_msg};
 use crate::{lossy, open_repo};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
@@ -36,7 +36,7 @@ pub struct Args {
 impl Args {
   pub fn run(&self) -> Result<()> {
     let repo = open_repo!();
-    let msg = self.words.join(" ");
+    let mut msg = self.words.join(" ");
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;
@@ -84,14 +84,43 @@ impl Args {
       ));
     }
 
-    // not an amend, must specify a message
+    let merge_head = get_merge_head(&repo)?;
+
     if msg.is_empty() {
-      return Err(anyhow!("Must specify a commit message"));
+      // if it's a merge, try to get the msg from .git/MERGE_MSG
+      'merge_msg: {
+        if merge_head.is_some() {
+          let path = repo.path().join("MERGE_MSG");
+
+          // if not found, default
+          if path.exists() {
+            let merge_msg = read_commit_msg(&path)
+              .context("Failed to get default merge message. Try specifying a message manually.")?;
+
+            // if not empty, use it
+            if !merge_msg.is_empty() {
+              msg = merge_msg.to_string();
+              // break to avoid error since we found the message
+              break 'merge_msg;
+            }
+          }
+        }
+
+        // if we didn't break, fall through and error
+        return Err(anyhow!("Must specify a commit message"));
+      }
     }
 
     let old_id = current_commit.as_ref().map(|it| it.id());
-    let parent_commits: Vec<Commit> = current_commit.into_iter().collect();
-    let parent_refs: Vec<&Commit> = parent_commits.iter().collect();
+    let mut parent_commits: Vec<Commit> = current_commit.into_iter().collect();
+
+    // if there's an ongoing merge, the merge head should be the second parent
+    if let Some(merge_head) = &merge_head {
+      parent_commits.push(merge_head.peel_to_commit()?);
+    }
+
+    // get each element as a reference
+    let parent_commits: Vec<&Commit> = parent_commits.iter().collect();
 
     self.pre_commit(&repo)?;
 
@@ -102,11 +131,18 @@ impl Args {
         &signature,
         &msg,
         &tree,
-        &parent_refs,
+        &parent_commits,
       )
       .expect("Failed to commit");
 
     self.display_commit(&repo, old_id.as_ref(), &new_id, &signature, &msg)?;
+
+    // committing during an active merge completes the merge, we should clean up the merge files
+    if merge_head.is_some() {
+      repo.cleanup_state()?;
+      println!("\n{}", style("Merge completed!").dim())
+    }
+
     Ok(())
   }
 
