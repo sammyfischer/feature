@@ -17,13 +17,38 @@ use git2::{
 };
 
 use crate::lossy;
-use crate::util::get_remote_callbacks;
+use crate::util::display::trim_hash;
+use crate::util::{get_current_commit, get_remote_callbacks};
 
 pub fn get_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
   match repo.head() {
     Ok(it) => Ok(Some(it)),
     Err(e) if e.code() == ErrorCode::UnbornBranch => Ok(None),
     Err(e) => Err(anyhow!(e).context("Failed to get reference to HEAD")),
+  }
+}
+
+pub fn get_merge_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
+  match repo.find_reference("MERGE_HEAD") {
+    Ok(it) => Ok(Some(it)),
+    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
+    Err(e) => Err(anyhow!(e).context("Failed to get reference to MERGE_HEAD")),
+  }
+}
+
+pub fn get_pick_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
+  match repo.find_reference("CHERRY_PICK_HEAD") {
+    Ok(it) => Ok(Some(it)),
+    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
+    Err(e) => Err(anyhow!(e).context("Failed to get reference to CHERRY_PICK_HEAD")),
+  }
+}
+
+pub fn get_revert_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
+  match repo.find_reference("REVERT_HEAD") {
+    Ok(it) => Ok(Some(it)),
+    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
+    Err(e) => Err(anyhow!(e).context("Failed to get reference to REVERT_HEAD")),
   }
 }
 
@@ -72,6 +97,25 @@ pub fn commit_to_branch<'repo>(
   }
 
   Ok(None)
+}
+
+/// Get the name of the current branch, or the trimmed hash if the repo is in detached HEAD, or None
+/// if the repo is empty
+pub fn get_current_branch_or_commit(repo: &Repository) -> Result<Option<String>> {
+  Ok(match get_current_branch_name(repo) {
+    Err(e) => return Err(e),
+
+    Ok(branch) => match branch {
+      Some(branch) => Some(branch),
+
+      // no current branch, get commit instead
+      None => match get_current_commit(repo) {
+        Err(e) => return Err(e),
+
+        Ok(commit) => commit.map(|commit| trim_hash(&commit.id())),
+      },
+    },
+  })
 }
 
 pub fn get_upstream<'repo>(branch: &Branch<'repo>) -> Result<Option<Branch<'repo>>> {

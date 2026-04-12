@@ -7,15 +7,34 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
+use crate::cli::Cli;
 use crate::util::advice::NO_SIGNATURE_MSG;
-use crate::util::branch::get_current_branch_name;
+use crate::util::branch::{
+  get_current_branch_name,
+  get_merge_head,
+  get_pick_head,
+  get_revert_head,
+};
 use crate::util::diff::DiffSummary;
 use crate::util::display::{display_signature, trim_hash};
-use crate::util::{get_current_commit, get_signature};
+use crate::util::term::get_user_confirmation;
+use crate::util::{get_current_commit, get_signature, read_commit_msg};
 use crate::{lossy, open_repo};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
+
+const CONFIRM_DURING_PICK: &str = r#"
+There is currently a cherry-pick active. Cherry-picks are finished by resolving
+the conflicts and running "git cherry-pick --continue", rather than committing.
+
+Do you want to commit anyway?"#;
+
+const CONFIRM_DURING_REVERT: &str = r#"
+There is currently a revert active. Reverts are finished by resolving the
+conflicts and running "git revert --continue", rather than committing.
+
+Do you want to commit anyway?"#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Commit staged changes")]
@@ -34,9 +53,27 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self) -> Result<()> {
+  pub fn run(&self, cli: &Cli) -> Result<()> {
     let repo = open_repo!();
-    let msg = self.words.join(" ");
+    let mut msg = self.words.join(" ");
+
+    // if there's a pick active and the user has pick advice enabled
+    if get_pick_head(&repo)?.is_some() && cli.config.advice.cherry_pick {
+      let confirmed = get_user_confirmation(CONFIRM_DURING_PICK)?;
+      if !confirmed {
+        println!("Cancelled commit");
+        return Ok(());
+      }
+    }
+
+    // if there's a revert active and the user has revert advice enabled
+    if get_revert_head(&repo)?.is_some() && cli.config.advice.revert {
+      let confirmed = get_user_confirmation(CONFIRM_DURING_REVERT)?;
+      if !confirmed {
+        println!("Cancelled commit");
+        return Ok(());
+      }
+    }
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;
@@ -84,14 +121,43 @@ impl Args {
       ));
     }
 
-    // not an amend, must specify a message
+    let merge_head = get_merge_head(&repo)?;
+
     if msg.is_empty() {
-      return Err(anyhow!("Must specify a commit message"));
+      // if it's a merge, try to get the msg from .git/MERGE_MSG
+      'merge_msg: {
+        if merge_head.is_some() {
+          let path = repo.path().join("MERGE_MSG");
+
+          // if not found, default
+          if path.exists() {
+            let merge_msg = read_commit_msg(&path)
+              .context("Failed to get default merge message. Try specifying a message manually.")?;
+
+            // if not empty, use it
+            if !merge_msg.is_empty() {
+              msg = merge_msg.to_string();
+              // break to avoid error since we found the message
+              break 'merge_msg;
+            }
+          }
+        }
+
+        // if we didn't break, fall through and error
+        return Err(anyhow!("Must specify a commit message"));
+      }
     }
 
     let old_id = current_commit.as_ref().map(|it| it.id());
-    let parent_commits: Vec<Commit> = current_commit.into_iter().collect();
-    let parent_refs: Vec<&Commit> = parent_commits.iter().collect();
+    let mut parent_commits: Vec<Commit> = current_commit.into_iter().collect();
+
+    // if there's an ongoing merge, the merge head should be the second parent
+    if let Some(merge_head) = &merge_head {
+      parent_commits.push(merge_head.peel_to_commit()?);
+    }
+
+    // get each element as a reference
+    let parent_commits: Vec<&Commit> = parent_commits.iter().collect();
 
     self.pre_commit(&repo)?;
 
@@ -102,11 +168,18 @@ impl Args {
         &signature,
         &msg,
         &tree,
-        &parent_refs,
+        &parent_commits,
       )
       .expect("Failed to commit");
 
     self.display_commit(&repo, old_id.as_ref(), &new_id, &signature, &msg)?;
+
+    // committing during an active merge completes the merge, we should clean up the merge files
+    if merge_head.is_some() {
+      repo.cleanup_state()?;
+      println!("\n{}", style("Merge completed!").dim())
+    }
+
     Ok(())
   }
 

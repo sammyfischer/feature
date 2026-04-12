@@ -18,8 +18,11 @@ use crate::util::branch::{
   branch_to_name,
   commit_to_branch,
   get_ahead_behind,
-  get_current_branch_name,
+  get_current_branch_or_commit,
   get_head,
+  get_merge_head,
+  get_pick_head,
+  get_revert_head,
   get_upstream,
   name_to_branch,
 };
@@ -391,33 +394,20 @@ fn is_merge_active(repo: &Repository) -> bool {
 
 /// Displays a summary of an ongoing merge
 fn display_merge_header(repo: &Repository) -> Result<String> {
-  let merge_head_path = repo.path().join("MERGE_HEAD");
-  let merge_head = fs::read_to_string(&merge_head_path)?;
-  let merge_head = merge_head.trim();
-  let other_commit = Oid::from_str(merge_head).with_context(|| {
-    format!(
-      "{} should contain a valid commit hash",
-      merge_head_path.to_string_lossy()
-    )
-  })?;
+  let merge_head = get_merge_head(repo)?.context("Reference MERGE_HEAD does not exist")?;
+  let merge_commit = merge_head.peel_to_commit()?;
 
   // current branch if it was detected, else current commit
-  let current = get_current_branch_name(repo)?.unwrap_or(
-    trim_hash(
-      &get_current_commit(repo)?
-        .expect("HEAD should point to a commit during an ongoing merge")
-        .id(),
-    )
-    .to_string(),
-  );
+  let current = get_current_branch_or_commit(repo)?
+    .expect("HEAD should point to a commit during an active merge");
 
   // get the branch pointed to by MERGE_HEAD, else just use the hash
-  let base = match commit_to_branch(repo, &other_commit)? {
+  let base = match commit_to_branch(repo, &merge_commit.id())? {
     Some(branch) => match branch.name_bytes() {
       Ok(name) => lossy!(name).to_string(),
       Err(_) => "unknown".to_string(),
     },
-    None => trim_hash(&other_commit),
+    None => trim_hash(&merge_commit.id()),
   };
 
   Ok(format!(
@@ -434,30 +424,16 @@ fn is_pick_active(repo: &Repository) -> bool {
 
 /// Displays a header line for an active cherry-pick conflict
 fn display_pick_header(repo: &Repository) -> Result<String> {
-  let cherry_pick_head_path = repo.path().join("CHERRY_PICK_HEAD");
-  let cherry_pick_head = fs::read_to_string(&cherry_pick_head_path)?;
-  let pick_id = cherry_pick_head.trim();
-  let pick_id = Oid::from_str(pick_id).with_context(|| {
-    format!(
-      "{} should contain a valid commit hash",
-      cherry_pick_head_path.to_string_lossy()
-    )
-  })?;
+  let pick_head = get_pick_head(repo)?.context("Reference CHERRY_PICK_HEAD does not exist")?;
+  let pick_commit = pick_head.peel_to_commit()?;
 
-  // current branch if it was detected, else current commit
-  let current = get_current_branch_name(repo)?.unwrap_or(
-    trim_hash(
-      &get_current_commit(repo)?
-        .expect("HEAD should point to a commit during an ongoing cherry-pick")
-        .id(),
-    )
-    .to_string(),
-  );
+  let current = get_current_branch_or_commit(repo)?
+    .expect("HEAD should point to a commit during an active cherry-pick");
 
   Ok(format!(
     "{} {} onto {}",
     style("Picking").yellow(),
-    style(trim_hash(&pick_id)).blue(),
+    style(trim_hash(&pick_commit.id())).blue(),
     style(current).magenta()
   ))
 }
@@ -467,18 +443,12 @@ fn is_revert_active(repo: &Repository) -> bool {
 }
 
 fn display_revert_header(repo: &Repository) -> Result<String> {
-  let revert_head = repo.find_reference("REVERT_HEAD")?;
+  let revert_head = get_revert_head(repo)?.context("Reference REVERT_HEAD does not exist")?;
   let revert_commit = revert_head.peel_to_commit()?;
 
   // current branch if it was detected, else current commit
-  let current = get_current_branch_name(repo)?.unwrap_or(
-    trim_hash(
-      &get_current_commit(repo)?
-        .expect("HEAD should point to a commit during an ongoing revert")
-        .id(),
-    )
-    .to_string(),
-  );
+  let current = get_current_branch_or_commit(repo)?
+    .expect("HEAD should point to a commit during an active revert");
 
   Ok(format!(
     "{} changes from {} onto {}",
@@ -494,15 +464,8 @@ fn is_bisect_active(repo: &Repository) -> bool {
 }
 
 fn display_bisect_header(repo: &Repository) -> Result<String> {
-  // current branch if it was detected, else current commit
-  let current = get_current_branch_name(repo)?.unwrap_or(
-    trim_hash(
-      &get_current_commit(repo)?
-        .expect("HEAD should point to a commit during an ongoing revert")
-        .id(),
-    )
-    .to_string(),
-  );
+  let current = get_current_branch_or_commit(repo)?
+    .expect("HEAD should point to a commit during an active bisect");
 
   let start_path = repo.path().join("BISECT_START");
   let start = fs::read_to_string(&start_path)?.trim().to_string();

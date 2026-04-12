@@ -107,7 +107,7 @@ impl Cli {
   pub fn run(&mut self) -> anyhow::Result<()> {
     match &self.args.action {
       Action::Start(args) => args.run(self),
-      Action::Commit(args) => args.run(),
+      Action::Commit(args) => args.run(self),
       Action::Base(args) => args.run(),
       Action::Update(args) => args.run(),
       Action::Push(args) => args.run(self),

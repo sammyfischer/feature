@@ -4,8 +4,9 @@ use std::fs::{self};
 use std::io::Write;
 use std::path::Path;
 
+use assert_cmd::Command;
 use assert_cmd::assert::Assert;
-use assert_cmd::{Command, cargo};
+use assert_cmd::cargo::cargo_bin_cmd;
 use tempfile::TempDir;
 
 /// Gets stdout of an [Assert] as a string
@@ -51,7 +52,9 @@ impl TestRepo {
 
     let dir = builder.tempdir().expect("Temp dir should be created");
     let this = Self { dir };
-    this.git(&["init", path_str!(this.path())]).success();
+    this
+      .git(&["init", "-b", "main", path_str!(this.path())])
+      .success();
 
     this.git(&["config", "user.name", "test"]).success();
     this
@@ -97,7 +100,7 @@ impl TestRepo {
 
   /// Run a feature command in the repo dir. Returns an `assert_cmd::Assert`
   pub fn feature(&self, args: &[&str]) -> Assert {
-    cargo::cargo_bin_cmd!()
+    cargo_bin_cmd!()
       .current_dir(self.path())
       .args(args)
       .assert()
