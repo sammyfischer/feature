@@ -152,6 +152,10 @@ fn merge_commit_uses_merge_msg() {
   repo.feature(&["commit"]).success();
 
   let cmd = repo.git(&["show", "HEAD", "--no-patch", "--pretty=format:%s"]);
-  // the actual message may depend on git config
-  assert_eq!(get_stdout!(cmd).trim(), "Merge branch 'main' into topic")
+  // the actual message may depend on git config, but starts with should be pretty good
+  assert!(
+    get_stdout!(cmd)
+      .trim()
+      .starts_with("Merge branch 'main' into topic")
+  );
 }

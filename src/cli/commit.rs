@@ -7,15 +7,34 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
+use crate::cli::Cli;
 use crate::util::advice::NO_SIGNATURE_MSG;
-use crate::util::branch::{get_current_branch_name, get_merge_head};
+use crate::util::branch::{
+  get_current_branch_name,
+  get_merge_head,
+  get_pick_head,
+  get_revert_head,
+};
 use crate::util::diff::DiffSummary;
 use crate::util::display::{display_signature, trim_hash};
+use crate::util::term::get_user_confirmation;
 use crate::util::{get_current_commit, get_signature, read_commit_msg};
 use crate::{lossy, open_repo};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
+
+const CONFIRM_DURING_PICK: &str = r#"
+There is currently a cherry-pick active. Cherry-picks are finished by resolving
+the conflicts and running "git cherry-pick --continue", rather than committing.
+
+Do you want to commit anyway?"#;
+
+const CONFIRM_DURING_REVERT: &str = r#"
+There is currently a revert active. Reverts are finished by resolving the
+conflicts and running "git revert --continue", rather than committing.
+
+Do you want to commit anyway?"#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Commit staged changes")]
@@ -34,9 +53,27 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self) -> Result<()> {
+  pub fn run(&self, cli: &Cli) -> Result<()> {
     let repo = open_repo!();
     let mut msg = self.words.join(" ");
+
+    // if there's a pick active and the user has pick advice enabled
+    if get_pick_head(&repo)?.is_some() && cli.config.advice.cherry_pick {
+      let confirmed = get_user_confirmation(CONFIRM_DURING_PICK)?;
+      if !confirmed {
+        println!("Cancelled commit");
+        return Ok(());
+      }
+    }
+
+    // if there's a revert active and the user has revert advice enabled
+    if get_revert_head(&repo)?.is_some() && cli.config.advice.revert {
+      let confirmed = get_user_confirmation(CONFIRM_DURING_REVERT)?;
+      if !confirmed {
+        println!("Cancelled commit");
+        return Ok(());
+      }
+    }
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;

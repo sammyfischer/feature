@@ -48,9 +48,10 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
-- warn user when committing during pick/revert, since that's now how you resolve conflicts in those cases
-- configure main as the default branch in tests, many tests rely on this
-  - configure default merge msg if possible
+- configure clean git environment in tests so user configs don't cause any failures
+  - make an empty tempdir, use as `$HOME`
+  - manually set `GIT_CONFIG_GLOBAL` to a tempfile or `/dev/null`
+  - use `GIT_CONFIG_NOSYSTEM`
 
 ### Features
 
