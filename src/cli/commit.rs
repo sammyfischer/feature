@@ -190,7 +190,7 @@ impl Args {
     );
 
     // branch
-    out.push_str(&format!(" on {}", match get_current_branch_name(repo) {
+    out.push_str(&format!(" to {}", match get_current_branch_name(repo) {
       Ok(it) => match it {
         Some(name) => style(name).blue().to_string(),
         None => style("unknown").red().to_string(),
