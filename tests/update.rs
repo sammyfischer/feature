@@ -36,8 +36,8 @@ fn create_conflicts() -> TestRepo {
 /// Gets the subject line of a commit given its hash
 fn hash_to_subject(repo: &TestRepo, hash: &str) -> String {
   // --no-patch removes the diff output, which git show includes by default
-  let proc = repo.git(&["show", "--no-patch", "--pretty=format:%s", hash]);
-  get_stdout!(proc)
+  let cmd = repo.git(&["show", "--no-patch", "--pretty=format:%s", hash]);
+  get_stdout!(cmd)
 }
 
 /// Updating should rebase changes from main when there are no conflicts

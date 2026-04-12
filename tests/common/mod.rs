@@ -8,15 +8,19 @@ use assert_cmd::assert::Assert;
 use assert_cmd::{Command, cargo};
 use tempfile::TempDir;
 
-/// Gets stdout of an `Assert` as a string
+/// Gets stdout of an [Assert] as a string
 #[macro_export]
 macro_rules! get_stdout {
   ($cmd:expr) => {
-    String::from_utf8($cmd.get_output().stdout.clone()).expect("Output should be valid utf-8")
+    String::from_utf8_lossy(&$cmd.get_output().stdout).to_string()
   };
+}
 
-  ($cmd:expr, $msg:literal) => {
-    String::from_utf8($cmd.get_output().stdout.clone()).expect($msg)
+/// Gets stderr of an `Assert` as a string
+#[macro_export]
+macro_rules! get_stderr {
+  ($cmd:expr) => {
+    String::from_utf8_lossy(&$cmd.get_output().stderr).to_string()
   };
 }
 

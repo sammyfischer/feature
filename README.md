@@ -51,7 +51,6 @@ Here's a summary of the feature workflow:
 - fix: if a merge is active, commit should correctly select both parent commits
   - something similar for rebase
   - cherry picks work differently, maybe prevent commits during active cherry pick
-- support non-utf8 strings with lossy conversions
 
 ### Features
 
@@ -59,10 +58,6 @@ Here's a summary of the feature workflow:
   - `--git-dir`
   - `--worktree`
   - `--config` project config file location, not for user config
-- status
-  - show current worktree if applicable
-  - advice line
-    - for ongoing operations, a short tip about what to do next could be nice
 - undo
   - uses reflog, undoes latest change
 - stash

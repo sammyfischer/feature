@@ -19,11 +19,8 @@ fn commits() {
   repo.feature(&["commit", "initial", "commit"]).success();
 
   // check latest commit message
-  let proc = repo.git(&["log", "-1", "--pretty=%B"]).success();
-  let Ok(stdout) = String::from_utf8(proc.get_output().stdout.clone()) else {
-    panic!("Failed to get stdout as string")
-  };
-  assert_eq!(stdout.trim(), "initial commit".to_string());
+  let cmd = repo.git(&["log", "-1", "--pretty=%B"]).success();
+  assert_eq!(get_stdout!(cmd).trim(), "initial commit");
 }
 
 #[test]
@@ -55,10 +52,9 @@ fn pre_commit_can_fail() {
     .failure();
 
   // check that there are no commits
-  let proc = repo.git(&["log", "--oneline"]).failure();
-  let text = String::from_utf8(proc.get_output().stderr.clone()).expect("Output should exist");
+  let cmd = repo.git(&["log", "--oneline"]).failure();
   assert_eq!(
-    text.trim(),
+    get_stderr!(cmd).trim(),
     "fatal: your current branch 'main' does not have any commits yet"
   )
 }

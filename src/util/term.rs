@@ -31,20 +31,17 @@ pub fn get_user_confirmation(prompt: &str) -> Result<bool> {
 /// - `-F` to print to stdout directly if the terminal is tall enough
 /// - `-R` to print raw control characters
 pub fn paginate(s: &str) -> Result<()> {
-  let mut less_proc = Command::new("less")
+  let mut cmd = Command::new("less")
     .arg("-FR")
     .stdin(Stdio::piped())
     .spawn()
     .expect("Failed to start less");
 
-  let stdin = less_proc
-    .stdin
-    .as_mut()
-    .expect("Failed to send output to less");
+  let stdin = cmd.stdin.as_mut().expect("Failed to send output to less");
 
   stdin
     .write_all(s.as_bytes())
     .expect("Failed to send output to less");
 
-  await_child!(less_proc, "Less")
+  await_child!(cmd, "Less")
 }
