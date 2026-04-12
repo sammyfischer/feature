@@ -10,8 +10,8 @@ fn sets_base() {
 
   repo.git(&["switch", "-c", "topic"]).success();
   repo.feature(&["base", "main"]).success();
-  let proc = repo.git(&["config", "branch.topic.feature-base"]).success();
-  assert_eq!(get_stdout!(proc).trim(), "refs/heads/main");
+  let cmd = repo.git(&["config", "branch.topic.feature-base"]).success();
+  assert_eq!(get_stdout!(cmd).trim(), "refs/heads/main");
 }
 
 /// If the base branch has an upstream, feature should set the upstream as the feature-base
@@ -23,10 +23,10 @@ fn sets_base_using_upstream() {
 
   local.git(&["switch", "-c", "topic"]).success();
   local.feature(&["base", "main"]).success();
-  let proc = local
+  let cmd = local
     .git(&["config", "branch.topic.feature-base"])
     .success();
-  assert_eq!(get_stdout!(proc).trim(), "refs/remotes/origin/main");
+  assert_eq!(get_stdout!(cmd).trim(), "refs/remotes/origin/main");
 }
 
 /// Should set the base of non-current branch when specified
@@ -40,8 +40,8 @@ fn sets_base_of_another_branch() {
   repo
     .feature(&["base", "main", "--branch", "topic1"])
     .success();
-  let proc = repo
+  let cmd = repo
     .git(&["config", "branch.topic1.feature-base"])
     .success();
-  assert_eq!(get_stdout!(proc).trim(), "refs/heads/main");
+  assert_eq!(get_stdout!(cmd).trim(), "refs/heads/main");
 }

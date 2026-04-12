@@ -36,8 +36,8 @@ fn create_conflicts() -> TestRepo {
 /// Gets the subject line of a commit given its hash
 fn hash_to_subject(repo: &TestRepo, hash: &str) -> String {
   // --no-patch removes the diff output, which git show includes by default
-  let proc = repo.git(&["show", "--no-patch", "--pretty=format:%s", hash]);
-  get_stdout!(proc)
+  let cmd = repo.git(&["show", "--no-patch", "--pretty=format:%s", hash]);
+  get_stdout!(cmd)
 }
 
 /// Updating should rebase changes from main when there are no conflicts
@@ -74,7 +74,7 @@ fn rebase_stops_when_conflicts() {
   repo.git(&["switch", "feature"]).success();
 
   // there will be merge conflicts, but it should exit successfully
-  repo.feature(&["update"]).success();
+  repo.feature(&["update"]).failure();
   assert!(repo.is_rebase_active(), "Rebase should be active");
 }
 
@@ -84,7 +84,7 @@ fn rebase_continues() {
   let repo = create_conflicts();
 
   repo.git(&["switch", "feature"]).success();
-  repo.feature(&["update"]).success();
+  repo.feature(&["update"]).failure();
   assert!(repo.is_rebase_active(), "Rebase should be active");
 
   // combine and resolve conflicting changes
@@ -107,7 +107,7 @@ fn rebase_dumps_todo_file() {
   repo.git(&["switch", "feature"]).success();
   repo.write_file("feature.txt", "Y");
   repo.commit_all("Y");
-  repo.feature(&["update"]).success();
+  repo.feature(&["update"]).failure();
 
   let current_hash = fs::read_to_string(repo.path().join(".git/rebase-merge/current"))
     .expect("current file should exist");
@@ -144,7 +144,7 @@ fn rebase_dumps_empty_todo_file() {
   let repo = create_conflicts();
 
   repo.git(&["switch", "feature"]).success();
-  repo.feature(&["update"]).success();
+  repo.feature(&["update"]).failure();
 
   let todo = fs::read_to_string(repo.path().join(".git/rebase-merge/git-rebase-todo"))
     .expect("git-rebase-todo file should exist");
@@ -163,7 +163,7 @@ fn git_rebase_continues() {
   repo.git(&["switch", "feature"]).success();
   repo.write_file("feature.txt", "Y");
   repo.commit_all("Y");
-  repo.feature(&["update"]).success();
+  repo.feature(&["update"]).failure();
   assert!(repo.is_rebase_active(), "Rebase should be active");
 
   // combine and resolve conflicting changes
@@ -187,7 +187,7 @@ fn rebase_aborts() {
   let repo = create_conflicts();
 
   repo.git(&["switch", "feature"]).success();
-  repo.feature(&["update"]).success();
+  repo.feature(&["update"]).failure();
 
   // don't resolve conflicts, just abort
   repo.feature(&["update", "-a"]).success();
@@ -233,7 +233,7 @@ fn git_rebase_skips() {
   //
   // Where Y' is an arbitrary name for the commit. The commit message of Y' is still "Y"
 
-  repo.feature(&["update"]).success();
+  repo.feature(&["update"]).failure();
   assert!(repo.is_rebase_active(), "Rebase should be active");
 
   println!(

@@ -7,19 +7,15 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
+use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::get_current_branch_name;
-use crate::util::display::{display_diff_summary, display_signature, trim_hash};
+use crate::util::diff::DiffSummary;
+use crate::util::display::{display_signature, trim_hash};
 use crate::util::{get_current_commit, get_signature};
 use crate::{lossy, open_repo};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
-
-const NO_SIGN_MSG: &str = r"Could not find a default signature!
-
-You must specify author information in order to commit:
-git config user.name <name>
-git config user.email <email>";
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Commit staged changes")]
@@ -44,23 +40,8 @@ impl Args {
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
     let current_commit = get_current_commit(&repo)?;
-    let commit_tree = current_commit.as_ref().and_then(|it| it.tree().ok());
-    let signature = get_signature(&repo)?.ok_or(anyhow!(NO_SIGN_MSG))?;
+    let signature = get_signature(&repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
     let mut index = repo.index().context("Failed to get staged changes")?;
-
-    let staged_diff = repo
-      .diff_tree_to_index(commit_tree.as_ref(), Some(&index), None)
-      .context("Failed to analyze staged changes")?;
-
-    let staged_stats = staged_diff
-      .stats()
-      .context("Failed to analyze staged changes")?;
-
-    if staged_stats.files_changed() == 0 {
-      return Err(anyhow!(
-        "Nothing to commit! Stage some changes with `git add ...`"
-      ));
-    }
 
     let tree_id = index.write_tree().context("Failed to get index tree")?;
     let tree = repo
@@ -85,6 +66,22 @@ impl Args {
 
       self.display_commit(&repo, Some(&current_commit.id()), &new_id, &signature, &msg)?;
       return Ok(());
+    }
+
+    let commit_tree = current_commit.as_ref().and_then(|it| it.tree().ok());
+
+    let staged_diff = repo
+      .diff_tree_to_index(commit_tree.as_ref(), Some(&index), None)
+      .context("Failed to analyze staged changes")?;
+
+    let staged_stats = staged_diff
+      .stats()
+      .context("Failed to analyze staged changes")?;
+
+    if staged_stats.files_changed() == 0 {
+      return Err(anyhow!(
+        r#"Nothing to commit! Stage some changes with "git add …""#
+      ));
     }
 
     // not an amend, must specify a message
@@ -128,7 +125,7 @@ impl Args {
       return Ok(());
     }
 
-    print!("Running precommit hook\u{2026}");
+    print!("Running precommit hook…");
     let _ = std::io::stdout().flush();
 
     let output = Command::new(script).output()?;
@@ -193,7 +190,7 @@ impl Args {
     );
 
     // branch
-    out.push_str(&format!(" on {}", match get_current_branch_name(repo) {
+    out.push_str(&format!(" to {}", match get_current_branch_name(repo) {
       Ok(it) => match it {
         Some(name) => style(name).blue().to_string(),
         None => style("unknown").red().to_string(),
@@ -225,14 +222,16 @@ impl Args {
       .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
       .context("Failed to obtain commit changes")?;
 
-    let diff_out = match display_diff_summary(&diff) {
-      Ok(it) => it,
+    let summary = DiffSummary::new(&diff);
+
+    let diff_out = match summary {
+      Ok(it) => it.to_string(),
       Err(_) => style("Failed to get commit changes").red().to_string(),
     };
 
     out.push('\n'); // double space
     out.push_str(&diff_out);
-    print!("{}", out);
+    println!("{}", out);
     Ok(())
   }
 }

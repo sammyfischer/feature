@@ -33,10 +33,10 @@ While feature's functionality is generally meant to work with the concept of fea
 Here's a summary of the feature workflow:
 
 1. Switch to a base branch. Optionally, tell feature that it's a base with `feature config append bases <branch_name>`, or edit the config file directly.
-2. Start feature branch with `feature start ...`.
+2. Start feature branch with `feature start …`.
 3. Begin implementing the feature
 4. If it's a new day, check `feature st` to remember where you were and what changes you have.
-5. Finish and commit with `feature commit ...`.
+5. Finish and commit with `feature commit …`.
 6. If some time has passed, or you know that there are new changes on the base branch, run `feature update`.
 7. Push changes to remote with `feature push`.
 8. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
@@ -48,7 +48,9 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
-- support non-utf8 strings with lossy conversions
+- fix: if a merge is active, commit should correctly select both parent commits
+  - something similar for rebase
+  - cherry picks work differently, maybe prevent commits during active cherry pick
 
 ### Features
 
@@ -56,21 +58,16 @@ Here's a summary of the feature workflow:
   - `--git-dir`
   - `--worktree`
   - `--config` project config file location, not for user config
-- status
-  - show current worktree if applicable
-  - submodules
-- list
-  - highlight current branches for each worktree in cyan
-  - submodules
-  - custom python function in config dir to build each line
+- undo
+  - uses reflog, undoes latest change
 - stash
   - more intuitive options to stash (--all => workdir/index, --unstaged => workdir, --staged => index)
   - action should be a flag, not positional (and should --push by default)
   - concatenate args as message
-  - stashes could be given easier-to-type names (refs/stashes/name), this may affect compatibility with regular git stash commands
   - pretty output
-- update
-  - print conflicted files upon rebase conflicts, like git status output
+- submodule aware output
+  - status
+  - list
 - mod (submodule commands)
   - sync/prune all modules
   - create a single branch in all modules for features whose work will span across them

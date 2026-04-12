@@ -3,7 +3,9 @@
 use anyhow::{Context, Result, anyhow};
 use git2::{Commit, Cred, CredentialType, ErrorCode, RemoteCallbacks, Repository, Signature};
 
+pub mod advice;
 pub mod branch;
+pub mod diff;
 pub mod display;
 pub mod term;
 

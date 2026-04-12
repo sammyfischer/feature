@@ -32,12 +32,16 @@ pub fn get_feature_base(config: &Config, branch: &str) -> Option<String> {
   None
 }
 
-/// Gets feature-base and strips the refs/remotes/ prefix
+/// Gets shortname of the feature-base
 pub fn get_short_feature_base(config: &Config, branch: &str) -> Option<String> {
   let full_name = get_feature_base(config, branch)?;
-  full_name
-    .strip_prefix("refs/remotes/")
-    .map(|it| it.to_string())
+  // might be remote or local, trim either prefix
+  Some(
+    full_name
+      .trim_prefix("refs/remotes/")
+      .trim_prefix("refs/heads/")
+      .to_string(),
+  )
 }
 
 /// Sets feature-base of a branch

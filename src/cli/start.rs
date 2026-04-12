@@ -110,12 +110,14 @@ impl Args {
     // update HEAD
     repo
       .set_head(&format!("refs/heads/{}", branch_name))
-      .context(format!(
-        "Failed to update HEAD to new branch {0}. Run: \
+      .with_context(|| {
+        format!(
+          "Failed to update HEAD to new branch {0}. Run: \
           \
           `git switch {0}`",
-        branch_name
-      ))?;
+          branch_name
+        )
+      })?;
 
     let feature_base_name = {
       // we want the upstream of the base, e.g. refs/remotes/origin/main
@@ -177,7 +179,7 @@ impl Args {
   }
 }
 
-#[inline(always)]
+#[inline]
 fn display_branch_creation(branch_name: &str, base_name: &str) {
   println!(
     "{} {} {}",

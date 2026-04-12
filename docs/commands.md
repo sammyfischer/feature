@@ -154,7 +154,7 @@ Like log, you can customize the format. Unlike log, this will truncate each line
 ## Config
 
 ```bash
-feature config ...
+feature config …
 ```
 
 Subcommands to edit feature config files. Use `feature config --help` to see the details.

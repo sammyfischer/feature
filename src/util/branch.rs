@@ -11,6 +11,7 @@ use git2::{
   ErrorCode,
   FetchOptions,
   FetchPrune,
+  Oid,
   Reference,
   Repository,
 };
@@ -33,7 +34,7 @@ pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
 pub fn name_to_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Branch<'repo>> {
   let branch = repo
     .find_branch(name, BranchType::Local)
-    .context(format!("Failed to find branch named {}", name))?;
+    .with_context(|| format!("Failed to find branch named {}", name))?;
   Ok(branch)
 }
 
@@ -55,6 +56,24 @@ pub fn branch_to_commit<'repo>(branch: &Branch<'repo>) -> Result<Option<Commit<'
   }
 }
 
+/// Iterates through all local (refs/heads/*) and remote (refs/remotes/*) branches to find one that
+/// points to the given commit
+pub fn commit_to_branch<'repo>(
+  repo: &'repo Repository,
+  commit_id: &Oid,
+) -> Result<Option<Branch<'repo>>> {
+  let branches = repo.branches(None)?;
+
+  for (branch, _) in branches.flatten() {
+    let id = branch.get().peel_to_commit()?.id();
+    if commit_id == &id {
+      return Ok(Some(branch));
+    }
+  }
+
+  Ok(None)
+}
+
 pub fn get_upstream<'repo>(branch: &Branch<'repo>) -> Result<Option<Branch<'repo>>> {
   match branch.upstream() {
     Ok(it) => Ok(Some(it)),
@@ -67,7 +86,7 @@ pub fn get_current_branch_name(repo: &Repository) -> Result<Option<String>> {
   match get_head(repo)? {
     Some(head) => {
       if !head.is_branch() {
-        return Err(anyhow!("Not checked out to a branch"));
+        return Ok(None);
       }
 
       Ok(Some(lossy!(head.shorthand_bytes()).to_string()))
@@ -92,19 +111,32 @@ pub fn get_all_branch_names(repo: &Repository) -> Result<Vec<String>> {
   Ok(output)
 }
 
+pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
+  let mut names = Vec::new();
+
+  for name in repo.worktrees()?.iter().flatten() {
+    let wt = repo.find_worktree(name)?;
+    let wt_repo = Repository::open_from_worktree(&wt)?;
+    let branch = get_current_branch_name(&wt_repo)?;
+    if let Some(branch) = branch {
+      names.push(branch);
+    }
+  }
+
+  Ok(names)
+}
+
 pub fn get_ahead_behind<'repo>(
   repo: &'repo Repository,
-  branch: &Branch<'repo>,
-  upstream: &Branch<'repo>,
+  branch: &Reference<'repo>,
+  upstream: &Reference<'repo>,
 ) -> Result<(usize, usize)> {
   let branch_tip = branch
-    .get()
     .peel_to_commit()
     .context("Failed to get branch commit when getting ahead/behind")?
     .id();
 
   let upstream_tip = upstream
-    .get()
     .peel_to_commit()
     .context("Failed to get upstream commit when getting ahead/behind")?
     .id();

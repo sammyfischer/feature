@@ -8,18 +8,14 @@ use crate::util::branch::{
   get_ahead_behind,
   get_current_branch_name,
   get_upstream,
+  get_worktree_branch_names,
   name_to_remote_branch,
 };
 use crate::util::display::{display_plus_minus, trim_hash};
 use crate::util::term::{get_term_width, is_term};
 use crate::{data, lossy, open_repo};
 
-const LONG_ABOUT: &str = r"Lists all branches.
-
-The default format is similar to `git branch -vv`. Formats can be specified
-with a template string.
-
-List the template replacements here.";
+const LONG_ABOUT: &str = r#"Lists all branches. The format is similar to "git branch -vv"."#;
 
 #[derive(Default)]
 struct Row {
@@ -33,12 +29,12 @@ struct Row {
 }
 
 impl Row {
-  #[inline(always)]
+  #[inline]
   fn new() -> Self {
     Self::default()
   }
 
-  #[inline(always)]
+  #[inline]
   fn header() -> Self {
     Self {
       branch: "Branch".into(),
@@ -74,7 +70,7 @@ struct Widths {
 }
 
 impl Widths {
-  #[inline(always)]
+  #[inline]
   fn max() -> Self {
     Self {
       branch: 30,
@@ -141,9 +137,10 @@ impl Args {
     }
 
     let current = get_current_branch_name(&repo)?;
+    let wt_branches = get_worktree_branch_names(&repo)?;
     let max_widths = Widths::max();
-    let line_tail = style("\u{2026}").dim().to_string();
-    let trunc_tail = "\u{2026}";
+    let line_tail = style("…").dim().to_string();
+    let trunc_tail = "…";
     let term_width = get_term_width();
     let mut out = String::new();
 
@@ -164,6 +161,8 @@ impl Args {
 
         if current.as_ref().is_some_and(|it| it == &row.branch) {
           line.push_str(&style(&branch).green().to_string());
+        } else if wt_branches.contains(&row.branch) {
+          line.push_str(&style(&branch).cyan().to_string());
         } else {
           line.push_str(&branch);
         }
@@ -265,7 +264,7 @@ impl Args {
 
     if let Some(upstream) = get_upstream(branch)? {
       let upstream_name = branch_to_name(&upstream)?;
-      let (a, b) = get_ahead_behind(repo, branch, &upstream).with_context(|| {
+      let (a, b) = get_ahead_behind(repo, branch.get(), upstream.get()).with_context(|| {
         format!(
           "Failed to get ahead/behind between {} and {}",
           &branch_name, &upstream_name
@@ -283,7 +282,7 @@ impl Args {
       let base = name_to_remote_branch(repo, &base_name)
         .with_context(|| format!("Failed to get reference to base branch {}", base_name))?;
 
-      let (a, b) = get_ahead_behind(repo, branch, &base).with_context(|| {
+      let (a, b) = get_ahead_behind(repo, branch.get(), base.get()).with_context(|| {
         format!(
           "Failed to get ahead/behind between {} and {}",
           &branch_name, &base_name
@@ -304,7 +303,7 @@ impl Args {
   }
 }
 
-#[inline(always)]
+#[inline]
 fn fix_width(s: &str, width: usize, tail: &str) -> String {
   pad_str(s, width, Alignment::Left, Some(tail)).to_string()
 }

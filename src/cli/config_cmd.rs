@@ -1,6 +1,6 @@
 //! Config subcommand
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
@@ -27,10 +27,25 @@ macro_rules! save {
   };
 }
 
+#[derive(clap::Args, Clone, Debug)]
+#[command(about = "Interact with feature config")]
+pub struct Args {
+  /// Which config file to use
+  #[arg(long, default_value = "project", conflicts_with = "global")]
+  pub which: WhichConfig,
+
+  /// Shorthand for --which=global
+  #[arg(short, long, conflicts_with = "which")]
+  pub global: bool,
+
+  #[command(subcommand)]
+  pub command: ConfigCommand,
+}
+
 #[derive(Clone, Debug, Subcommand)]
-pub enum Args {
+pub enum ConfigCommand {
   /// Creates a config file with default values
-  Create(CreateArgs),
+  Create,
 
   /// Get the value of some config keys
   Get(GetArgs),
@@ -63,17 +78,6 @@ pub enum WhichConfig {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-pub struct CreateArgs {
-  /// Which file to create
-  #[arg(long, default_value = "project", conflicts_with = "global")]
-  pub which: WhichConfig,
-
-  /// Shorthand for --which=global
-  #[arg(short, long, conflicts_with = "which")]
-  pub global: bool,
-}
-
-#[derive(clap::Args, Clone, Debug)]
 pub struct GetArgs {
   /// The names of the keys to get
   #[arg(trailing_var_arg = true)]
@@ -86,14 +90,6 @@ Tip: use `append` and `remove` to modify arrays.";
 #[derive(clap::Args, Clone, Debug)]
 #[command(long_about = SET_LONG_ABOUT)]
 pub struct SetArgs {
-  /// Which file to modify
-  #[arg(long, default_value = "project", conflicts_with = "global")]
-  pub which: WhichConfig,
-
-  /// Shorthand for --which=global
-  #[arg(short, long, conflicts_with = "which")]
-  pub global: bool,
-
   /// Use dots to access nested keys, e.g. format.branch
   pub key: String,
   pub value: String,
@@ -101,14 +97,6 @@ pub struct SetArgs {
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct UnsetArgs {
-  /// Which file to modify
-  #[arg(long, default_value = "project", conflicts_with = "global")]
-  pub which: WhichConfig,
-
-  /// Shorthand for --which=global
-  #[arg(short, long, conflicts_with = "which")]
-  pub global: bool,
-
   /// List of keys to unset
   #[arg(trailing_var_arg = true)]
   pub keys: Vec<String>,
@@ -116,14 +104,6 @@ pub struct UnsetArgs {
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct ArrayArgs {
-  /// Which file to modify
-  #[arg(long, default_value = "project", conflicts_with = "global")]
-  pub which: WhichConfig,
-
-  /// Shorthand for --which=global
-  #[arg(short, long, conflicts_with = "which")]
-  pub global: bool,
-
   /// The key of the array
   pub key: String,
 
@@ -134,22 +114,23 @@ pub struct ArrayArgs {
 
 impl Args {
   pub fn run(&self) -> Result<()> {
-    match self {
-      Args::Create(args) => self.create(args),
-      Args::Get(args) => self.get(args),
-      Args::Set(args) => self.set(args),
-      Args::Unset(args) => self.unset(args),
-      Args::Append(args) => self.append(args),
-      Args::Remove(args) => self.remove(args),
+    let which = if self.global {
+      &WhichConfig::Global
+    } else {
+      &self.which
+    };
+
+    match &self.command {
+      ConfigCommand::Create => self.create(which),
+      ConfigCommand::Get(args) => self.get(args),
+      ConfigCommand::Set(args) => self.set(args, which),
+      ConfigCommand::Unset(args) => self.unset(args, which),
+      ConfigCommand::Append(args) => self.append(args, which),
+      ConfigCommand::Remove(args) => self.remove(args, which),
     }
   }
 
-  pub fn create(&self, args: &CreateArgs) -> Result<()> {
-    let mut which = &args.which;
-    if args.global {
-      which = &WhichConfig::Global;
-    }
-
+  pub fn create(&self, which: &WhichConfig) -> Result<()> {
     match which {
       WhichConfig::Project | WhichConfig::Local => {
         // if it already exists, prompt user for confirmation
@@ -170,7 +151,7 @@ impl Args {
         // if it already exists, prompt user for confirmation
         if config::user::path()?.exists() {
           let choice = get_user_confirmation(
-            "A local config file already exists. Do you want to overwrite it?",
+            "A global config file already exists. Do you want to overwrite it?",
           )?;
 
           // user selected no
@@ -191,6 +172,7 @@ impl Args {
         "default_remote" => config.default_remote.clone(),
         "bases" => toml::Value::from(config.bases.clone()).to_string(),
         "protect" => toml::Value::from(config.protect.clone()).to_string(),
+
         "format.branch_sep" => config.format.branch_sep.clone(),
         "format.branch" => match config.format.branch {
           Some(ref it) => it.clone(),
@@ -198,8 +180,16 @@ impl Args {
         },
         "format.log" => config.format.log.clone(),
         "format.graph" => config.format.graph.clone(),
-        _ => {
-          eprintln!("{} doesn't exist!", (&**key));
+
+        "advice.status" => toml::Value::from(config.advice.status).to_string(),
+        "advice.rebase" => toml::Value::from(config.advice.rebase).to_string(),
+        "advice.merge" => toml::Value::from(config.advice.merge).to_string(),
+        "advice.cherry_pick" => toml::Value::from(config.advice.cherry_pick).to_string(),
+        "advice.revert" => toml::Value::from(config.advice.revert).to_string(),
+        "advice.bisect" => toml::Value::from(config.advice.bisect).to_string(),
+
+        key => {
+          eprintln!("Unrecognized key: {}", key);
           continue;
         }
       };
@@ -210,39 +200,69 @@ impl Args {
     Ok(())
   }
 
-  pub fn set(&self, args: &SetArgs) -> Result<()> {
-    let mut which = &args.which;
-    if args.global {
-      which = &WhichConfig::Global;
-    }
-
+  pub fn set(&self, args: &SetArgs, which: &WhichConfig) -> Result<()> {
     let mut doc = load!(which);
 
     match &*args.key {
       "default_remote" => doc["default_remote"] = toml_edit::value(&args.value),
-      "format.branch_sep" => doc["format"]["branch_sep"] = toml_edit::value(&args.value),
-      "format.branch" => doc["format"]["branch"] = toml_edit::value(&args.value),
-      "format.log" => doc["format"]["log"] = toml_edit::value(&args.value),
-      "format.graph" => doc["format"]["graph"] = toml_edit::value(&args.value),
-      it => return Err(anyhow!("Unrecognized key: {}", it)),
-    }
+      "bases" | "protect" => return Err(anyhow!("Use append/remove to edit array fields")),
 
-    save!(which, doc);
-    Ok(())
-  }
+      // everything else is section.key
+      key => {
+        let bad_key = Err(anyhow!("Unrecognized key: {}", key));
+        let Some((section, field)) = key.split_once(".") else {
+          return bad_key;
+        };
 
-  pub fn unset(&self, args: &UnsetArgs) -> Result<()> {
-    let mut which = &args.which;
-    if args.global {
-      which = &WhichConfig::Global;
-    }
+        match section {
+          "format" => {
+            // make sure the table exists as a toml `[section]`
+            if !doc.contains_table(section) {
+              let mut table = toml_edit::Table::new();
+              table.set_implicit(false);
+              doc[section] = toml_edit::Item::Table(table);
+            }
 
-    let mut doc = load!(which);
+            let section = doc[section]
+              .as_table_mut()
+              .with_context(|| format!("Failed to get section {}", section))?;
 
-    for key in &args.keys {
-      match doc.remove_entry(key) {
-        Some((_, value)) => println!("Removed {} (was {})", key, value.to_string().trim()),
-        None => eprintln!("Unrecognized key: {}", key),
+            let value = match field {
+              "branch_sep" | "branch" | "log" | "graph" => toml_edit::value(&args.value),
+              _ => return bad_key,
+            };
+
+            section[field] = value;
+          }
+
+          "advice" => {
+            // make sure the table exists as a toml `[section]`
+            if !doc.contains_table(section) {
+              let mut table = toml_edit::Table::new();
+              table.set_implicit(false);
+              doc[section] = toml_edit::Item::Table(table);
+            }
+
+            let section = doc[section]
+              .as_table_mut()
+              .with_context(|| format!("Failed to get section {}", section))?;
+
+            let value = match field {
+              "status" | "rebase" | "merge" | "cherry_pick" | "revert" | "bisect" => {
+                toml_edit::value::<bool>(match &*args.value {
+                  "true" => true,
+                  "false" => false,
+                  val => return Err(anyhow!("Not a boolean: {}", val)),
+                })
+              }
+              _ => return bad_key,
+            };
+
+            section[field] = value;
+          }
+
+          section => return Err(anyhow!("Unrecognized section: {}", section)),
+        }
       }
     }
 
@@ -250,77 +270,120 @@ impl Args {
     Ok(())
   }
 
-  pub fn append(&self, args: &ArrayArgs) -> Result<()> {
+  pub fn unset(&self, args: &UnsetArgs, which: &WhichConfig) -> Result<()> {
+    let mut doc = load!(which);
+
+    for key in &args.keys {
+      match key.split_once(".") {
+        None => match doc.remove_entry(key) {
+          Some((key, value)) => println!("Removed {} (was {})", key, value.to_string().trim()),
+          None => eprintln!("Unrecognized key: {}", key),
+        },
+
+        Some((section, field)) => {
+          if !validate_section(section, field) {
+            eprintln!("Unrecognized key: {}", key);
+            continue;
+          }
+
+          let Some(table) = doc[section].as_table_mut() else {
+            eprintln!("\"{}\" should be a table", section);
+            continue;
+          };
+
+          match table.remove_entry(field) {
+            Some((key, value)) => println!("Removed {} (was {})", key, value.to_string().trim()),
+            None => eprintln!("Unrecognized key: {}.{}", section, field),
+          }
+
+          if table.is_empty() && doc.remove_entry(section).is_none() {
+            eprintln!("Failed to cleanup empty table {}", section);
+          };
+        }
+      }
+    }
+
+    save!(which, doc);
+    Ok(())
+  }
+
+  pub fn append(&self, args: &ArrayArgs, which: &WhichConfig) -> Result<()> {
     // short circuit if no values were specified
     if args.values.is_empty() {
       return Ok(());
     }
 
-    let mut which = &args.which;
-    if args.global {
-      which = &WhichConfig::Global;
+    let mut doc = load!(which);
+    let key = &args.key;
+
+    if !validate_array(key) {
+      return Err(anyhow!("Unrecognized array key: {}", key));
     }
 
-    let mut doc = load!(which);
-
-    // TODO: check that this key is known by the config and should actually be an array
-    if !doc.contains_key(&args.key) {
-      doc[&args.key] = toml_edit::value(toml_edit::Array::new());
+    // ensure the array exists
+    if !doc.contains_key(key) {
+      doc[key] = toml_edit::value(toml_edit::Array::new());
     }
 
     // get mutable item
-    let item = doc
-      .get_mut(&args.key)
-      .ok_or(anyhow!(format!("Failed to obtain key: {}", args.key)))?;
-
-    // get as mutable array
-    let value = item
+    let item = doc[key]
       .as_array_mut()
-      .ok_or(anyhow!(format!("Not an array: {}", args.key)))?;
+      .ok_or(anyhow!(format!("Failed to get field: {}", key)))?;
 
     // push all values
     for v in &args.values {
-      value.push(v);
+      item.push(v);
     }
 
     save!(which, doc);
     Ok(())
   }
 
-  pub fn remove(&self, args: &ArrayArgs) -> Result<()> {
+  pub fn remove(&self, args: &ArrayArgs, which: &WhichConfig) -> Result<()> {
     // short circuit if no values were specified
     if args.values.is_empty() {
       return Ok(());
     }
 
-    let mut which = &args.which;
-    if args.global {
-      which = &WhichConfig::Global;
-    }
-
     let mut doc = load!(which);
-    // TODO: validate and display an error message
-    if !doc.contains_key(&args.key) {
-      return Ok(());
+    let key = &args.key;
+
+    if !validate_array(key) {
+      return Err(anyhow!("Unrecognized array key: {}", key));
     }
 
     // get mutable item
-    let item = doc
-      .get_mut(&args.key)
-      .ok_or(anyhow!(format!("Failed to obtain key: {}", args.key)))?;
-
-    // get as mutable array
-    let value = item
+    let item = doc[key]
       .as_array_mut()
-      .ok_or(anyhow!(format!("Not an array: {}", args.key)))?;
+      .ok_or(anyhow!(format!("Failed to get field: {}", key)))?;
 
     // retain values not specified by command
-    value.retain(|v| match v.as_str() {
-      Some(it) => !args.values.contains(&it.to_string()),
+    item.retain(|v| match v.as_str() {
+      Some(it) => !args.values.iter().any(|to_remove| it == to_remove),
       None => true,
     });
+
+    if item.is_empty() && doc.remove_entry(key).is_none() {
+      eprintln!("Failed to clean up empty array {}", key)
+    }
 
     save!(which, doc);
     Ok(())
   }
+}
+
+/// Whether the section/field pair exists in the config
+fn validate_section(section: &str, field: &str) -> bool {
+  matches!(
+    (section, field),
+    ("format", "branch_sep" | "branch" | "log" | "graph")
+      | (
+        "advice",
+        "status" | "rebase" | "merge" | "cherry_pick" | "revert" | "bisect"
+      )
+  )
+}
+
+fn validate_array(key: &str) -> bool {
+  matches!(key, "bases" | "protect")
 }

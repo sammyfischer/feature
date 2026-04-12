@@ -75,8 +75,8 @@ fn sets_feature_base() {
   repo.init_commit();
 
   repo.feature(&["start", "topic"]).success();
-  let proc = repo.git(&["config", "branch.topic.feature-base"]).success();
-  assert_eq!(get_stdout!(proc).trim(), "refs/heads/main");
+  let cmd = repo.git(&["config", "branch.topic.feature-base"]).success();
+  assert_eq!(get_stdout!(cmd).trim(), "refs/heads/main");
 }
 
 /// If the base branch has an upstream, feature should set the upstream as the feature-base
