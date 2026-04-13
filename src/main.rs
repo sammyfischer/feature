@@ -1,11 +1,12 @@
 #![feature(trim_prefix_suffix)]
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use git2::Repository;
 
 use crate::cli::{Args, Command};
 use crate::config::Config;
+use crate::util::diff::status_guide;
 
 mod cli;
 mod config;
@@ -54,7 +55,12 @@ impl App {
 }
 
 fn main() -> Result<()> {
-  let args = Args::parse();
+  let mut command = Args::command();
+  if let Some(status) = command.find_subcommand_mut("status") {
+    *status = status.clone().after_long_help(status_guide());
+  };
+
+  let args = Args::from_arg_matches(&command.get_matches())?;
   let state = App::new(args)?;
   cli::run(state)
 }

@@ -33,8 +33,8 @@ use crate::util::display::{
   display_time_relative,
   trim_hash,
 };
+use crate::util::get_signature;
 use crate::util::term::{get_term_width, is_term};
-use crate::util::{get_current_commit, get_signature};
 use crate::{App, data, lossy, opt_advice};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -113,10 +113,11 @@ impl Args {
       || is_pick_active(&state.repo)
       || is_revert_active(&state.repo)
     {
-      let commit =
-        get_current_commit(&state.repo)?.expect("There must be a current commit during a rebase");
-      let tree = commit.tree()?;
-      let diff = state.repo.diff_tree_to_index(Some(&tree), None, None)?;
+      let tree = tree
+        .as_ref()
+        .context("There must be a current commit during a rebase")?;
+
+      let diff = state.repo.diff_tree_to_index(Some(tree), None, None)?;
       let summary = DiffSummary::new(&diff)?.conflicts();
 
       println!(
@@ -150,24 +151,22 @@ impl Args {
     }
 
     // staged changes
-    let diff = state
+    let mut diff = state
       .repo
       .diff_tree_to_index(tree.as_ref(), None, None)
       .context("Failed to get staged changes")?;
+    diff.find_similar(None)?;
 
     match DiffSummary::new(&diff) {
-      Ok(it) => {
+      Ok(summary) => {
         // filter out conflicted files
-        let it = it.non_conflicts();
-        if it.num_files != 0 {
-          println!();
-          print!("{} - ", style("Staged").green());
-          println!("{}", it)
+        let summary = summary.non_conflicts();
+        if summary.num_files != 0 {
+          println!("\n{} - {}", style("Staged").green(), summary);
         }
       }
       Err(_) => {
-        println!();
-        println!("Failed to get summary of staged changes");
+        println!("\nFailed to get summary of staged changes");
       }
     };
 
@@ -180,10 +179,11 @@ impl Args {
       Some(opts)
     };
 
-    let diff = state
+    let mut diff = state
       .repo
       .diff_index_to_workdir(None, opts.as_mut())
       .context("Failed to get unstaged changes")?;
+    diff.find_similar(None)?;
 
     match DiffSummary::new(&diff) {
       Ok(it) => {

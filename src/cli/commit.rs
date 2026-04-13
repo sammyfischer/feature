@@ -298,9 +298,10 @@ impl Args {
     let old_commit = old_id.and_then(|it| repo.find_commit(*it).ok());
     let old_tree = old_commit.and_then(|it| it.tree().ok());
 
-    let diff = repo
+    let mut diff = repo
       .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
       .context("Failed to obtain commit changes")?;
+    diff.find_similar(None)?;
 
     let summary = DiffSummary::new(&diff);
 
