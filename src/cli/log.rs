@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 
-use crate::cli::Cli;
-use crate::{await_child, git};
+use crate::{App, await_child, git};
 
 const LONG_ABOUT: &str = r"View commit logs.
 
@@ -24,7 +23,7 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> Result<()> {
+  pub fn run(&self, state: &App) -> Result<()> {
     // default pretty format:
     // %h = hash, %d = decorator (e.g. branch pointing to that commit)
     // %s = subject (commit description title line)
@@ -35,7 +34,7 @@ impl Args {
         "--all",
         format!(
           "--pretty={}",
-          self.format.as_ref().unwrap_or(&cli.config.format.log)
+          self.format.as_ref().unwrap_or(&state.config.format.log)
         )
       )
       .spawn()

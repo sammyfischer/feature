@@ -4,9 +4,8 @@ use std::str::Lines;
 use anyhow::{Context, Result};
 use console::{style, truncate_str};
 
-use crate::cli::Cli;
 use crate::util::term::{get_term_width, paginate};
-use crate::{git, lossy};
+use crate::{App, git, lossy};
 
 const LONG_ABOUT: &str = r"View a graph of commits.
 
@@ -32,7 +31,7 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> Result<()> {
+  pub fn run(&self, state: &App) -> Result<()> {
     // like log, but author name and date are first and colored
     let output = git!(
       "log",
@@ -41,7 +40,7 @@ impl Args {
       "--color=always",
       format!(
         "--pretty={}",
-        self.format.as_ref().unwrap_or(&cli.config.format.graph)
+        self.format.as_ref().unwrap_or(&state.config.format.graph)
       ),
     )
     .output()

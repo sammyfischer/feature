@@ -10,7 +10,7 @@ use crate::util::branch::get_current_branch_name;
 use crate::util::diff::DiffSummary;
 use crate::util::display::display_hash;
 use crate::util::get_current_commit;
-use crate::{data, open_repo};
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
 rebase.";
@@ -47,25 +47,23 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self) -> Result<()> {
-    let repo = open_repo!();
-
+  pub fn run(&self, state: &App) -> Result<()> {
     if self.r#continue {
-      return self.rebase_continue(&repo);
+      return self.rebase_continue(&state.repo);
     }
 
     if self.abort {
-      return self.rebase_abort(&repo);
+      return self.rebase_abort(&state.repo);
     }
 
     // fail if there's already an active rebase
-    if self.is_rebase_active(&repo)? {
+    if self.is_rebase_active(&state.repo)? {
       return Err(anyhow!("A rebase is already in progress"));
     }
 
-    let config = data::git_config(&repo)?;
-    let branch_name =
-      get_current_branch_name(&repo)?.context("Not currently on a branch! Nothing to update.")?;
+    let config = data::git_config(&state.repo)?;
+    let branch_name = get_current_branch_name(&state.repo)?
+      .context("Not currently on a branch! Nothing to update.")?;
 
     let base_name = match &self.base {
       Some(it) => it.clone(),
@@ -80,11 +78,13 @@ impl Args {
     }
 
     // error instead of panic, base name could be invalid
-    let base = repo
+    let base = state
+      .repo
       .revparse_single(&base_name)
       .with_context(|| format!("Failed to get reference to base branch: {}", base_name))?;
 
-    let base_commit = repo
+    let base_commit = state
+      .repo
       .find_annotated_commit(
         base
           .peel_to_commit()
@@ -93,11 +93,12 @@ impl Args {
       )
       .with_context(|| format!("Failed to find commit pointed to by {}", base_name))?;
 
-    let mut rebase = repo
+    let mut rebase = state
+      .repo
       .rebase(None, Some(&base_commit), None, None)
       .context("Failed to initiate rebase")?;
 
-    self.rebase(&repo, &mut rebase)?;
+    self.rebase(&state.repo, &mut rebase)?;
 
     println!(
       "{} {} with changes from {}",

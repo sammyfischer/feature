@@ -2,10 +2,9 @@ use anyhow::{Context, Result};
 use console::style;
 use git2::{BranchType, Oid, Repository};
 
-use crate::cli::Cli;
 use crate::util::branch::{fetch_all, get_all_branch_names, get_current_branch_name};
 use crate::util::display::trim_hash;
-use crate::{await_child, data, git, open_repo};
+use crate::{App, await_child, data, git};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
 • have a known base branch
@@ -26,9 +25,8 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> Result<()> {
-    let repo = open_repo!();
-    fetch_all(&repo)?;
+  pub fn run(&self, state: &App) -> Result<()> {
+    fetch_all(&state.repo)?;
 
     if self.dry_run {
       println!(
@@ -37,15 +35,15 @@ impl Args {
       );
     }
 
-    prune_branches(cli, &repo, self.dry_run)
+    prune_branches(state, self.dry_run)
   }
 }
 
-pub fn prune_branches(cli: &Cli, repo: &Repository, dry_run: bool) -> Result<()> {
-  let branches = get_all_branch_names(repo)?;
+pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
+  let branches = get_all_branch_names(&state.repo)?;
 
   for branch_name in branches {
-    if let Err(e) = safe_delete_branch(cli, repo, &branch_name, dry_run) {
+    if let Err(e) = safe_delete_branch(state, &branch_name, dry_run) {
       eprintln!("{}", e);
     }
   }
@@ -58,24 +56,19 @@ pub fn prune_branches(cli: &Cli, repo: &Repository, dry_run: bool) -> Result<()>
 /// - it's not a protected branch
 /// - it's not the current branch
 /// - it's changes are merged into its base
-fn safe_delete_branch(
-  cli: &Cli,
-  repo: &Repository,
-  branch_name: &String,
-  dry_run: bool,
-) -> Result<()> {
+fn safe_delete_branch(state: &App, branch_name: &String, dry_run: bool) -> Result<()> {
   // skip base branches
-  if cli.config.bases.contains(branch_name) {
+  if state.config.bases.contains(branch_name) {
     return Ok(());
   }
 
   // skip other protected branches
-  if cli.config.protect.contains(branch_name) {
+  if state.config.protect.contains(branch_name) {
     return Ok(());
   }
 
   // skip current branch
-  let current_branch = get_current_branch_name(repo)?;
+  let current_branch = get_current_branch_name(&state.repo)?;
   if current_branch.as_ref().is_some_and(|it| it == branch_name) {
     // not necessarily an error, but the user should know that a non-base non-protected branch was
     // skipped and may manually need to be deleted
@@ -90,14 +83,14 @@ fn safe_delete_branch(
     return Ok(());
   }
 
-  let config = repo.config().context("Failed to get git config")?;
+  let config = &state.repo.config().context("Failed to get git config")?;
 
   // find base branch from db, else skip
   let base_name =
-    data::get_feature_base(&config, branch_name).context("Cannot prune branches without a base")?;
+    data::get_feature_base(config, branch_name).context("Cannot prune branches without a base")?;
 
   // detect if branch is merged (i.e. has no commits that aren't on its base)
-  let is_merged = is_merged(repo, branch_name, &base_name).with_context(|| {
+  let is_merged = is_merged(&state.repo, branch_name, &base_name).with_context(|| {
     format!(
       "Failed to determine if {} is merged into {}",
       branch_name, base_name
@@ -105,7 +98,8 @@ fn safe_delete_branch(
   })?;
 
   if is_merged {
-    let mut branch = repo
+    let branch = &mut state
+      .repo
       .find_branch(branch_name, BranchType::Local)
       .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
 

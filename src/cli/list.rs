@@ -13,7 +13,7 @@ use crate::util::branch::{
 };
 use crate::util::display::{display_plus_minus, trim_hash};
 use crate::util::term::{get_term_width, is_term};
-use crate::{data, lossy, open_repo};
+use crate::{App, data, lossy};
 
 const LONG_ABOUT: &str = r#"Lists all branches. The format is similar to "git branch -vv"."#;
 
@@ -100,10 +100,9 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self) -> Result<()> {
-    let repo = open_repo!();
-
-    let branches = repo
+  pub fn run(&self, state: &App) -> Result<()> {
+    let branches = state
+      .repo
       .branches(Some(git2::BranchType::Local))
       .context("Failed to get list of branches")?;
 
@@ -113,7 +112,7 @@ impl Args {
     let mut col_widths = Row::header().widths();
 
     for (branch, _) in branches.flatten() {
-      let row = self.build_branch_line(&repo, &branch);
+      let row = self.build_branch_line(&state.repo, &branch);
       match row {
         Ok(row) => {
           let branch_width = row.branch.len();
@@ -136,8 +135,8 @@ impl Args {
       }
     }
 
-    let current = get_current_branch_name(&repo)?;
-    let wt_branches = get_worktree_branch_names(&repo)?;
+    let current = get_current_branch_name(&state.repo)?;
+    let wt_branches = get_worktree_branch_names(&state.repo)?;
     let max_widths = Widths::max();
     let line_tail = style("…").dim().to_string();
     let trunc_tail = "…";

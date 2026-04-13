@@ -2,9 +2,8 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Diff, FetchOptions, ObjectType, Oid, Repository, Status, StatusOptions};
 
-use crate::cli::Cli;
+use crate::App;
 use crate::cli::prune::prune_branches;
-use crate::open_repo;
 use crate::util::branch::{branch_to_name, fetch_all, get_current_branch_name, name_to_branch};
 use crate::util::diff::DiffSummary;
 use crate::util::display::trim_hash;
@@ -29,9 +28,8 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> Result<()> {
-    let repo = open_repo!();
-    fetch_all(&repo)?;
+  pub fn run(&self, state: &App) -> Result<()> {
+    fetch_all(&state.repo)?;
 
     if self.dry_run {
       println!(
@@ -40,8 +38,9 @@ impl Args {
       );
     }
 
-    let current_branch = get_current_branch_name(&repo).context("Failed to get current branch")?;
-    let bases = &cli.config.bases;
+    let current_branch =
+      get_current_branch_name(&state.repo).context("Failed to get current branch")?;
+    let bases = &state.config.bases;
 
     let mut opts = FetchOptions::new();
     opts.remote_callbacks(get_remote_callbacks());
@@ -50,7 +49,7 @@ impl Args {
       let is_current = current_branch.as_ref().is_some_and(|it| it == branch_name);
       if is_current {
         // check for local changes
-        if has_local_changes(&repo)? {
+        if has_local_changes(&state.repo)? {
           eprintln!(
             r"Cannot update {} with uncommitted changes. You resolve this by:
 
@@ -67,14 +66,14 @@ impl Args {
         }
       }
 
-      if let Err(e) = fast_forward(&repo, branch_name, is_current, self.dry_run) {
+      if let Err(e) = fast_forward(&state.repo, branch_name, is_current, self.dry_run) {
         eprintln!("Failed to update: {}", e);
         continue;
       }
     }
 
     if !self.no_prune {
-      prune_branches(cli, &repo, self.dry_run)?;
+      prune_branches(state, self.dry_run)?;
     }
     Ok(())
   }

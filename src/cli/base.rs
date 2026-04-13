@@ -3,7 +3,7 @@
 use anyhow::{Context, Result, anyhow};
 
 use crate::util::branch::{get_current_branch_name, get_upstream, name_to_branch};
-use crate::{data, open_repo};
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
 
@@ -27,16 +27,15 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self) -> Result<()> {
-    let repo = open_repo!();
-    let mut config = data::git_config(&repo)?;
+  pub fn run(&self, state: &App) -> Result<()> {
+    let mut config = data::git_config(&state.repo)?;
 
     let branch_name = match &self.branch {
       Some(it) => it,
-      None => &get_current_branch_name(&repo)?.context(NOT_ON_BRANCH_MSG)?,
+      None => &get_current_branch_name(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
-    let base = name_to_branch(&repo, &self.base)
+    let base = name_to_branch(&state.repo, &self.base)
       .with_context(|| format!("Failed to get base branch {}", &self.base))?;
 
     let feature_base_name = {

@@ -1,6 +1,8 @@
 //! Representation of the cli config. Use [load] to get the entire flattened config struct. Includes
 //! modules to work with specific config levels.
 
+use std::path::Path;
+
 use anyhow::Result;
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
@@ -106,8 +108,14 @@ impl Default for AdviceConfig {
   }
 }
 
-/// Loads and layers config from all sources except cli options
+/// Loads a layered config, searching the default locations for each.
 pub fn load() -> Result<Config> {
+  load_with_path(&project::path())
+}
+
+/// Loads a layered config, using the given path as the project-level config file. The global config
+/// file cannot be changed.
+pub fn load_with_path(project: &Path) -> Result<Config> {
   // load defaults
   let mut figment = Figment::new().merge(Serialized::defaults(Config::default()));
 
@@ -119,7 +127,7 @@ pub fn load() -> Result<Config> {
 
   // override with project config
   {
-    let path = project::path();
+    let path = project;
     if path.exists() {
       figment = figment.merge(Toml::file(path));
     }
