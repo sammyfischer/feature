@@ -67,8 +67,9 @@ pub struct Args {
   #[arg(long)]
   pub git_dir: Option<PathBuf>,
 
-  /// Path to a git worktree to use
-  #[arg(long, visible_alias = "wt")]
+  /// Path to a git worktree to use. "work-tree" is an invisible alias in case anyone is used to
+  /// git's option with the same spelling
+  #[arg(long, visible_alias = "wt", alias = "work-tree", requires = "git_dir")]
   pub worktree: Option<PathBuf>,
 
   #[command(subcommand)]

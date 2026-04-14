@@ -1,6 +1,6 @@
 #![feature(trim_prefix_suffix)]
 
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use clap::{CommandFactory, FromArgMatches};
 use git2::Repository;
 
@@ -28,7 +28,7 @@ impl App {
       None => config::load(),
     }?;
 
-    let repo = match (args.git_dir, args.worktree) {
+    let repo = match (&args.git_dir, &args.worktree) {
       // neither, do an automatic search
       (None, None) => Repository::open_from_env()?,
 
@@ -40,8 +40,16 @@ impl App {
 
       // git dir and worktree, open the git dir and set workdir to the worktree
       (Some(dir), Some(wt)) => {
-        let repo = Repository::open(dir)?;
-        repo.set_workdir(&wt, false)?;
+        let repo = Repository::open_bare(dir)
+          .context("Cannot specify a worktree on a non-bare repository")?;
+
+        if !repo.is_bare() {
+          return Err(anyhow!(
+            "Cannot specify a worktree on a non-bare repository"
+          ));
+        }
+
+        repo.set_workdir(wt, false)?;
         repo
       }
     };

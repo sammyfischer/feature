@@ -47,11 +47,9 @@ pub struct TestRemote {
 
 impl TestRepo {
   pub fn new() -> Self {
-    let mut builder = tempfile::Builder::new();
-    builder.prefix("repo-");
-
-    let dir = builder.tempdir().expect("Temp dir should be created");
+    let dir = TempDir::with_prefix("repo-").unwrap();
     let this = Self { dir };
+
     this
       .git(&["init", "-b", "main", path_str!(this.path())])
       .success();
@@ -66,11 +64,9 @@ impl TestRepo {
 
   /// Clones an existing repository
   pub fn new_from(repo: &TestRemote, prefix: &str) -> Self {
-    let mut builder = tempfile::Builder::new();
-    builder.prefix(prefix);
-
-    let dir = builder.tempdir().expect("Temp dir should be created");
+    let dir = TempDir::with_prefix(prefix).unwrap();
     let this = Self { dir };
+
     this.git(&["clone", path_str!(repo.path()), "."]).success();
 
     this.git(&["config", "user.name", "test"]).success();
@@ -96,6 +92,22 @@ impl TestRepo {
       .success();
 
     (local, remote)
+  }
+
+  pub fn new_bare() -> Self {
+    let dir = TempDir::with_prefix("bare-repo-").unwrap();
+    let this = Self { dir };
+
+    this
+      .git(&["init", "--bare", path_str!(this.path())])
+      .success();
+
+    this.git(&["config", "user.name", "test"]).success();
+    this
+      .git(&["config", "user.email", "test@test.net"])
+      .success();
+
+    this
   }
 
   /// Run a feature command in the repo dir. Returns an `assert_cmd::Assert`
@@ -195,10 +207,7 @@ impl TestRepo {
 
 impl TestRemote {
   pub fn new() -> Self {
-    let mut builder = tempfile::Builder::new();
-    builder.prefix("remote-");
-
-    let dir = builder.tempdir().expect("Temp dir should be created");
+    let dir = TempDir::with_prefix("remote-").unwrap();
     let this = Self { dir };
 
     Command::new("git")
