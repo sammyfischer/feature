@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{ErrorCode, PushOptions};
+use git2::{ErrorClass, ErrorCode, PushOptions};
 
 use crate::util::branch::get_current_branch_name;
 use crate::util::get_remote_callbacks;
@@ -140,9 +140,17 @@ impl Args {
           .to_string(),
       );
 
-      branch
-        .set_upstream(Some(&set_upstream_to))
-        .context("Failed to set upstream tracking branch")?;
+      match branch.set_upstream(Some(&set_upstream_to)) {
+        Ok(_) => Ok(()),
+
+        // this error is returned in bare repos where an upstream (e.g. origin/main) cannot be
+        // created. in this case, the git config for the branch is still properly set, e.g.
+        // `branch.main.remote = origin` and `branch.main.merge = refs/heads/main`
+        Err(e) if e.class() == ErrorClass::Reference && e.code() == ErrorCode::NotFound => Ok(()),
+
+        // any other error is a real error
+        Err(e) => Err(anyhow!(e).context("Failed to set upstream")),
+      }?;
     }
 
     println!("{}", out);

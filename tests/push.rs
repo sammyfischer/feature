@@ -1,3 +1,9 @@
+use std::fs;
+
+use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
+use tempfile::TempDir;
+
 use crate::common::{TestRemote, TestRepo};
 
 mod common;
@@ -235,4 +241,58 @@ fn pushes_with_custom_upstream() {
     stdout.contains("refs/heads/branch refs/remotes/the-origin/custom-name"),
     "Upstream should use the custom name"
   );
+}
+
+/// Push should succeed in a bare repo
+#[test]
+fn pushes_in_bare_repo() {
+  let repo = TestRepo::new_bare();
+  let wt = TempDir::with_prefix("repo-worktree-").unwrap();
+  let remote = TestRemote::new();
+  let file_name = "file.txt";
+
+  let git = |args: &[&str]| {
+    Command::new("git")
+      .current_dir(wt.path())
+      .args([
+        "--git-dir",
+        path_str!(repo.path()),
+        "--work-tree",
+        path_str!(wt.path()),
+      ])
+      .args(args)
+      .assert()
+  };
+
+  let feature = |args: &[&str]| {
+    cargo_bin_cmd!()
+      .current_dir(wt.path())
+      .args([
+        "--git-dir",
+        path_str!(repo.path()),
+        "--worktree",
+        path_str!(wt.path()),
+      ])
+      .args(args)
+      .assert()
+  };
+
+  git(&["remote", "add", "origin", path_str!(remote.path())]).success();
+
+  fs::write(wt.path().join(file_name), "A").unwrap();
+  git(&["add", file_name]).success();
+  git(&["commit", "-m", "A"]).success();
+
+  // first push, no upstream config
+  feature(&["push"]).success();
+
+  fs::write(wt.path().join(file_name), "B").unwrap();
+  git(&["add", file_name]).success();
+  git(&["commit", "-m", "B"]).success();
+
+  // second push, upstream config exists
+  feature(&["push"]).success();
+
+  // make sure they got pushed
+  assert_eq!(remote.list_commit_subjects("main").trim(), "B\nA");
 }

@@ -242,4 +242,10 @@ impl TestRemote {
     let cmd = self.git(&["log", "--pretty=format:%h", branch]);
     get_stdout!(cmd)
   }
+
+  /// Lists just the commit subject-lines of a branch
+  pub fn list_commit_subjects(&self, branch: &str) -> String {
+    let cmd = self.git(&["log", "--pretty=format:%s", branch]).success();
+    get_stdout!(cmd)
+  }
 }
