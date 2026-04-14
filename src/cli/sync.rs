@@ -116,11 +116,12 @@ project with others, or the branch has branch protections on the remote).",
     ));
   }
 
-  let diff = repo.diff_tree_to_tree(
+  let mut diff = repo.diff_tree_to_tree(
     Some(&branch.get().peel_to_tree()?),
     Some(&upstream.get().peel_to_tree()?),
     None,
   )?;
+  diff.find_similar(None)?;
 
   if dry_run {
     display_update(branch_name, &diff, &branch_tip.id())?;
