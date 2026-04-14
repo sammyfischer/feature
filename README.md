@@ -52,13 +52,11 @@ Here's a summary of the feature workflow:
   - make an empty tempdir, use as `$HOME`
   - manually set `GIT_CONFIG_GLOBAL` to a tempfile or `/dev/null`
   - use `GIT_CONFIG_NOSYSTEM`
+- run git gc every now and then
+  - maybe in write commands like sync
 
 ### Features
 
-- global flags
-  - `--git-dir`
-  - `--worktree`
-  - `--config` project config file location, not for user config
 - undo
   - uses reflog, undoes latest change
 - stash
@@ -75,6 +73,10 @@ Here's a summary of the feature workflow:
 - worktree
   - open an interactive menu to pick a branch and create a worktree from it
   - or use specified branch in command line
+- show
+  - more concise commit info, diff summary, then full diff
+  - easy options, --no-patch, --no-summary
+  - handle merge commits
 - diff
   - basic options: --all (default), --staged, --unstaged
   - one arg: diff arg to workdir

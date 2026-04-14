@@ -7,7 +7,6 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Commit, Oid, Repository, Signature};
 
-use crate::cli::Cli;
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
   get_current_branch_name,
@@ -19,7 +18,7 @@ use crate::util::diff::DiffSummary;
 use crate::util::display::{display_signature, trim_hash};
 use crate::util::term::get_user_confirmation;
 use crate::util::{get_current_commit, get_signature, read_commit_msg};
-use crate::{lossy, open_repo};
+use crate::{App, lossy};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
@@ -53,12 +52,11 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> Result<()> {
-    let repo = open_repo!();
+  pub fn run(&self, state: &App) -> Result<()> {
     let mut msg = self.words.join(" ");
 
     // if there's a pick active and the user has pick advice enabled
-    if get_pick_head(&repo)?.is_some() && cli.config.advice.cherry_pick {
+    if get_pick_head(&state.repo)?.is_some() && state.config.advice.cherry_pick {
       let confirmed = get_user_confirmation(CONFIRM_DURING_PICK)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -67,7 +65,7 @@ impl Args {
     }
 
     // if there's a revert active and the user has revert advice enabled
-    if get_revert_head(&repo)?.is_some() && cli.config.advice.revert {
+    if get_revert_head(&state.repo)?.is_some() && state.config.advice.revert {
       let confirmed = get_user_confirmation(CONFIRM_DURING_REVERT)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -76,19 +74,20 @@ impl Args {
     }
 
     // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
-    let current_commit = get_current_commit(&repo)?;
-    let signature = get_signature(&repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
-    let mut index = repo.index().context("Failed to get staged changes")?;
+    let current_commit = get_current_commit(&state.repo)?;
+    let signature = get_signature(&state.repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
+    let mut index = state.repo.index().context("Failed to get staged changes")?;
 
     let tree_id = index.write_tree().context("Failed to get index tree")?;
-    let tree = repo
+    let tree = state
+      .repo
       .find_tree(tree_id)
       .context("Failed to get index tree")?;
 
     // all the info needed for amend
     if self.amend {
       let current_commit = current_commit.ok_or(anyhow!("No commits yet, cannot amend"))?;
-      self.pre_commit(&repo)?;
+      self.pre_commit(&state.repo)?;
 
       let new_id = current_commit
         .amend(
@@ -101,13 +100,20 @@ impl Args {
         )
         .expect("Failed to amend commit");
 
-      self.display_commit(&repo, Some(&current_commit.id()), &new_id, &signature, &msg)?;
+      self.display_commit(
+        &state.repo,
+        Some(&current_commit.id()),
+        &new_id,
+        &signature,
+        &msg,
+      )?;
       return Ok(());
     }
 
     let commit_tree = current_commit.as_ref().and_then(|it| it.tree().ok());
 
-    let staged_diff = repo
+    let staged_diff = state
+      .repo
       .diff_tree_to_index(commit_tree.as_ref(), Some(&index), None)
       .context("Failed to analyze staged changes")?;
 
@@ -121,13 +127,13 @@ impl Args {
       ));
     }
 
-    let merge_head = get_merge_head(&repo)?;
+    let merge_head = get_merge_head(&state.repo)?;
 
     if msg.is_empty() {
       // if it's a merge, try to get the msg from .git/MERGE_MSG
       'merge_msg: {
         if merge_head.is_some() {
-          let path = repo.path().join("MERGE_MSG");
+          let path = state.repo.path().join("MERGE_MSG");
 
           // if not found, default
           if path.exists() {
@@ -159,9 +165,10 @@ impl Args {
     // get each element as a reference
     let parent_commits: Vec<&Commit> = parent_commits.iter().collect();
 
-    self.pre_commit(&repo)?;
+    self.pre_commit(&state.repo)?;
 
-    let new_id = repo
+    let new_id = state
+      .repo
       .commit(
         Some("HEAD"),
         &signature,
@@ -172,11 +179,11 @@ impl Args {
       )
       .expect("Failed to commit");
 
-    self.display_commit(&repo, old_id.as_ref(), &new_id, &signature, &msg)?;
+    self.display_commit(&state.repo, old_id.as_ref(), &new_id, &signature, &msg)?;
 
     // committing during an active merge completes the merge, we should clean up the merge files
     if merge_head.is_some() {
-      repo.cleanup_state()?;
+      state.repo.cleanup_state()?;
       println!("\n{}", style("Merge completed!").dim())
     }
 
@@ -291,9 +298,10 @@ impl Args {
     let old_commit = old_id.and_then(|it| repo.find_commit(*it).ok());
     let old_tree = old_commit.and_then(|it| it.tree().ok());
 
-    let diff = repo
+    let mut diff = repo
       .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
       .context("Failed to obtain commit changes")?;
+    diff.find_similar(None)?;
 
     let summary = DiffSummary::new(&diff);
 

@@ -34,7 +34,7 @@ pub struct DiffSummary {
 }
 
 impl DiffSummary {
-  /// Iterates through the diff and summarizes the information into a new [DiffStats]
+  /// Iterates through the diff and summarizes the information into a new [DiffSummary]
   pub fn new(diff: &Diff) -> Result<Self> {
     let mut summary = DiffSummary {
       num_files: 0,
@@ -57,8 +57,9 @@ impl DiffSummary {
       &mut |delta, _| {
         let mut file = DiffFileSummary {
           status: delta.status(),
-          name: String::new(),
-          rename_old: String::new(),
+          // reasonable initial capacity for filenames
+          name: String::with_capacity(40),
+          similar_old: String::with_capacity(40),
           insertions: 0,
           deletions: 0,
         };
@@ -68,14 +69,13 @@ impl DiffSummary {
           | Delta::Untracked
           | Delta::Added
           | Delta::Modified
-          | Delta::Copied
           | Delta::Ignored
           | Delta::Typechange
           | Delta::Unreadable
           | Delta::Conflicted => file.name.push_str(&delta_filename!(delta, new_file)),
           Delta::Deleted => file.name.push_str(&delta_filename!(delta, old_file)),
-          Delta::Renamed => {
-            file.rename_old.push_str(&delta_filename!(delta, old_file));
+          Delta::Renamed | Delta::Copied => {
+            file.similar_old.push_str(&delta_filename!(delta, old_file));
             file.name.push_str(&delta_filename!(delta, new_file));
           }
         };
@@ -193,8 +193,9 @@ pub struct DiffFileSummary {
   /// else
   pub name: String,
 
-  /// For renames only, this is the old name of the file
-  pub rename_old: String,
+  /// For similarity detection, this is the old name of the file. This is set for renames and
+  /// copies
+  pub similar_old: String,
 
   /// The number of line insertions. This is only meaningful for some statuses, but there will
   /// always be a value
@@ -237,17 +238,18 @@ impl Display for DiffFileSummary {
       Delta::Renamed => write!(
         f,
         "{} {} -> {} {}",
-        style("R").yellow(),
+        style("R").magenta(),
+        self.similar_old,
         self.name,
-        self.rename_old,
         // renames may have changes depending on the rename threshold
         display_plus_minus(self.insertions, self.deletions)
       ),
 
       Delta::Copied => write!(
         f,
-        "{} {} {}",
-        style("C").green(),
+        "{} {} -> {} {}",
+        style("C").magenta(),
+        self.similar_old,
         self.name,
         display_plus_minus(self.insertions, self.deletions)
       ),
@@ -267,4 +269,28 @@ impl Display for DiffFileSummary {
       Delta::Conflicted => write!(f, "{} {}", style("X").red(), self.name),
     }
   }
+}
+
+/// Guide for what each letter means
+pub fn status_guide() -> String {
+  use std::fmt::Write;
+  let mut out = String::new();
+
+  writeln!(out, "Meaning of each file status").unwrap();
+  writeln!(out, "  {} Added", style("A").green()).unwrap();
+  writeln!(out, "  {} Deleted", style("D").red()).unwrap();
+  writeln!(out, "  {} Modified", style("M").yellow()).unwrap();
+  writeln!(out, "  {} Untracked", style("U").cyan()).unwrap();
+  writeln!(out, "  {} Conflicted", style("X").red()).unwrap();
+
+  writeln!(out, "These display the old and new name").unwrap();
+  writeln!(out, "  {} Renamed", style("R").magenta()).unwrap();
+  writeln!(out, "  {} Copied", style("C").magenta()).unwrap();
+
+  writeln!(out, "These generally won't appear in regular diffs").unwrap();
+  writeln!(out, "  {} Unmodified", style("=").dim()).unwrap();
+  writeln!(out, "  {} Ignored", style("I").dim()).unwrap();
+  writeln!(out, "  {} Typechange", style("T").yellow()).unwrap();
+  writeln!(out, "  {} Unreadable", style("?").red()).unwrap();
+  out
 }

@@ -2,10 +2,9 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{ErrorCode, PushOptions};
 
-use crate::cli::Cli;
 use crate::util::branch::get_current_branch_name;
 use crate::util::get_remote_callbacks;
-use crate::{lossy, open_repo};
+use crate::{App, lossy};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Pushes a branch to remote, setting upstream automatically")]
@@ -24,22 +23,22 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> Result<()> {
-    let repo = open_repo!();
-    let branch_name =
-      get_current_branch_name(&repo)?.context("Not currently on a branch! Nothing to push.")?;
+  pub fn run(&self, state: &App) -> Result<()> {
+    let branch_name = get_current_branch_name(&state.repo)?
+      .context("Not currently on a branch! Nothing to push.")?;
 
     // allow pushing bases, but as fast-forward only. the remote can still choose to reject
-    if cli.config.bases.contains(&branch_name) && self.force {
+    if state.config.bases.contains(&branch_name) && self.force {
       return Err(anyhow!("Cannot force push a base branch"));
     }
 
     // same for protected branches
-    if cli.config.protect.contains(&branch_name) && self.force {
+    if state.config.protect.contains(&branch_name) && self.force {
       return Err(anyhow!("Cannot force push a protected branch"));
     }
 
-    let mut branch = repo
+    let mut branch = state
+      .repo
       .find_branch(&branch_name, git2::BranchType::Local)
       .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
     let branch_refname = lossy!(&branch.get().name_bytes());
@@ -72,7 +71,7 @@ impl Args {
           self
             .remote
             .as_ref()
-            .unwrap_or(&cli.config.default_remote)
+            .unwrap_or(&state.config.default_remote)
             .clone(),
         )
       }
@@ -80,7 +79,8 @@ impl Args {
       Err(e) => return Err(e.into()),
     };
 
-    let mut remote = repo
+    let mut remote = state
+      .repo
       .find_remote(&remote_name)
       .with_context(|| format!("Failed to get reference to remote {}", remote_name))?;
 

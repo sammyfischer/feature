@@ -5,7 +5,6 @@ use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
 use git2::{DiffOptions, Oid, Reference, Repository};
 
-use crate::cli::Cli;
 use crate::util::advice::{
   BISECT_ADVICE,
   MERGE_CONFLICT_ADVICE,
@@ -34,9 +33,9 @@ use crate::util::display::{
   display_time_relative,
   trim_hash,
 };
+use crate::util::get_signature;
 use crate::util::term::{get_term_width, is_term};
-use crate::util::{get_current_commit, get_signature};
-use crate::{data, lossy, open_repo, opt_advice};
+use crate::{App, data, lossy, opt_advice};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -50,47 +49,49 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> Result<()> {
-    let repo = open_repo!();
-    let head = get_head(&repo)?;
-    let rebase_dir = get_rebase_dir(&repo);
+  pub fn run(&self, state: &App) -> Result<()> {
+    let head = get_head(&state.repo)?;
+    let rebase_dir = get_rebase_dir(&state.repo);
 
     let (header, advice) = if let Some(dir) = rebase_dir.as_ref() {
       (
-        display_rebase_header(&repo, dir)?,
-        opt_advice!(cli.config.advice.rebase, REBASE_CONFLICT_ADVICE),
+        display_rebase_header(&state.repo, dir)?,
+        opt_advice!(state.config.advice.rebase, REBASE_CONFLICT_ADVICE),
       )
-    } else if is_merge_active(&repo) {
+    } else if is_merge_active(&state.repo) {
       (
-        display_merge_header(&repo)?,
-        opt_advice!(cli.config.advice.merge, MERGE_CONFLICT_ADVICE),
+        display_merge_header(&state.repo)?,
+        opt_advice!(state.config.advice.merge, MERGE_CONFLICT_ADVICE),
       )
-    } else if is_pick_active(&repo) {
+    } else if is_pick_active(&state.repo) {
       (
-        display_pick_header(&repo)?,
-        opt_advice!(cli.config.advice.cherry_pick, PICK_CONFLICT_ADVICE),
+        display_pick_header(&state.repo)?,
+        opt_advice!(state.config.advice.cherry_pick, PICK_CONFLICT_ADVICE),
       )
-    } else if is_revert_active(&repo) {
+    } else if is_revert_active(&state.repo) {
       (
-        display_revert_header(&repo)?,
-        opt_advice!(cli.config.advice.revert, REVERT_CONFLICT_ADVICE),
+        display_revert_header(&state.repo)?,
+        opt_advice!(state.config.advice.revert, REVERT_CONFLICT_ADVICE),
       )
-    } else if is_bisect_active(&repo) {
+    } else if is_bisect_active(&state.repo) {
       (
-        display_bisect_header(&repo)?,
-        opt_advice!(cli.config.advice.bisect, BISECT_ADVICE),
+        display_bisect_header(&state.repo)?,
+        opt_advice!(state.config.advice.bisect, BISECT_ADVICE),
       )
     } else {
       (
-        display_normal_header(&repo, head.as_ref())?,
-        opt_advice!(cli.config.advice.status, STATUS_ADVICE),
+        display_normal_header(&state.repo, head.as_ref())?,
+        opt_advice!(state.config.advice.status, STATUS_ADVICE),
       )
     };
 
     println!("{}", header);
 
     // signature/author info
-    println!("{}", display_signature(get_signature(&repo)?.as_ref()));
+    println!(
+      "{}",
+      display_signature(get_signature(&state.repo)?.as_ref())
+    );
 
     // print advice in new paragraph above diffs
     if let Some(advice) = advice {
@@ -108,14 +109,15 @@ impl Args {
 
     // conflicted changes
     if rebase_dir.is_some()
-      || is_merge_active(&repo)
-      || is_pick_active(&repo)
-      || is_revert_active(&repo)
+      || is_merge_active(&state.repo)
+      || is_pick_active(&state.repo)
+      || is_revert_active(&state.repo)
     {
-      let commit =
-        get_current_commit(&repo)?.expect("There must be a current commit during a rebase");
-      let tree = commit.tree()?;
-      let diff = repo.diff_tree_to_index(Some(&tree), None, None)?;
+      let tree = tree
+        .as_ref()
+        .context("There must be a current commit during a rebase")?;
+
+      let diff = state.repo.diff_tree_to_index(Some(tree), None, None)?;
       let summary = DiffSummary::new(&diff)?.conflicts();
 
       println!(
@@ -129,14 +131,15 @@ impl Args {
       );
     }
 
-    if is_pick_active(&repo) {
+    if is_pick_active(&state.repo) {
       // cherry picks are weird bc they show no diff with head when you stage changes. to show
       // meaningful changes you have to diff with the picked commit
-      let repo: &Repository = &repo;
-      let pick_head = repo.find_reference("CHERRY_PICK_HEAD")?;
+      let pick_head = state.repo.find_reference("CHERRY_PICK_HEAD")?;
       let pick_tree = pick_head.peel_to_tree()?;
 
-      let diff = repo.diff_tree_to_index(Some(&pick_tree), None, None)?;
+      let diff = state
+        .repo
+        .diff_tree_to_index(Some(&pick_tree), None, None)?;
       let summary = DiffSummary::new(&diff)?.non_conflicts();
 
       if summary.num_files != 0 {
@@ -148,28 +151,27 @@ impl Args {
     }
 
     // staged changes
-    let diff = repo
+    let mut diff = state
+      .repo
       .diff_tree_to_index(tree.as_ref(), None, None)
       .context("Failed to get staged changes")?;
+    diff.find_similar(None)?;
 
     match DiffSummary::new(&diff) {
-      Ok(it) => {
+      Ok(summary) => {
         // filter out conflicted files
-        let it = it.non_conflicts();
-        if it.num_files != 0 {
-          println!();
-          print!("{} - ", style("Staged").green());
-          println!("{}", it)
+        let summary = summary.non_conflicts();
+        if summary.num_files != 0 {
+          println!("\n{} - {}", style("Staged").green(), summary);
         }
       }
       Err(_) => {
-        println!();
-        println!("Failed to get summary of staged changes");
+        println!("\nFailed to get summary of staged changes");
       }
     };
 
     // unstaged changes
-    let mut opts = if self.hide_untracked || cli.config.hide_untracked {
+    let mut opts = if self.hide_untracked || state.config.hide_untracked {
       None
     } else {
       let mut opts = DiffOptions::new();
@@ -177,9 +179,11 @@ impl Args {
       Some(opts)
     };
 
-    let diff = repo
+    let mut diff = state
+      .repo
       .diff_index_to_workdir(None, opts.as_mut())
       .context("Failed to get unstaged changes")?;
+    diff.find_similar(None)?;
 
     match DiffSummary::new(&diff) {
       Ok(it) => {

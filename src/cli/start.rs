@@ -2,10 +2,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::Repository;
 
-use crate::cli::Cli;
-use crate::config::Config;
 use crate::templater::{LongVar, ShortVar, Templater};
 use crate::util::branch::{
   branch_to_commit,
@@ -14,7 +11,7 @@ use crate::util::branch::{
   name_to_branch,
 };
 use crate::util::get_signature;
-use crate::{data, lossy, open_repo};
+use crate::{App, data, lossy};
 
 const LONG_ABOUT: &str = r"Creates and switches to a new branch.
 This command does no checks to validate the branch name or verify that it
@@ -65,21 +62,19 @@ pub struct Args {
 }
 
 impl Args {
-  pub fn run(&self, cli: &Cli) -> Result<()> {
-    let repo = open_repo!();
-
+  pub fn run(&self, state: &App) -> Result<()> {
     let base_name = self
       .from
       .as_ref()
-      .unwrap_or(&get_current_branch_name(&repo)?.context(NOT_ON_BRANCH_MSG)?)
+      .unwrap_or(&get_current_branch_name(&state.repo)?.context(NOT_ON_BRANCH_MSG)?)
       .clone();
-    if !cli.config.bases.contains(&base_name) {
+
+    if !state.config.bases.contains(&base_name) {
       return Err(anyhow!(NOT_ON_BASE_MSG));
     }
 
-    let base = name_to_branch(&repo, &base_name)?;
-
-    let branch_name = self.build_branch_name(&repo, &cli.config, &base_name)?;
+    let base = name_to_branch(&state.repo, &base_name)?;
+    let branch_name = self.build_branch_name(state, &base_name)?;
 
     if self.dry_run {
       display_branch_creation(&branch_name, &base_name);
@@ -90,7 +85,8 @@ impl Args {
     let start_commit = branch_to_commit(&base)?.context(EMPTY_REPO_MSG)?;
 
     // create branch
-    let branch = repo
+    let branch = state
+      .repo
       .branch(&branch_name, &start_commit, false)
       .context("Failed to create branch")?;
 
@@ -103,12 +99,14 @@ impl Args {
       .context("Failed to get branch as tree to checkout")?;
 
     // checkout branch
-    repo
+    state
+      .repo
       .checkout_tree(tree.as_object(), None)
       .context("Failed to switch to branch")?;
 
     // update HEAD
-    repo
+    state
+      .repo
       .set_head(&format!("refs/heads/{}", branch_name))
       .with_context(|| {
         format!(
@@ -131,25 +129,20 @@ impl Args {
       }
     };
 
-    let mut config = data::git_config(&repo)?;
+    let mut config = data::git_config(&state.repo)?;
     data::set_feature_base(&mut config, &branch_name, &feature_base_name)?;
 
     Ok(())
   }
 
-  fn build_branch_name(
-    &self,
-    repo: &Repository,
-    config: &Config,
-    base_name: &str,
-  ) -> Result<String> {
-    let sep = self.sep.as_ref().unwrap_or(&config.format.branch_sep);
+  fn build_branch_name(&self, state: &App, base_name: &str) -> Result<String> {
+    let sep = self.sep.as_ref().unwrap_or(&state.config.format.branch_sep);
     let main_part = self.words.join(sep);
 
     let mut template = self.format.as_ref();
     // use config if cli option isn't specified
     if template.is_none() {
-      template = config.format.branch.as_ref();
+      template = state.config.format.branch.as_ref();
     }
 
     // if neither cli nor config specifies a template, just use the main part
@@ -165,7 +158,7 @@ impl Args {
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
         lossy!(
-          get_signature(repo)
+          get_signature(&state.repo)
             .expect("Failed to get default commit signature")
             .expect("Specify a username with git config user.name <name>")
             .name_bytes()

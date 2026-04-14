@@ -1,12 +1,14 @@
 //! Defines the main cli structure, most simple commands, and several helper functions and macros.
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
-use crate::config::Config;
+use crate::App;
 
 mod base;
 mod commit;
-mod config_cmd;
+mod config_command;
 mod graph;
 mod list;
 mod log;
@@ -55,22 +57,27 @@ macro_rules! git {
   };
 }
 
-/// Automatically opens a suitable git repo. Panics if it can't find one.
-#[macro_export]
-macro_rules! open_repo {
-  () => {
-    git2::Repository::open_from_env().expect("Failed to open git repo")
-  };
-}
-
 #[derive(Debug, Parser)]
 pub struct Args {
+  /// Path to a project-level config file to use
+  #[arg(long)]
+  pub config: Option<PathBuf>,
+
+  /// Path to a git directory to use
+  #[arg(long)]
+  pub git_dir: Option<PathBuf>,
+
+  /// Path to a git worktree to use. "work-tree" is an invisible alias in case anyone is used to
+  /// git's option with the same spelling
+  #[arg(long, visible_alias = "wt", alias = "work-tree", requires = "git_dir")]
+  pub worktree: Option<PathBuf>,
+
   #[command(subcommand)]
-  pub action: Action,
+  pub command: Command,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum Action {
+pub enum Command {
   // ==== FEATURE BRANCH WORKFLOW / SINGLE BRANCH ACTIONS ====
   Start(start::Args),
   Commit(commit::Args),
@@ -89,35 +96,22 @@ pub enum Action {
   Graph(graph::Args),
 
   // ==== META / FEATURE COMMANDS ====
-  Config(config_cmd::Args),
+  Config(config_command::Args),
 }
 
-pub struct Cli {
-  pub(crate) config: Config,
-  pub(crate) args: Args,
-}
-
-impl Cli {
-  pub fn new() -> Self {
-    let config = crate::config::load().unwrap_or_default();
-    let args = Args::parse();
-    Self { config, args }
-  }
-
-  pub fn run(&mut self) -> anyhow::Result<()> {
-    match &self.args.action {
-      Action::Start(args) => args.run(self),
-      Action::Commit(args) => args.run(self),
-      Action::Base(args) => args.run(),
-      Action::Update(args) => args.run(),
-      Action::Push(args) => args.run(self),
-      Action::Sync(args) => args.run(self),
-      Action::Prune(args) => args.run(self),
-      Action::Status(args) => args.run(self),
-      Action::List(args) => args.run(),
-      Action::Log(args) => args.run(self),
-      Action::Graph(args) => args.run(self),
-      Action::Config(args) => args.run(),
-    }
+pub fn run(state: App) -> anyhow::Result<()> {
+  match &state.command {
+    Command::Start(args) => args.run(&state),
+    Command::Commit(args) => args.run(&state),
+    Command::Base(args) => args.run(&state),
+    Command::Update(args) => args.run(&state),
+    Command::Push(args) => args.run(&state),
+    Command::Sync(args) => args.run(&state),
+    Command::Prune(args) => args.run(&state),
+    Command::Status(args) => args.run(&state),
+    Command::List(args) => args.run(&state),
+    Command::Log(args) => args.run(&state),
+    Command::Graph(args) => args.run(&state),
+    Command::Config(args) => args.run(),
   }
 }
