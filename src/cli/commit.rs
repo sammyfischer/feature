@@ -7,6 +7,7 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Commit, Diff, Oid, Reference, Repository};
 
+use crate::config::Config;
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
   get_current_branch_or_commit,
@@ -158,7 +159,10 @@ impl Args {
       )?;
       diff.find_similar(None)?;
 
-      println!("{}", display_commit_details(&new_commit, &diff)?);
+      println!(
+        "{}",
+        display_commit_details(&new_commit, &diff, &state.config)?
+      );
       return Ok(());
     }
 
@@ -272,7 +276,10 @@ impl Args {
         .diff_tree_to_tree(old_tree.as_ref(), Some(&new_commit.tree()?), None)?;
     diff.find_similar(None)?;
 
-    println!("{}", display_commit_details(&new_commit, &diff)?);
+    println!(
+      "{}",
+      display_commit_details(&new_commit, &diff, &state.config)?
+    );
 
     // committing during an active merge completes the merge, we should clean up the merge files
     if merge_head.is_some() {
@@ -375,11 +382,11 @@ fn display_merge_header(repo: &Repository, merge_head: &Reference, head: &str) -
 ///   - regular: (first) parent to commit
 ///   - amend: old to new
 ///   - merge: first parent to commit (changes introduced by merge)
-fn display_commit_details(commit: &Commit<'_>, diff: &Diff) -> Result<String> {
+fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &Config) -> Result<String> {
   use std::fmt::Write;
   let mut out = String::with_capacity(200);
 
-  write!(out, "{}", display_commit_full(commit)?)?;
+  write!(out, "{}", display_commit_full(commit, config)?)?;
 
   let summary = DiffSummary::new(diff);
 

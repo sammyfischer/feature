@@ -22,7 +22,7 @@ impl Args {
       .repo
       .revparse_single(self.revision.as_deref().unwrap_or("HEAD"))?;
     let commit = object.peel_to_commit()?;
-    println!("{}", display_commit_full(&commit)?);
+    println!("{}", display_commit_full(&commit, &state.config)?);
 
     if !self.no_summary {
       print_summary(&state.repo, &commit)?;

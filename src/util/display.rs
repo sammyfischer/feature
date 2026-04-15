@@ -6,6 +6,8 @@ use chrono::{FixedOffset, TimeZone};
 use console::style;
 use git2::{Commit, Oid, Signature, Time};
 
+use crate::config::Config;
+use crate::config::format::{DateStyle, HourStyle};
 use crate::lossy;
 
 pub fn trim_hash(id: &Oid) -> String {
@@ -18,17 +20,28 @@ pub fn display_hash(id: &Oid) -> String {
 }
 
 /// Displays a human-readable absolute time
-pub fn display_time_absolute(time: &Time) -> Result<String> {
-  let timezone = FixedOffset::east_opt(time.offset_minutes() * 60)
+pub fn display_time_absolute(time: &Time, config: &Config) -> Result<String> {
+  let tz = FixedOffset::east_opt(time.offset_minutes() * 60)
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
-  let date = timezone
+  let date = tz
     .timestamp_opt(time.seconds(), 0)
     .single()
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
-  // TODO: 24 hour config option
-  Ok(date.format("%B %d, %Y at %I:%M %p").to_string())
+  let time_fmt = match config.format.hour {
+    HourStyle::Twelve => "%I:%M %p",
+    HourStyle::TwentyFour => "%H:%M",
+  };
+
+  let tz_fmt = if config.format.timezone { " %z" } else { "" };
+
+  let date_fmt = match config.format.date {
+    DateStyle::Textual => format!("%b %d, %Y at {}{}", time_fmt, tz_fmt),
+    DateStyle::Numeric => format!("%Y-%m-%d {}{}", time_fmt, tz_fmt),
+  };
+
+  Ok(date.format(&date_fmt).to_string())
 }
 
 /// Displays a human-readable relative time
@@ -92,7 +105,7 @@ pub fn display_signature(signature: Option<&Signature>) -> String {
 ///
 ///   body
 /// ```
-pub fn display_commit_full(commit: &Commit) -> Result<String> {
+pub fn display_commit_full(commit: &Commit, config: &Config) -> Result<String> {
   use std::fmt::Write;
   // around 60 chars for hash/time/author, another 80 for message (most of the time this will only
   // be a subject line)
@@ -105,7 +118,7 @@ pub fn display_commit_full(commit: &Commit) -> Result<String> {
   write!(
     out,
     " {}",
-    style(display_time_absolute(&commit.time())?).magenta()
+    style(display_time_absolute(&commit.time(), config)?).magenta()
   )?;
 
   // author
