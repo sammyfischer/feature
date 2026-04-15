@@ -148,7 +148,7 @@ impl TestRepo {
   /// Stages all changes and commits with the given message
   pub fn commit_all(&self, msg: &str) {
     self.git(&["add", "."]).success();
-    self.feature(&["commit", msg]).success();
+    self.git(&["commit", "-m", msg]).success();
   }
 
   /// Creates the file "file.txt" and commits with the message "initial commit"

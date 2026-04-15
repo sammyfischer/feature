@@ -1,9 +1,10 @@
 //! Helper functions to display formatted strings. Diff-realted display functions can be found in
 //! [super::diff]
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
+use chrono::{FixedOffset, TimeZone};
 use console::style;
-use git2::{Oid, Signature, Time};
+use git2::{Commit, Oid, Signature, Time};
 
 use crate::lossy;
 
@@ -14,6 +15,20 @@ pub fn trim_hash(id: &Oid) -> String {
 /// Displays a trimmed hash in yellow
 pub fn display_hash(id: &Oid) -> String {
   style(trim_hash(id)).yellow().to_string()
+}
+
+/// Displays a human-readable absolute time
+pub fn display_time_absolute(time: &Time) -> Result<String> {
+  let timezone = FixedOffset::east_opt(time.offset_minutes() * 60)
+    .ok_or(anyhow!("Failed to format time to local timezone"))?;
+
+  let date = timezone
+    .timestamp_opt(time.seconds(), 0)
+    .single()
+    .ok_or(anyhow!("Failed to format time to local timezone"))?;
+
+  // TODO: 24 hour config option
+  Ok(date.format("%B %d, %Y at %I:%M %p").to_string())
 }
 
 /// Displays a human-readable relative time
@@ -68,10 +83,43 @@ pub fn display_signature(signature: Option<&Signature>) -> String {
   }
 }
 
-/// Displays two numbers like `+p -m` where the first part is green and the second part is red.
+/// Displays full info about a commit
 ///
-/// The numbers are passed in as a tuple, where the first number is the plus and second is the
-/// minus.
+/// ```txt
+/// 1234567 Apr 14, 2025 at 5:46 PM by Author Name
+///
+///   subject
+///
+///   body
+/// ```
+pub fn display_commit_full(commit: &Commit) -> Result<String> {
+  use std::fmt::Write;
+  // around 60 chars for hash/time/author, another 80 for message (most of the time this will only
+  // be a subject line)
+  let mut out = String::with_capacity(140);
+
+  // hash
+  write!(out, "{}", display_hash(&commit.id()))?;
+
+  // timestamp (absolute)
+  write!(
+    out,
+    " {}",
+    style(display_time_absolute(&commit.time())?).magenta()
+  )?;
+
+  // author
+  writeln!(out, " by {}", display_signature(Some(&commit.author())))?;
+
+  // write each line tabbed by 2 spaces
+  for line in lossy!(commit.message_bytes()).lines() {
+    write!(out, "\n  {}", line)?;
+  }
+
+  Ok(out)
+}
+
+/// Displays two numbers like `+p -m` where the first part is green and the second part is red.
 ///
 /// This is used to print ahead/behind and insertions/deletions.
 pub fn display_plus_minus(plus: usize, minus: usize) -> String {

@@ -8,15 +8,17 @@ fn add_file(repo: &TestRepo) {
   repo.git(&["add", &file_name]).success();
 }
 
+/// Feature should be able to commit to an empty repository
 #[test]
-fn commits() {
+fn commits_initial_commit() {
   let repo = TestRepo::new();
 
   // create and add file
   add_file(&repo);
 
   // commit it
-  repo.feature(&["commit", "initial", "commit"]).success();
+  let cmd = repo.feature(&["commit", "initial", "commit"]).success();
+  println!("{}", get_stdout!(cmd));
 
   // check latest commit message
   let cmd = repo.git(&["log", "-1", "--pretty=%B"]).success();
@@ -157,5 +159,30 @@ fn merge_commit_uses_merge_msg() {
     get_stdout!(cmd)
       .trim()
       .starts_with("Merge branch 'main' into topic")
+  );
+}
+
+/// Specifying --to <branch> should commit to that branch
+#[test]
+fn commits_to_target_branch() {
+  let repo = TestRepo::new();
+  let file_name = "file.txt";
+  repo.write_file(file_name, "A");
+  repo.commit_all("A");
+
+  repo.feature(&["start", "topic"]).success();
+  repo.write_file(file_name, "B");
+  repo.git(&["add", "."]).success();
+  repo.feature(&["commit", "--to", "main", "B"]).success();
+
+  assert_eq!(
+    repo.list_commit_subjects("main").trim(),
+    "B\nA",
+    "Commit B should have gone to main"
+  );
+  assert_eq!(
+    repo.list_commit_subjects("topic").trim(),
+    "A",
+    "Commit B should not have gone to topic"
   );
 }

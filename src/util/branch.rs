@@ -70,6 +70,25 @@ pub fn name_to_remote_branch<'repo>(repo: &'repo Repository, name: &str) -> Resu
   Ok(branch)
 }
 
+/// Searches local and remote branches to find one matching the given name. Returns None when no
+/// matching branch is found.
+pub fn resolve_branch_name<'repo>(
+  repo: &'repo Repository,
+  name: &'repo str,
+) -> Result<Option<Branch<'repo>>> {
+  match repo.find_branch(name, BranchType::Local) {
+    Ok(branch) => Ok(Some(branch)),
+
+    Err(e) if e.code() == ErrorCode::NotFound => match repo.find_branch(name, BranchType::Remote) {
+      Ok(branch) => Ok(Some(branch)),
+
+      Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
+      Err(e) => Err(anyhow!(e)),
+    },
+    Err(e) => Err(anyhow!(e)),
+  }
+}
+
 pub fn branch_to_commit<'repo>(branch: &Branch<'repo>) -> Result<Option<Commit<'repo>>> {
   match branch.get().peel_to_commit() {
     Ok(it) => Ok(Some(it)),

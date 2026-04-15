@@ -4,7 +4,21 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use git2::{Commit, Cred, CredentialType, ErrorCode, RemoteCallbacks, Repository, Signature};
+use git2::{
+  Commit,
+  Cred,
+  CredentialType,
+  ErrorCode,
+  Oid,
+  RemoteCallbacks,
+  Repository,
+  Signature,
+  Tag,
+};
+
+use crate::lossy;
+use crate::util::branch::commit_to_branch;
+use crate::util::display::trim_hash;
 
 pub mod advice;
 pub mod branch;
@@ -24,6 +38,43 @@ pub fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Option<Commi
     .context("Failed to get commit pointed to by HEAD")?;
 
   Ok(Some(commit))
+}
+
+pub fn commit_to_tag<'repo>(
+  repo: &'repo Repository,
+  commit_id: &'repo Oid,
+) -> Result<Option<Tag<'repo>>> {
+  let tags = repo.tag_names(None)?;
+
+  for tag_name in tags.iter().flatten() {
+    let reference = repo.find_reference(&format!("refs/tags/{}", tag_name))?;
+    let tag = reference.peel_to_tag()?;
+    let tag_commit = reference.peel_to_commit()?;
+
+    if commit_id == &tag_commit.id() {
+      return Ok(Some(tag));
+    }
+  }
+
+  Ok(None)
+}
+
+/// Finds a good user-friendly display name for a commit. Tries:
+///
+/// 1. To find a branch matching the commit, yielding the short branch name
+/// 2. To find a tag matching the commit, yielding the short tag name
+///
+/// If all else fails, returns the trimmed commit hash.
+pub fn resolve_commit_name(repo: &Repository, commit_id: &Oid) -> Result<String> {
+  if let Some(branch) = commit_to_branch(repo, commit_id)? {
+    return Ok(lossy!(branch.name_bytes()?).to_string());
+  }
+
+  if let Some(tag) = commit_to_tag(repo, commit_id)? {
+    return Ok(lossy!(tag.name_bytes()).to_string());
+  }
+
+  Ok(trim_hash(commit_id))
 }
 
 pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<'repo>>> {
