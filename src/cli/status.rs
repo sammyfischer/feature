@@ -243,7 +243,18 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     }
 
     // head points to nothing, no commits in repo
-    None => style("No commits yet").dim().to_string(),
+    None => {
+      let head = repo.find_reference("HEAD")?;
+      let symbolic_ref = lossy!(
+        head
+          .symbolic_target_bytes()
+          .expect("HEAD points to nothing. Is the .git/HEAD file corrupt or missing?")
+      );
+      format!(
+        "On {}, no commits yet",
+        style(symbolic_ref.trim_prefix("refs/heads/")).green()
+      )
+    }
   };
 
   // end first line

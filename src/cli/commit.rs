@@ -5,19 +5,21 @@ use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Commit, Oid, Repository, Signature};
+use git2::{Commit, Diff, Oid, Reference, Repository, Signature};
 
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
-  get_current_branch_name,
+  get_current_branch_or_commit,
+  get_head,
   get_merge_head,
   get_pick_head,
   get_revert_head,
+  resolve_branch_name,
 };
 use crate::util::diff::DiffSummary;
-use crate::util::display::{display_signature, trim_hash};
+use crate::util::display::{display_commit_full, display_hash, display_signature};
 use crate::util::term::get_user_confirmation;
-use crate::util::{get_current_commit, get_signature, read_commit_msg};
+use crate::util::{get_signature, read_commit_msg, resolve_commit_name};
 use crate::{App, lossy};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
@@ -35,12 +37,24 @@ conflicts and running "git revert --continue", rather than committing.
 
 Do you want to commit anyway?"#;
 
+struct CommitTarget<'repo> {
+  commit: Commit<'repo>,
+  /// Something user-friendly to print (ideally branch name, maybe tag or short hash)
+  display_name: String,
+  /// The ref to update. Will be None if we're not committing to a branch
+  refname: Option<String>,
+}
+
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Commit staged changes")]
 pub struct Args {
   /// Whether to amend the previous commit
   #[arg(long, long_help = AMEND_LONG_HELP)]
   amend: bool,
+
+  /// Where to apply the commit. Can be anything commit-ish
+  #[arg(long)]
+  to: Option<String>,
 
   /// Bypass precommit hooks
   #[arg(long)]
@@ -73,61 +87,104 @@ impl Args {
       }
     }
 
-    // most recent commit, i.e. commit that HEAD points to. None when repository has no commits
-    let current_commit = get_current_commit(&state.repo)?;
+    let target = match &self.to {
+      Some(to) => {
+        let object = state.repo.revparse_single(to)?;
+        let commit = object.peel_to_commit()?;
+        let display_name = resolve_commit_name(&state.repo, &commit.id())?;
+
+        Some(match resolve_branch_name(&state.repo, to)? {
+          Some(branch) => CommitTarget {
+            commit,
+            display_name,
+            refname: Some(lossy!(branch.get().name_bytes()).to_string()),
+          },
+          None => CommitTarget {
+            commit,
+            display_name,
+            refname: None,
+          },
+        })
+      }
+
+      None => match get_head(&state.repo)? {
+        Some(head) => Some(CommitTarget {
+          commit: head.peel_to_commit()?,
+          display_name: lossy!(head.shorthand_bytes()).to_string(),
+          refname: Some("HEAD".to_string()),
+        }),
+
+        None => None,
+      },
+    };
+
     let signature = get_signature(&state.repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
     let mut index = state.repo.index().context("Failed to get staged changes")?;
 
-    let tree_id = index.write_tree().context("Failed to get index tree")?;
-    let tree = state
+    let index_tree_id = index.write_tree().context("Failed to get index tree")?;
+    let index_tree = state
       .repo
-      .find_tree(tree_id)
+      .find_tree(index_tree_id)
       .context("Failed to get index tree")?;
 
     // all the info needed for amend
     if self.amend {
-      let current_commit = current_commit.ok_or(anyhow!("No commits yet, cannot amend"))?;
+      let target = target.ok_or(anyhow!("No commits yet, cannot amend"))?;
+
       self.pre_commit(&state.repo)?;
 
-      let new_id = current_commit
+      let new_id = target
+        .commit
         .amend(
-          Some("HEAD"),
+          target.refname.as_deref(),
           None,
           Some(&signature),
           None,
           if !msg.is_empty() { Some(&msg) } else { None },
-          Some(&tree),
+          Some(&index_tree),
         )
         .expect("Failed to amend commit");
 
-      self.display_commit(
-        &state.repo,
-        Some(&current_commit.id()),
-        &new_id,
-        &signature,
-        &msg,
+      println!(
+        "{}",
+        display_amend_header(&target.commit.id(), &target.display_name, &signature)?
+      );
+
+      let new_commit = state.repo.find_commit(new_id)?;
+      let mut diff = state.repo.diff_tree_to_tree(
+        Some(&target.commit.tree()?),
+        Some(&new_commit.tree()?),
+        None,
       )?;
+      diff.find_similar(None)?;
+
+      println!("{}", display_commit_details(&new_commit, &diff)?);
       return Ok(());
     }
 
-    let commit_tree = current_commit.as_ref().and_then(|it| it.tree().ok());
-
-    let staged_diff = state
-      .repo
-      .diff_tree_to_index(commit_tree.as_ref(), Some(&index), None)
-      .context("Failed to analyze staged changes")?;
-
-    let staged_stats = staged_diff
-      .stats()
-      .context("Failed to analyze staged changes")?;
-
-    if staged_stats.files_changed() == 0 {
-      return Err(anyhow!(
-        r#"Nothing to commit! Stage some changes with "git add …""#
-      ));
-    }
-
     let merge_head = get_merge_head(&state.repo)?;
+
+    if merge_head.is_none() {
+      // if it's not a merge, require non-empty commit
+      // note: merge commits can appear empty wrt the target commit, since they may resolve
+      // conflicts to look exactly like the target
+      let target_tree = target.as_ref().and_then(|it| it.commit.tree().ok());
+
+      let staged_diff = state
+        .repo
+        .diff_tree_to_index(target_tree.as_ref(), Some(&index), None)
+        .context("Failed to analyze staged changes")?;
+
+      let staged_stats = staged_diff
+        .stats()
+        .context("Failed to analyze staged changes")?;
+
+      if staged_stats.files_changed() == 0 {
+        return Err(anyhow!(
+          r#"Nothing to commit! Stage some changes with "git add …""#
+        ));
+      }
+    }
 
     if msg.is_empty() {
       // if it's a merge, try to get the msg from .git/MERGE_MSG
@@ -154,32 +211,68 @@ impl Args {
       }
     }
 
-    let old_id = current_commit.as_ref().map(|it| it.id());
-    let mut parent_commits: Vec<Commit> = current_commit.into_iter().collect();
+    let old_tree = match &target {
+      Some(it) => Some(it.commit.tree()?),
+      None => None,
+    };
 
-    // if there's an ongoing merge, the merge head should be the second parent
-    if let Some(merge_head) = &merge_head {
-      parent_commits.push(merge_head.peel_to_commit()?);
+    let mut parent_commits: Vec<&Commit> =
+      target.as_ref().map(|it| &it.commit).into_iter().collect();
+
+    let merge_commit_list: Vec<Commit> = match merge_head.as_ref() {
+      Some(it) => it.peel_to_commit().into_iter().collect(),
+      None => Vec::new(),
+    };
+
+    for merge_commit in &merge_commit_list {
+      parent_commits.push(merge_commit);
     }
-
-    // get each element as a reference
-    let parent_commits: Vec<&Commit> = parent_commits.iter().collect();
 
     self.pre_commit(&state.repo)?;
 
     let new_id = state
       .repo
       .commit(
-        Some("HEAD"),
+        match &target {
+          Some(target) => target.refname.as_deref(),
+          // empty repo, just update head
+          None => Some("HEAD"),
+        },
         &signature,
         &signature,
         &msg,
-        &tree,
+        &index_tree,
         &parent_commits,
       )
       .expect("Failed to commit");
 
-    self.display_commit(&state.repo, old_id.as_ref(), &new_id, &signature, &msg)?;
+    if let Some(merge_head) = &merge_head {
+      println!(
+        "{}",
+        display_merge_header(
+          &state.repo,
+          merge_head,
+          &get_current_branch_or_commit(&state.repo)?
+            .expect("There should be a current commit after merging")
+        )?
+      );
+    } else {
+      let target_name = match target {
+        Some(target) => target.display_name,
+        None => get_current_branch_or_commit(&state.repo)?
+          .context("There should be a current commit after committing")?,
+      };
+      println!("{}", display_commit_header(&target_name)?);
+    };
+
+    let new_commit = state.repo.find_commit(new_id)?;
+    let mut diff =
+      state
+        .repo
+        .diff_tree_to_tree(old_tree.as_ref(), Some(&new_commit.tree()?), None)?;
+    diff.find_similar(None)?;
+
+    println!("{}", display_commit_details(&new_commit, &diff)?);
 
     // committing during an active merge completes the merge, we should clean up the merge files
     if merge_head.is_some() {
@@ -223,96 +316,78 @@ impl Args {
       Err(anyhow!("Precommit hook failed"))
     }
   }
+}
 
-  /// Prints success output
-  ///
-  /// Params
-  /// - `old_id` - Oid of the parent commit of a regular commit, or the commit that was replaced for
-  ///   an amend
-  /// - `new_id` - The oid of the newly created commit
-  /// - `signature` - The signature used on the commit
-  /// - `msg` - The commit message, which may be empty for amends
-  /// - `amend` - Whether or not the commit was an amend
-  fn display_commit(
-    &self,
-    repo: &Repository,
-    old_id: Option<&Oid>,
-    new_id: &Oid,
-    signature: &Signature,
-    msg: &str,
-  ) -> Result<()> {
-    // action
-    let mut out = format!(
-      "{}",
-      if self.amend {
-        style("Amended").green()
-      } else {
-        style("Committed").green()
-      }
-    );
+/// Displays the header-line for a regular commit
+///
+/// Committed hash to branch as Author Name
+fn display_commit_header(target: &str) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::with_capacity(80);
 
-    // hash
-    out.push_str(
-      &style(format!(
-        " {}",
-        if self.amend {
-          let old = match &old_id {
-            Some(it) => &trim_hash(it),
-            None => "unknown",
-          };
-          format!("{} -> {}", old, trim_hash(new_id))
-        } else {
-          trim_hash(new_id).to_string()
-        }
-      ))
-      .yellow()
-      .to_string(),
-    );
+  write!(out, "{}", style("Committed").green())?;
+  write!(out, " to {}", style(target).blue())?;
 
-    // branch
-    out.push_str(&format!(" to {}", match get_current_branch_name(repo) {
-      Ok(it) => match it {
-        Some(name) => style(name).blue().to_string(),
-        None => style("unknown").red().to_string(),
-      },
-      Err(_) => style("unknown").red().to_string(),
-    }));
+  Ok(out)
+}
 
-    // signature
-    out.push_str(&format!(" as {}", display_signature(Some(signature))));
+/// Displays the header-line for an amend
+///
+/// Amended oldhash on branch as Author Name
+fn display_amend_header(old_id: &Oid, target: &str, signature: &Signature) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::with_capacity(80);
 
-    out.push('\n');
+  write!(out, "{}", style("Amended").green())?;
+  write!(out, " {}", display_hash(old_id))?;
+  write!(out, " on {}", style(target).blue())?;
+  // want to display committer, it may be different from author
+  write!(out, " as {}", display_signature(Some(signature)))?;
 
-    // message
-    if !msg.is_empty() {
-      out.push('\n'); // double space
-      out.push_str(msg);
-      out.push('\n');
-    }
+  Ok(out)
+}
 
-    let new_commit = repo
-      .find_commit(*new_id)
-      .context("Failed to find reference to new commit")?;
-    let new_tree = new_commit.tree().ok();
+/// Displays the header line for a merge commit
+///
+/// Merged base into branch: hash as Author Name
+fn display_merge_header(repo: &Repository, merge_head: &Reference, head: &str) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::with_capacity(80);
 
-    let old_commit = old_id.and_then(|it| repo.find_commit(*it).ok());
-    let old_tree = old_commit.and_then(|it| it.tree().ok());
+  let merge_commit = merge_head.peel_to_commit()?;
+  let from = resolve_commit_name(repo, &merge_commit.id())?;
 
-    let mut diff = repo
-      .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
-      .context("Failed to obtain commit changes")?;
-    diff.find_similar(None)?;
+  write!(out, "{}", style("Merged").green())?;
+  write!(
+    out,
+    " {} into {}",
+    style(from).blue(),
+    style(head).magenta()
+  )?;
 
-    let summary = DiffSummary::new(&diff);
+  Ok(out)
+}
 
-    let diff_out = match summary {
-      Ok(it) => it.to_string(),
-      Err(_) => style("Failed to get commit changes").red().to_string(),
-    };
+/// Displays the remaining commit details. This is the same for all types of commits (regular,
+/// amend, merge).
+///
+/// Params
+/// - `msg` - The entire commit message. This may be empty.
+/// - `diff` - A diff to display. The diff depends on the commit type:
+///   - regular: (first) parent to commit
+///   - amend: old to new
+///   - merge: first parent to commit (changes introduced by merge)
+fn display_commit_details(commit: &Commit<'_>, diff: &Diff) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::with_capacity(200);
 
-    out.push('\n'); // double space
-    out.push_str(&diff_out);
-    println!("{}", out);
-    Ok(())
-  }
+  write!(out, "{}", display_commit_full(commit)?)?;
+
+  let summary = DiffSummary::new(diff);
+
+  write!(out, "\n\n{}", match summary {
+    Ok(it) => it.to_string(),
+    Err(_) => style("Failed to get commit changes").red().to_string(),
+  })?;
+  Ok(out)
 }
