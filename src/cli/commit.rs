@@ -5,7 +5,7 @@ use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Commit, Diff, Oid, Reference, Repository, Signature};
+use git2::{Commit, Diff, Oid, Reference, Repository};
 
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
@@ -17,7 +17,7 @@ use crate::util::branch::{
   resolve_branch_name,
 };
 use crate::util::diff::DiffSummary;
-use crate::util::display::{display_commit_full, display_hash, display_signature};
+use crate::util::display::{display_commit_full, display_hash};
 use crate::util::term::get_user_confirmation;
 use crate::util::{get_signature, read_commit_msg, resolve_commit_name};
 use crate::{App, lossy};
@@ -147,7 +147,7 @@ impl Args {
 
       println!(
         "{}",
-        display_amend_header(&target.commit.id(), &target.display_name, &signature)?
+        display_amend_header(&target.commit.id(), &target.display_name)?
       );
 
       let new_commit = state.repo.find_commit(new_id)?;
@@ -334,15 +334,13 @@ fn display_commit_header(target: &str) -> Result<String> {
 /// Displays the header-line for an amend
 ///
 /// Amended oldhash on branch as Author Name
-fn display_amend_header(old_id: &Oid, target: &str, signature: &Signature) -> Result<String> {
+fn display_amend_header(old_id: &Oid, target: &str) -> Result<String> {
   use std::fmt::Write;
   let mut out = String::with_capacity(80);
 
   write!(out, "{}", style("Amended").green())?;
   write!(out, " {}", display_hash(old_id))?;
   write!(out, " on {}", style(target).blue())?;
-  // want to display committer, it may be different from author
-  write!(out, " as {}", display_signature(Some(signature)))?;
 
   Ok(out)
 }

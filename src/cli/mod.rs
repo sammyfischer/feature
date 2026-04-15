@@ -14,6 +14,7 @@ mod list;
 mod log;
 mod prune;
 mod push;
+mod show;
 mod start;
 mod status;
 mod sync;
@@ -94,6 +95,7 @@ pub enum Command {
   List(list::Args),
   Log(log::Args),
   Graph(graph::Args),
+  Show(show::Args),
 
   // ==== META / FEATURE COMMANDS ====
   Config(config_command::Args),
@@ -112,6 +114,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::List(args) => args.run(&state),
     Command::Log(args) => args.run(&state),
     Command::Graph(args) => args.run(&state),
+    Command::Show(args) => args.run(&state),
     Command::Config(args) => args.run(),
   }
 }

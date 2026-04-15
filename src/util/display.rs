@@ -109,7 +109,18 @@ pub fn display_commit_full(commit: &Commit) -> Result<String> {
   )?;
 
   // author
+  let author = commit.author();
+  let committer = commit.committer();
   writeln!(out, " by {}", display_signature(Some(&commit.author())))?;
+
+  if author.name_bytes() != committer.name_bytes() {
+    writeln!(
+      out,
+      "  {} {}",
+      style("Committed by").dim(),
+      style(display_signature(Some(&commit.committer()))).dim()
+    )?;
+  }
 
   // write each line tabbed by 2 spaces
   for line in lossy!(commit.message_bytes()).lines() {

@@ -33,7 +33,7 @@ While feature's functionality is generally meant to work with the concept of fea
 Here's a summary of the feature workflow:
 
 1. Switch to a base branch. Optionally, tell feature that it's a base with `feature config append bases <branch_name>`, or edit the config file directly.
-2. Start feature branch with `feature start …`.
+2. Start a feature branch with `feature start …`.
 3. Begin implementing the feature
 4. If it's a new day, check `feature st` to remember where you were and what changes you have.
 5. Finish and commit with `feature commit …`.
@@ -41,13 +41,15 @@ Here's a summary of the feature workflow:
 7. Push changes to remote with `feature push`.
 8. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
 9. Switch back to the base branch with `git switch <base>`
-10. Update all bases with `feature sync`.
-11. Clean up branches with `feature prune`.
+10. Update bases and prune feature branches with `feature sync`.
 
 ## Todo list
 
 ### Housekeeping
 
+- show
+  - more formatting options (commit summary only, customize timestamp)
+  - diff output (send to either git diff or delta)
 - use `git2::Object::short_id()` instead of just truncating hashes to 7 chars
 - configure clean git environment in tests so user configs don't cause any failures
   - make an empty tempdir, use as `$HOME`
@@ -74,10 +76,6 @@ Here's a summary of the feature workflow:
 - worktree
   - open an interactive menu to pick a branch and create a worktree from it
   - or use specified branch in command line
-- show
-  - more concise commit info, diff summary, then full diff
-  - easy options, --no-patch, --no-summary
-  - handle merge commits
 - diff
   - basic options: --all (default), --staged, --unstaged
   - one arg: diff arg to workdir
