@@ -18,7 +18,13 @@ use crate::util::branch::{
   resolve_branch_name,
 };
 use crate::util::diff::DiffSummary;
-use crate::util::display::{display_commit_full, display_hash};
+use crate::util::display::{
+  DisplayCommitMessageLevel,
+  DisplayCommitOptions,
+  DisplayTimeOptions,
+  display_commit,
+  display_hash,
+};
 use crate::util::term::get_user_confirmation;
 use crate::util::{get_signature, read_commit_msg, resolve_commit_name};
 use crate::{App, lossy};
@@ -386,7 +392,21 @@ fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &Config) -> 
   use std::fmt::Write;
   let mut out = String::with_capacity(200);
 
-  write!(out, "{}", display_commit_full(commit, config)?)?;
+  write!(
+    out,
+    "{}",
+    display_commit(commit, &DisplayCommitOptions {
+      time: DisplayTimeOptions {
+        // relative is not useful, commit just occured
+        relative: false,
+        date: config.format.date,
+        hour: config.format.hour,
+        timezone: config.format.timezone
+      },
+      // want the user to see the entire message just for reference
+      message: DisplayCommitMessageLevel::Full
+    })?
+  )?;
 
   let summary = DiffSummary::new(diff);
 

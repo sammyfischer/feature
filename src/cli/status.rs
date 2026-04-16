@@ -28,10 +28,9 @@ use crate::util::branch::{
 };
 use crate::util::diff::DiffSummary;
 use crate::util::display::{
-  display_hash,
+  display_commit_compact,
   display_plus_minus,
   display_signature,
-  display_time_relative,
   trim_hash,
 };
 use crate::util::get_signature;
@@ -81,7 +80,7 @@ impl Args {
       )
     } else {
       (
-        display_normal_header(&state.repo, head.as_ref())?,
+        display_normal_header(state, head.as_ref())?,
         opt_advice!(state.config.advice.status, STATUS_ADVICE),
       )
     };
@@ -208,7 +207,7 @@ impl Args {
 /// Displays a header when there is no other active operation (e.g. rebase/merge conflicts). Shows
 /// current branch, commit it points to, and upstream/base info if available. Unlike the others,
 /// this header takes up to 3 lines.
-fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<String> {
+fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String> {
   let mut out = String::with_capacity(80);
   let mut branch_name = None;
 
@@ -228,24 +227,12 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         style("Detached HEAD").red().to_string()
       };
 
-      let display_time = format!("({})", display_time_relative(&commit.time())?);
-
-      let display_commit = format!(
-        "{} {} {}",
-        display_hash(&commit.id()),
-        style(display_time).dim(),
-        match commit.summary_bytes() {
-          Some(msg) => lossy!(msg).to_string(),
-          None => style("Failed to get commit message").red().to_string(),
-        }
-      );
-
-      format!("{} -> {}", display_branch, display_commit)
+      format!("{} -> {}", display_branch, display_commit_compact(&commit)?)
     }
 
     // head points to nothing, no commits in repo
     None => {
-      let head = repo.find_reference("HEAD")?;
+      let head = state.repo.find_reference("HEAD")?;
       let symbolic_ref = lossy!(
         head
           .symbolic_target_bytes()
@@ -272,7 +259,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
   // upstream and base ahead/behind if we're on a branch
   if head.is_some_and(|it| it.is_branch()) {
     let branch_name = branch_name.context("Branch name should exist when HEAD is not detached")?;
-    let branch = name_to_branch(repo, &branch_name)?;
+    let branch = name_to_branch(&state.repo, &branch_name)?;
 
     let mut rows: Vec<[String; 2]> = Vec::with_capacity(2);
     // the label is either "Upstream" or "Base", these are printed with alignment so the branch
@@ -283,7 +270,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     let upstream = get_upstream(&branch)?;
     if let Some(upstream) = upstream {
       let upstream_name = branch_to_name(&upstream)?;
-      let (a, b) = get_ahead_behind(repo, branch.get(), upstream.get())
+      let (a, b) = get_ahead_behind(&state.repo, branch.get(), upstream.get())
         .context("Failed to get ahead/behind for upstream")?;
 
       let row = [
@@ -301,10 +288,14 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     }
 
     // base row
-    let base_name = data::get_feature_base(&data::git_config(repo)?, &branch_name);
+    let base_name = data::get_feature_base(&data::git_config(&state.repo)?, &branch_name);
     if let Some(base_name) = base_name {
-      let (a, b) = get_ahead_behind(repo, branch.get(), &repo.find_reference(&base_name)?)
-        .context("Failed to get ahead/behind for base")?;
+      let (a, b) = get_ahead_behind(
+        &state.repo,
+        branch.get(),
+        &state.repo.find_reference(&base_name)?,
+      )
+      .context("Failed to get ahead/behind for base")?;
 
       let row = [
         style("Base").magenta().to_string(),

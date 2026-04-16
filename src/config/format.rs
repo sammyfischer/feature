@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -26,6 +28,9 @@ pub struct FormatConfig {
 
   /// Whether to show timezone offset
   pub timezone: bool,
+
+  /// Whether to show relative time instead of absolute
+  pub relative: bool,
 }
 
 impl Default for FormatConfig {
@@ -37,12 +42,13 @@ impl Default for FormatConfig {
       graph: "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s".into(),
       hour: Default::default(),
       date: Default::default(),
-      timezone: Default::default(),
+      timezone: false,
+      relative: false,
     }
   }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DateStyle {
   #[default]
@@ -50,11 +56,29 @@ pub enum DateStyle {
   Numeric,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for DateStyle {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", match self {
+      Self::Textual => "textual",
+      Self::Numeric => "numeric",
+    })
+  }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum HourStyle {
   #[default]
   #[serde(rename = "12")]
   Twelve,
   #[serde(rename = "24")]
   TwentyFour,
+}
+
+impl Display for HourStyle {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", match self {
+      HourStyle::Twelve => "12",
+      HourStyle::TwentyFour => "24",
+    })
+  }
 }

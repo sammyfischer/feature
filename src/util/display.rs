@@ -19,8 +19,155 @@ pub fn display_hash(id: &Oid) -> String {
   style(trim_hash(id)).yellow().to_string()
 }
 
-/// Displays a human-readable absolute time
-pub fn display_time_absolute(time: &Time, config: &Config) -> Result<String> {
+/// Displays the name in cyan, email in dim (gray), and "no one" in red if there is no configured
+/// signature. Errors if any error (other than not having a signature) is encountered.
+pub fn display_signature(signature: Option<&Signature>) -> String {
+  match signature {
+    Some(it) => {
+      let name = lossy!(it.name_bytes());
+      let email = lossy!(it.email_bytes());
+      format!("{} {}", style(name).cyan(), style(email).dim())
+    }
+    None => style("no one").red().to_string(),
+  }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DisplayCommitOptions {
+  pub time: DisplayTimeOptions,
+  pub message: DisplayCommitMessageLevel,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum DisplayCommitMessageLevel {
+  None,
+  Subject,
+  #[default]
+  Full,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DisplayTimeOptions {
+  /// False for absolute, true for relative
+  pub relative: bool,
+  pub date: DateStyle,
+  pub hour: HourStyle,
+  pub timezone: bool,
+}
+
+impl From<&Config> for DisplayTimeOptions {
+  fn from(value: &Config) -> Self {
+    Self {
+      relative: value.format.relative,
+      date: value.format.date,
+      hour: value.format.hour,
+      timezone: value.format.timezone,
+    }
+  }
+}
+
+/// Displays formatted info about a commit
+///
+/// With the maximum verbosity, it looks like:
+/// ```txt
+/// 1234567 Apr 14, 2025 at 5:46 PM by Author Name
+///
+///   subject
+///
+///   body
+/// ```
+pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result<String> {
+  use std::fmt::Write;
+  // around 60 chars for hash/time/author, another 80 for message (most of the time this will only
+  // be a subject line)
+  let mut out = String::with_capacity(140);
+
+  // hash
+  write!(out, "{}", display_hash(&commit.id()))?;
+
+  // timestamp
+  write!(
+    out,
+    " {}",
+    style(display_time(&commit.time(), &options.time)?).magenta()
+  )?;
+
+  // author
+  let author = commit.author();
+  let committer = commit.committer();
+  write!(out, " by {}", display_signature(Some(&commit.author())))?;
+
+  if author.name_bytes() != committer.name_bytes() {
+    write!(
+      out,
+      "\n  {} {}",
+      style("Committed by").dim(),
+      style(display_signature(Some(&commit.committer()))).dim()
+    )?;
+  }
+
+  match options.message {
+    DisplayCommitMessageLevel::None => {}
+
+    DisplayCommitMessageLevel::Subject => write!(
+      out,
+      "\n\n  {}",
+      lossy!(
+        commit
+          .summary_bytes()
+          .context("Failed to get commit subject")?
+      )
+    )?,
+
+    DisplayCommitMessageLevel::Full => {
+      // write each line tabbed by 2 spaces
+      writeln!(out)?;
+      for line in lossy!(commit.message_bytes()).lines() {
+        write!(out, "\n  {}", line)?;
+      }
+    }
+  };
+
+  Ok(out)
+}
+
+/// A very concise format meant to be displayed on one line (although not guaranteed to be). Unlike,
+/// [display_commit], there are no configuration options.
+///
+/// ```txt
+/// abcd123 (Author Name, 5 minutes ago) implemented change
+/// ```
+///
+/// The hash is yellow, the parenthesized author/time is dim white (so just gray) and the subject
+/// line is white.
+pub fn display_commit_compact(commit: &Commit) -> Result<String> {
+  Ok(format!(
+    "{} {} {}",
+    display_hash(&commit.id()),
+    style(&format!(
+      "({}, {})",
+      lossy!(commit.author().name_bytes()),
+      display_time_relative(&commit.time())?
+    ))
+    .dim(),
+    lossy!(
+      commit
+        .summary_bytes()
+        .expect("Commit should have a summary")
+    )
+  ))
+}
+
+/// Displays a human readable time
+pub fn display_time(time: &Time, options: &DisplayTimeOptions) -> Result<String> {
+  if options.relative {
+    display_time_relative(time)
+  } else {
+    display_time_absolute(time, options)
+  }
+}
+
+fn display_time_absolute(time: &Time, options: &DisplayTimeOptions) -> Result<String> {
   let tz = FixedOffset::east_opt(time.offset_minutes() * 60)
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
@@ -29,14 +176,14 @@ pub fn display_time_absolute(time: &Time, config: &Config) -> Result<String> {
     .single()
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
-  let time_fmt = match config.format.hour {
+  let time_fmt = match options.hour {
     HourStyle::Twelve => "%I:%M %p",
     HourStyle::TwentyFour => "%H:%M",
   };
 
-  let tz_fmt = if config.format.timezone { " %z" } else { "" };
+  let tz_fmt = if options.timezone { " %z" } else { "" };
 
-  let date_fmt = match config.format.date {
+  let date_fmt = match options.date {
     DateStyle::Textual => format!("%b %d, %Y at {}{}", time_fmt, tz_fmt),
     DateStyle::Numeric => format!("%Y-%m-%d {}{}", time_fmt, tz_fmt),
   };
@@ -44,8 +191,7 @@ pub fn display_time_absolute(time: &Time, config: &Config) -> Result<String> {
   Ok(date.format(&date_fmt).to_string())
 }
 
-/// Displays a human-readable relative time
-pub fn display_time_relative(time: &Time) -> Result<String> {
+fn display_time_relative(time: &Time) -> Result<String> {
   let now = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
     .context("Failed to get current time")?
@@ -61,7 +207,8 @@ pub fn display_time_relative(time: &Time) -> Result<String> {
 
   // this should match git log's relative time format
   Ok(match secs {
-    s if s < 60 => "just now".to_string(),
+    s if s < 2 => "1 second ago".to_string(),
+    s if s < 60 => format!("{} seconds ago", s),
 
     s if s < 120 => "1 minute ago".to_string(),
     s if s < HOUR => format!("{} minutes ago", s / 60),
@@ -81,66 +228,6 @@ pub fn display_time_relative(time: &Time) -> Result<String> {
     s if s < YEAR * 2 => "1 year ago".to_string(),
     s => format!("{} years ago", s / YEAR),
   })
-}
-
-/// Displays the name in cyan, email in dim (gray), and "no one" in red if there is no configured
-/// signature. Errors if any error (other than not having a signature) is encountered.
-pub fn display_signature(signature: Option<&Signature>) -> String {
-  match signature {
-    Some(it) => {
-      let name = lossy!(it.name_bytes());
-      let email = lossy!(it.email_bytes());
-      format!("{} {}", style(name).cyan(), style(email).dim())
-    }
-    None => style("no one").red().to_string(),
-  }
-}
-
-/// Displays full info about a commit
-///
-/// ```txt
-/// 1234567 Apr 14, 2025 at 5:46 PM by Author Name
-///
-///   subject
-///
-///   body
-/// ```
-pub fn display_commit_full(commit: &Commit, config: &Config) -> Result<String> {
-  use std::fmt::Write;
-  // around 60 chars for hash/time/author, another 80 for message (most of the time this will only
-  // be a subject line)
-  let mut out = String::with_capacity(140);
-
-  // hash
-  write!(out, "{}", display_hash(&commit.id()))?;
-
-  // timestamp (absolute)
-  write!(
-    out,
-    " {}",
-    style(display_time_absolute(&commit.time(), config)?).magenta()
-  )?;
-
-  // author
-  let author = commit.author();
-  let committer = commit.committer();
-  writeln!(out, " by {}", display_signature(Some(&commit.author())))?;
-
-  if author.name_bytes() != committer.name_bytes() {
-    writeln!(
-      out,
-      "  {} {}",
-      style("Committed by").dim(),
-      style(display_signature(Some(&commit.committer()))).dim()
-    )?;
-  }
-
-  // write each line tabbed by 2 spaces
-  for line in lossy!(commit.message_bytes()).lines() {
-    write!(out, "\n  {}", line)?;
-  }
-
-  Ok(out)
 }
 
 /// Displays two numbers like `+p -m` where the first part is green and the second part is red.
