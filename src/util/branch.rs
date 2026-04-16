@@ -212,9 +212,9 @@ pub fn get_ahead_behind<'repo>(
 
 /// Fetches all remote branches
 pub fn fetch_all(repo: &Repository) -> Result<()> {
-  let mut results: Vec<Result<()>> = Vec::new();
-
   let remotes = repo.remotes().expect("Failed to list all remotes");
+  let mut results: Vec<Result<()>> = Vec::with_capacity(remotes.len());
+
   for remote_name in &remotes {
     let Some(remote_name) = remote_name else {
       continue;

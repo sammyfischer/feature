@@ -7,6 +7,13 @@ use serde::{Deserialize, Serialize};
 use crate::config;
 use crate::util::term::get_user_confirmation;
 
+/// Creates a toml value out of the given value, then stringifies
+macro_rules! toml_stringify {
+  ($opt:expr) => {
+    toml::Value::from($opt).to_string()
+  };
+}
+
 /// Loads the right config document
 macro_rules! load {
   ($which:expr) => {
@@ -170,8 +177,8 @@ impl Args {
     for key in &args.keys {
       let value = match &**key {
         "default_remote" => config.default_remote.clone(),
-        "bases" => toml::Value::from(config.bases.clone()).to_string(),
-        "protect" => toml::Value::from(config.protect.clone()).to_string(),
+        "bases" => toml_stringify!(config.bases.clone()),
+        "protect" => toml_stringify!(config.protect.clone()),
 
         "format.branch_sep" => config.format.branch_sep.clone(),
         "format.branch" => match config.format.branch {
@@ -180,13 +187,17 @@ impl Args {
         },
         "format.log" => config.format.log.clone(),
         "format.graph" => config.format.graph.clone(),
+        "format.hour" => config.format.hour.to_string(),
+        "format.date" => config.format.date.to_string(),
+        "format.timezone" => toml_stringify!(config.format.timezone),
+        "format.relative" => toml_stringify!(config.format.relative),
 
-        "advice.status" => toml::Value::from(config.advice.status).to_string(),
-        "advice.rebase" => toml::Value::from(config.advice.rebase).to_string(),
-        "advice.merge" => toml::Value::from(config.advice.merge).to_string(),
-        "advice.cherry_pick" => toml::Value::from(config.advice.cherry_pick).to_string(),
-        "advice.revert" => toml::Value::from(config.advice.revert).to_string(),
-        "advice.bisect" => toml::Value::from(config.advice.bisect).to_string(),
+        "advice.status" => toml_stringify!(config.advice.status),
+        "advice.rebase" => toml_stringify!(config.advice.rebase),
+        "advice.merge" => toml_stringify!(config.advice.merge),
+        "advice.cherry_pick" => toml_stringify!(config.advice.cherry_pick),
+        "advice.revert" => toml_stringify!(config.advice.revert),
+        "advice.bisect" => toml_stringify!(config.advice.bisect),
 
         key => {
           eprintln!("Unrecognized key: {}", key);
@@ -376,11 +387,13 @@ impl Args {
 fn validate_section(section: &str, field: &str) -> bool {
   matches!(
     (section, field),
-    ("format", "branch_sep" | "branch" | "log" | "graph")
-      | (
-        "advice",
-        "status" | "rebase" | "merge" | "cherry_pick" | "revert" | "bisect"
-      )
+    (
+      "format",
+      "branch_sep" | "branch" | "log" | "graph" | "hour" | "date" | "timezone" | "relative"
+    ) | (
+      "advice",
+      "status" | "rebase" | "merge" | "cherry_pick" | "revert" | "bisect"
+    )
   )
 }
 

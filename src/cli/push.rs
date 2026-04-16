@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{ErrorClass, ErrorCode, PushOptions};
@@ -106,14 +108,11 @@ impl Args {
     opts.remote_callbacks(cbs);
 
     // build the refspec
-    let mut refspec = String::new();
+    let mut refspec = String::with_capacity(40);
     if self.force {
       refspec.push('+');
     }
-    refspec.push_str(&branch_refname);
-    refspec.push(':');
-    refspec.push_str("refs/heads/");
-    refspec.push_str(&upstream_name);
+    write!(refspec, "{}:refs/heads/{}", &branch_refname, &upstream_name)?;
 
     remote
       .push(&[&refspec], Some(&mut opts))

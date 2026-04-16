@@ -24,11 +24,14 @@ This is similar to calling `git switch -c`, except that:
 ## Commit
 
 ```bash
-feature commit implemented some changes
+feature commit implement some changes
 feature commit --amend
+feature commit --to feature1 separate concerns
 ```
 
 Commits staged changes to the current branch.
+
+With `--to`, attempts to resolve the argument to a ref and commits to that instead.
 
 With `--amend`, amends the most recent commit by adding the staged changes, and optionally replaces the commit message.
 
@@ -38,6 +41,7 @@ These are similar to `git commit` except that:
 - running with `--amend` doesn't require a commit message, and will instead reuse the existing message
 - feature displays a summary of files changed by the commit
   - for an amend, it displays only the amended changes, not the total changes from its parent commit
+- you can commit anywhere using `--to`
 
 ## Update
 

@@ -5,8 +5,9 @@ use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Commit, Diff, Oid, Reference, Repository, Signature};
+use git2::{Commit, Diff, Oid, Reference, Repository};
 
+use crate::config::Config;
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
   get_current_branch_or_commit,
@@ -17,7 +18,13 @@ use crate::util::branch::{
   resolve_branch_name,
 };
 use crate::util::diff::DiffSummary;
-use crate::util::display::{display_commit_full, display_hash, display_signature};
+use crate::util::display::{
+  DisplayCommitMessageLevel,
+  DisplayCommitOptions,
+  DisplayTimeOptions,
+  display_commit,
+  display_hash,
+};
 use crate::util::term::get_user_confirmation;
 use crate::util::{get_signature, read_commit_msg, resolve_commit_name};
 use crate::{App, lossy};
@@ -147,7 +154,7 @@ impl Args {
 
       println!(
         "{}",
-        display_amend_header(&target.commit.id(), &target.display_name, &signature)?
+        display_amend_header(&target.commit.id(), &target.display_name)?
       );
 
       let new_commit = state.repo.find_commit(new_id)?;
@@ -158,7 +165,10 @@ impl Args {
       )?;
       diff.find_similar(None)?;
 
-      println!("{}", display_commit_details(&new_commit, &diff)?);
+      println!(
+        "{}",
+        display_commit_details(&new_commit, &diff, &state.config)?
+      );
       return Ok(());
     }
 
@@ -272,7 +282,10 @@ impl Args {
         .diff_tree_to_tree(old_tree.as_ref(), Some(&new_commit.tree()?), None)?;
     diff.find_similar(None)?;
 
-    println!("{}", display_commit_details(&new_commit, &diff)?);
+    println!(
+      "{}",
+      display_commit_details(&new_commit, &diff, &state.config)?
+    );
 
     // committing during an active merge completes the merge, we should clean up the merge files
     if merge_head.is_some() {
@@ -334,15 +347,13 @@ fn display_commit_header(target: &str) -> Result<String> {
 /// Displays the header-line for an amend
 ///
 /// Amended oldhash on branch as Author Name
-fn display_amend_header(old_id: &Oid, target: &str, signature: &Signature) -> Result<String> {
+fn display_amend_header(old_id: &Oid, target: &str) -> Result<String> {
   use std::fmt::Write;
   let mut out = String::with_capacity(80);
 
   write!(out, "{}", style("Amended").green())?;
   write!(out, " {}", display_hash(old_id))?;
   write!(out, " on {}", style(target).blue())?;
-  // want to display committer, it may be different from author
-  write!(out, " as {}", display_signature(Some(signature)))?;
 
   Ok(out)
 }
@@ -377,11 +388,25 @@ fn display_merge_header(repo: &Repository, merge_head: &Reference, head: &str) -
 ///   - regular: (first) parent to commit
 ///   - amend: old to new
 ///   - merge: first parent to commit (changes introduced by merge)
-fn display_commit_details(commit: &Commit<'_>, diff: &Diff) -> Result<String> {
+fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &Config) -> Result<String> {
   use std::fmt::Write;
   let mut out = String::with_capacity(200);
 
-  write!(out, "{}", display_commit_full(commit)?)?;
+  write!(
+    out,
+    "{}",
+    display_commit(commit, &DisplayCommitOptions {
+      time: DisplayTimeOptions {
+        // relative is not useful, commit just occured
+        relative: false,
+        date: config.format.date,
+        hour: config.format.hour,
+        timezone: config.format.timezone
+      },
+      // want the user to see the entire message just for reference
+      message: DisplayCommitMessageLevel::Full
+    })?
+  )?;
 
   let summary = DiffSummary::new(diff);
 

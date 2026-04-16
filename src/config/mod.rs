@@ -8,6 +8,10 @@ use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
 
+use crate::config::format::FormatConfig;
+
+pub mod format;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -40,34 +44,6 @@ impl Default for Config {
       hide_untracked: Default::default(),
       format: Default::default(),
       advice: Default::default(),
-    }
-  }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(default)]
-pub struct FormatConfig {
-  /// Separator used between words in branch names
-  pub branch_sep: String,
-
-  /// Template for creating branch names. See `feature start --help` for more info
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub branch: Option<String>,
-
-  /// Template for log output
-  pub log: String,
-
-  /// Template for graph output
-  pub graph: String,
-}
-
-impl Default for FormatConfig {
-  fn default() -> Self {
-    Self {
-      branch_sep: "-".into(),
-      branch: Default::default(),
-      log: "format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)".into(),
-      graph: "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s".into(),
     }
   }
 }

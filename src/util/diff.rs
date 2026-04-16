@@ -274,7 +274,7 @@ impl Display for DiffFileSummary {
 /// Guide for what each letter means
 pub fn status_guide() -> String {
   use std::fmt::Write;
-  let mut out = String::new();
+  let mut out = String::with_capacity(400);
 
   writeln!(out, "Meaning of each file status").unwrap();
   writeln!(out, "  {} Added", style("A").green()).unwrap();
