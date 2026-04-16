@@ -60,7 +60,7 @@ pub struct Args {
   amend: bool,
 
   /// Where to apply the commit. Can be anything commit-ish
-  #[arg(long)]
+  #[arg(long, value_name = "COMMIT-ISH")]
   to: Option<String>,
 
   /// Bypass precommit hooks

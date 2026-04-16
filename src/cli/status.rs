@@ -44,7 +44,7 @@ use crate::{App, data, lossy, opt_advice};
 )]
 pub struct Args {
   /// Hides untracked files from output
-  #[arg(short = 'u', long)]
+  #[arg(short = 'u', long, value_name = "HIDE")]
   pub hide_untracked: bool,
 }
 

@@ -42,7 +42,6 @@ pub struct Args {
   abort: bool,
 
   /// The name of the base branch to use.
-  #[arg(value_name = "BASE_BRANCH")]
   base: Option<String>,
 }
 

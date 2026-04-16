@@ -87,15 +87,15 @@ impl Widths {
 #[command(visible_alias = "ls", about = "Lists branches", long_about = LONG_ABOUT)]
 pub struct Args {
   /// Hides hash column
-  #[arg(long)]
+  #[arg(long, value_name = "HIDE")]
   pub no_hash: bool,
 
   /// Hides upstream branch column
-  #[arg(long)]
+  #[arg(long, value_name = "HIDE")]
   pub no_upstream: bool,
 
   /// Hides base branch column
-  #[arg(long)]
+  #[arg(long, value_name = "HIDE")]
   pub no_base: bool,
 }
 
