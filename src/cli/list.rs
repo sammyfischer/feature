@@ -141,10 +141,12 @@ impl Args {
     let line_tail = style("…").dim().to_string();
     let trunc_tail = "…";
     let term_width = get_term_width();
-    let mut out = String::new();
+
+    use std::fmt::Write;
+    let mut buf = String::with_capacity(200);
 
     for (i, row) in rows.iter().enumerate() {
-      let mut line = String::new();
+      buf.clear();
 
       'branch: {
         let branch = fix_width(
@@ -154,16 +156,16 @@ impl Args {
         );
 
         if i == 0 {
-          line.push_str(&style(branch).bold().to_string());
+          write!(buf, "{}", &style(branch).bold().to_string())?;
           break 'branch;
         }
 
         if current.as_ref().is_some_and(|it| it == &row.branch) {
-          line.push_str(&style(&branch).green().to_string());
+          write!(buf, "{}", style(&branch).green())?;
         } else if wt_branches.contains(&row.branch) {
-          line.push_str(&style(&branch).cyan().to_string());
+          write!(buf, "{}", style(&branch).cyan())?;
         } else {
-          line.push_str(&branch);
+          write!(buf, "{}", &branch)?;
         }
       }
 
@@ -173,14 +175,12 @@ impl Args {
         }
 
         let hash = fix_width(&row.hash, col_widths.hash, trunc_tail);
-        line.push(' ');
 
         if i == 0 {
-          line.push_str(&style(hash).bold().yellow().to_string());
-          break 'hash;
+          write!(buf, " {}", style(&hash).bold().yellow())?;
+        } else {
+          write!(buf, " {}", style(&hash).yellow())?;
         }
-
-        line.push_str(&style(hash).yellow().to_string());
       }
 
       'upstream: {
@@ -195,18 +195,11 @@ impl Args {
         );
         let ab = fix_width(&row.ab_upstream, col_widths.ab_upstream, trunc_tail);
 
-        line.push(' ');
-
         if i == 0 {
-          line.push_str(&style(upstream).bold().blue().to_string());
-          line.push(' ');
-          line.push_str(&ab); // the header is just spaces, styles aren't needed
-          break 'upstream;
+          write!(buf, " {} {}", style(&upstream).bold().blue(), &ab)?;
+        } else {
+          write!(buf, " {} {}", style(&upstream).blue(), &ab)?;
         }
-
-        line.push_str(&style(upstream).blue().to_string());
-        line.push(' ');
-        line.push_str(&ab);
       }
 
       'base: {
@@ -217,37 +210,26 @@ impl Args {
         let base = fix_width(&row.base, col_widths.base.min(max_widths.base), trunc_tail);
         let ab = fix_width(&row.ab_base, col_widths.ab_base, trunc_tail);
 
-        line.push(' ');
-
         if i == 0 {
-          line.push_str(&style(base).bold().magenta().to_string());
-          line.push(' ');
-          line.push_str(&ab);
-          break 'base;
+          write!(buf, " {} {}", style(&base).bold().magenta(), &ab)?;
+        } else {
+          write!(buf, " {} {}", style(&base).magenta(), &ab)?;
         }
-
-        line.push_str(&style(base).magenta().to_string());
-
-        line.push(' ');
-        line.push_str(&ab);
       }
 
-      line.push(' ');
       if i == 0 {
-        line.push_str(&style(&row.subject).bold().to_string());
+        write!(buf, " {}", style(&row.subject).bold())?;
       } else {
-        line.push_str(&row.subject);
+        write!(buf, " {}", &row.subject)?;
       }
 
       if is_term() {
-        line = truncate_str(&line, term_width, &line_tail).to_string();
+        println!("{}", truncate_str(&buf, term_width, &line_tail));
+      } else {
+        println!("{}", &buf);
       }
-
-      out.push_str(&line);
-      out.push('\n');
     }
 
-    print!("{}", out);
     Ok(())
   }
 

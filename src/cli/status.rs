@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -208,7 +209,7 @@ impl Args {
 /// current branch, commit it points to, and upstream/base info if available. Unlike the others,
 /// this header takes up to 3 lines.
 fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<String> {
-  let mut out = String::new();
+  let mut out = String::with_capacity(80);
   let mut branch_name = None;
 
   let first_line = match head {
@@ -259,12 +260,13 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
 
   // end first line
   if is_term() {
-    out.push_str(&format!(
+    write!(
+      out,
       "{}",
       truncate_str(&first_line, get_term_width(), &style("…").dim().to_string())
-    ));
+    )?;
   } else {
-    out.push_str(&first_line);
+    write!(out, "{}", &first_line)?;
   }
 
   // upstream and base ahead/behind if we're on a branch
@@ -272,7 +274,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     let branch_name = branch_name.context("Branch name should exist when HEAD is not detached")?;
     let branch = name_to_branch(repo, &branch_name)?;
 
-    let mut rows: Vec<[String; 2]> = Vec::new();
+    let mut rows: Vec<[String; 2]> = Vec::with_capacity(2);
     // the label is either "Upstream" or "Base", these are printed with alignment so the branch
     // names are lined up
     let mut label_width = 0usize;
@@ -324,11 +326,12 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
 
     // print with everything after the row label aligned
     for row in rows {
-      out.push_str(&format!(
+      write!(
+        out,
         "\n  {} {}",
         pad_str(&row[0], label_width, console::Alignment::Left, None),
         &row[1]
-      ));
+      )?;
     }
   }
 

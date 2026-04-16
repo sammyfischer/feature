@@ -211,7 +211,9 @@ impl Args {
       .expect("There should be a current rebase operation");
 
     let total = rebase.len();
-    let mut buf = String::new();
+    // always 40 char hash, some extra space for the operation. there will always be at least one
+    // line
+    let mut buf = String::with_capacity(50);
 
     for i in (current + 1)..total {
       let op = rebase
