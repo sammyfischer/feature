@@ -56,8 +56,7 @@ impl Args {
 
     // if stdout is a terminal, truncate lines
     let truncated = truncate_lines(&mut string_output.lines()).join("\n");
-
-    paginate(&truncated)
+    paginate(truncated.as_bytes())
   }
 }
 
