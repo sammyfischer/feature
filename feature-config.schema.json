@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Config",
+  "type": "object",
+  "properties": {
+    "advice": {
+      "description": "Advice options",
+      "$ref": "#/$defs/AdviceConfig",
+      "default": {
+        "bisect": false,
+        "cherry_pick": true,
+        "merge": true,
+        "rebase": true,
+        "revert": true,
+        "status": false
+      }
+    },
+    "bases": {
+      "description": "List of possible base branches",
+      "type": "array",
+      "default": [
+        "main"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "default_remote": {
+      "description": "Name of the remote to use when one can't be determined automatically",
+      "type": "string",
+      "default": "origin"
+    },
+    "format": {
+      "description": "Formatting options",
+      "$ref": "#/$defs/FormatConfig",
+      "default": {
+        "branch_sep": "-",
+        "date": "textual",
+        "graph": "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s",
+        "hour": "12",
+        "log": "format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)",
+        "relative": false,
+        "timezone": false
+      }
+    },
+    "list": {
+      "description": "Options for the list command",
+      "$ref": "#/$defs/ListConfig",
+      "default": {
+        "base": true,
+        "hash": true,
+        "upstream": true
+      }
+    },
+    "protect": {
+      "description": "List of branches to protect from force-pushes/deletion. By default, base branches are already\nprotected and don't need to be added",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "show": {
+      "description": "Options for the show command",
+      "$ref": "#/$defs/ShowConfig",
+      "default": {
+        "message": "full",
+        "paging": "auto",
+        "patch": true,
+        "summary": true
+      }
+    },
+    "status": {
+      "description": "Options for the status command",
+      "$ref": "#/$defs/StatusConfig",
+      "default": {
+        "show_untracked": true
+      }
+    }
+  },
+  "$defs": {
+    "AdviceConfig": {
+      "type": "object",
+      "properties": {
+        "bisect": {
+          "description": "Advice on bisect",
+          "type": "boolean"
+        },
+        "cherry_pick": {
+          "description": "Advice on cherry-pick conflicts",
+          "type": "boolean"
+        },
+        "merge": {
+          "description": "Advice on merge conflicts",
+          "type": "boolean"
+        },
+        "rebase": {
+          "description": "Advice on rebase conflicts",
+          "type": "boolean"
+        },
+        "revert": {
+          "description": "Advice on revert conflicts",
+          "type": "boolean"
+        },
+        "status": {
+          "description": "Advice on staging/unstaging",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "status",
+        "rebase",
+        "merge",
+        "cherry_pick",
+        "revert",
+        "bisect"
+      ]
+    },
+    "DateStyle": {
+      "type": "string",
+      "enum": [
+        "textual",
+        "numeric"
+      ]
+    },
+    "DisplayCommitMessageLevel": {
+      "type": "string",
+      "enum": [
+        "none",
+        "subject",
+        "full"
+      ]
+    },
+    "FormatConfig": {
+      "type": "object",
+      "properties": {
+        "branch": {
+          "description": "Template for creating branch names. See `feature start --help` for more info",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branch_sep": {
+          "description": "Separator used between words in branch names",
+          "type": "string",
+          "default": "-"
+        },
+        "date": {
+          "description": "Date format (respect hour format)\nTextual: Apr 14, 2026 at 11:26 PM\nNumeric: 2026-14-04 11:26 PM",
+          "$ref": "#/$defs/DateStyle",
+          "default": "textual"
+        },
+        "graph": {
+          "description": "Template for graph output",
+          "type": "string",
+          "default": "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s"
+        },
+        "hour": {
+          "description": "Hour format, 12 or 24 hour",
+          "$ref": "#/$defs/HourStyle",
+          "default": "12"
+        },
+        "log": {
+          "description": "Template for log output",
+          "type": "string",
+          "default": "format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)"
+        },
+        "relative": {
+          "description": "Whether to show relative time instead of absolute",
+          "type": "boolean",
+          "default": false
+        },
+        "timezone": {
+          "description": "Whether to show timezone offset",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "HourStyle": {
+      "type": "string",
+      "enum": [
+        "12",
+        "24"
+      ]
+    },
+    "ListConfig": {
+      "type": "object",
+      "properties": {
+        "base": {
+          "description": "Whether to show the base column",
+          "type": "boolean"
+        },
+        "hash": {
+          "description": "Whether to show the hash column",
+          "type": "boolean"
+        },
+        "upstream": {
+          "description": "Whether to show the upstream column",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "hash",
+        "upstream",
+        "base"
+      ]
+    },
+    "PageWhen": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "always",
+        "never"
+      ]
+    },
+    "ShowConfig": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "description": "How much of the commit message to show",
+          "$ref": "#/$defs/DisplayCommitMessageLevel"
+        },
+        "paging": {
+          "description": "When to send output to a pager",
+          "$ref": "#/$defs/PageWhen"
+        },
+        "patch": {
+          "description": "Whether to show the diff patch",
+          "type": "boolean"
+        },
+        "summary": {
+          "description": "Whether to show the diff summary",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "message",
+        "summary",
+        "patch",
+        "paging"
+      ]
+    },
+    "StatusConfig": {
+      "type": "object",
+      "properties": {
+        "show_untracked": {
+          "description": "Whether to show untracked files in output",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "show_untracked"
+      ]
+    }
+  }
+}

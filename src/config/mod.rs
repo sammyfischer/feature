@@ -1,11 +1,13 @@
 //! Representation of the cli config. Use [load] to get the entire flattened config struct. Includes
 //! modules to work with specific config levels.
 
+use std::fmt::Display;
 use std::path::Path;
 
 use anyhow::Result;
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::config::advice::AdviceConfig;
@@ -20,7 +22,9 @@ pub mod list;
 pub mod show;
 pub mod status;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+const SCHEMA_URL: &str = "https://raw.githubusercontent.com/sammyfischer/feature/refs/heads/main/feature-config.schema.json";
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct Config {
   /// Name of the remote to use when one can't be determined automatically
@@ -64,13 +68,25 @@ impl Default for Config {
   }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(
+  Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum, JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum PageWhen {
   #[default]
   Auto,
   Always,
   Never,
+}
+
+impl Display for PageWhen {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      PageWhen::Auto => write!(f, "auto"),
+      PageWhen::Always => write!(f, "always"),
+      PageWhen::Never => write!(f, "never"),
+    }
+  }
 }
 
 /// Loads a layered config, searching the default locations for each.
@@ -103,12 +119,13 @@ pub fn load_with_path(project: &Path) -> Result<Config> {
 }
 
 pub mod project {
-  use std::fs;
+  use std::fs::File;
+  use std::io::Write;
   use std::path::PathBuf;
 
   use anyhow::Result;
 
-  use crate::config::Config;
+  use crate::config::{Config, SCHEMA_URL};
 
   pub fn path() -> PathBuf {
     PathBuf::from("feature.toml")
@@ -120,20 +137,22 @@ pub mod project {
     let config = Config::default();
     let toml_raw = toml::to_string_pretty(&config)?;
 
-    fs::write(&path, toml_raw)?;
+    let mut file = File::create(&path)?;
+    file.write_all(format!("\"$schema\" = \"{}\"\n\n", SCHEMA_URL).as_bytes())?;
+    file.write_all(toml_raw.as_bytes())?;
     println!("Created default config file at {}", &path.to_string_lossy());
     Ok(())
   }
 }
 
 pub mod user {
-  use std::fs;
-  use std::io::ErrorKind;
+  use std::fs::{self, File};
+  use std::io::{ErrorKind, Write};
   use std::path::PathBuf;
 
   use anyhow::{Result, anyhow};
 
-  use crate::config::Config;
+  use crate::config::{Config, SCHEMA_URL};
 
   /// Returns the config file located in the platform's standard config directory
   /// # Errors
@@ -172,7 +191,9 @@ pub mod user {
     let config = Config::default();
     let toml_raw = toml::to_string_pretty(&config)?;
 
-    fs::write(&path, toml_raw)?;
+    let mut file = File::create(&path)?;
+    file.write_all(format!("\"$schema\" = \"{}\"\n\n", SCHEMA_URL).as_bytes())?;
+    file.write_all(toml_raw.as_bytes())?;
     println!("Created default config file at {}", &path.to_string_lossy());
     Ok(())
   }
