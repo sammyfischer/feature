@@ -1,11 +1,13 @@
 //! Representation of the cli config. Use [load] to get the entire flattened config struct. Includes
 //! modules to work with specific config levels.
 
+use std::fmt::Display;
 use std::path::Path;
 
 use anyhow::Result;
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::config::advice::AdviceConfig;
@@ -20,7 +22,7 @@ pub mod list;
 pub mod show;
 pub mod status;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct Config {
   /// Name of the remote to use when one can't be determined automatically
@@ -64,13 +66,25 @@ impl Default for Config {
   }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(
+  Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum, JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum PageWhen {
   #[default]
   Auto,
   Always,
   Never,
+}
+
+impl Display for PageWhen {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      PageWhen::Auto => write!(f, "auto"),
+      PageWhen::Always => write!(f, "always"),
+      PageWhen::Never => write!(f, "never"),
+    }
+  }
 }
 
 /// Loads a layered config, searching the default locations for each.

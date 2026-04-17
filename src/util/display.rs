@@ -1,10 +1,13 @@
 //! Helper functions to display formatted strings. Diff-realted display functions can be found in
 //! [super::diff]
 
+use std::fmt::Display;
+
 use anyhow::{Context, Result, anyhow};
 use chrono::{FixedOffset, TimeZone};
 use console::style;
 use git2::{Commit, Oid, Signature, Time};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
@@ -39,13 +42,25 @@ pub struct DisplayCommitOptions {
   pub message: DisplayCommitMessageLevel,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(
+  Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum, JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum DisplayCommitMessageLevel {
   None,
   Subject,
   #[default]
   Full,
+}
+
+impl Display for DisplayCommitMessageLevel {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      DisplayCommitMessageLevel::None => write!(f, "none"),
+      DisplayCommitMessageLevel::Subject => write!(f, "subject"),
+      DisplayCommitMessageLevel::Full => write!(f, "full"),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

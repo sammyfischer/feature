@@ -1,7 +1,9 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct StatusConfig {
+  /// Whether to show untracked files in output
   pub show_untracked: bool,
 }
 

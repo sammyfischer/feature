@@ -115,6 +115,6 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Log(args) => args.run(&state),
     Command::Graph(args) => args.run(&state),
     Command::Show(args) => args.run(&state),
-    Command::Config(args) => args.run(),
+    Command::Config(args) => args.run(&state.config),
   }
 }

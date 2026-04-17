@@ -2,9 +2,10 @@
 
 use anyhow::Result;
 use clap::Subcommand;
+use schemars::schema_for;
 use serde::{Deserialize, Serialize};
 
-use crate::config;
+use crate::config::{self, Config};
 use crate::util::term::get_user_confirmation;
 
 /// Creates a toml value out of the given value, then stringifies
@@ -36,6 +37,9 @@ pub enum ConfigCommand {
 
   /// Get the value of some config keys. These are the values that feature will use at runtime
   Get(GetArgs),
+
+  /// Prints an entire schema of the config to stdout
+  Schema,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, clap::ValueEnum)]
@@ -87,7 +91,7 @@ pub struct ArrayArgs {
 }
 
 impl Args {
-  pub fn run(&self) -> Result<()> {
+  pub fn run(&self, config: &Config) -> Result<()> {
     let which = if self.global {
       &WhichConfig::Global
     } else {
@@ -96,7 +100,8 @@ impl Args {
 
     match &self.command {
       ConfigCommand::Create => self.create(which),
-      ConfigCommand::Get(args) => self.get(args),
+      ConfigCommand::Get(args) => self.get(args, config),
+      ConfigCommand::Schema => generate_schema(),
     }
   }
 
@@ -134,14 +139,22 @@ impl Args {
     }
   }
 
-  pub fn get(&self, args: &GetArgs) -> Result<()> {
-    let config = config::load()?;
-
+  pub fn get(&self, args: &GetArgs, config: &Config) -> Result<()> {
     for key in &args.keys {
       let value = match &**key {
         "default_remote" => config.default_remote.clone(),
         "bases" => toml_stringify!(config.bases.clone()),
         "protect" => toml_stringify!(config.protect.clone()),
+
+        "status.show_untracked" => toml_stringify!(config.status.show_untracked),
+        "list.hash" => toml_stringify!(config.list.hash),
+        "list.upstream" => toml_stringify!(config.list.upstream),
+        "list.base" => toml_stringify!(config.list.base),
+
+        "show.message" => config.show.message.to_string(),
+        "show.summary" => toml_stringify!(config.show.summary),
+        "show.patch" => toml_stringify!(config.show.patch),
+        "show.paging" => config.show.paging.to_string(),
 
         "format.branch_sep" => config.format.branch_sep.clone(),
         "format.branch" => match config.format.branch {
@@ -173,4 +186,11 @@ impl Args {
 
     Ok(())
   }
+}
+
+fn generate_schema() -> Result<()> {
+  let schema = schema_for!(Config);
+  let json = serde_json::to_string_pretty(&schema)?;
+  println!("{}", json);
+  Ok(())
 }
