@@ -28,9 +28,10 @@ pub fn get_user_confirmation(prompt: &str) -> Result<bool> {
 /// Sends bytes to less with the following options:
 /// - `-F` to print to stdout directly if the terminal is tall enough
 /// - `-R` to print raw control characters
+/// - `-S` to turn off line-wrapping
 pub fn paginate(buf: &[u8]) -> Result<()> {
   let mut cmd = Command::new("less")
-    .arg("-FR")
+    .arg("-FRS")
     .stdin(Stdio::piped())
     .spawn()
     .context("Failed to start pager")?;

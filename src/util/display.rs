@@ -5,6 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{FixedOffset, TimeZone};
 use console::style;
 use git2::{Commit, Oid, Signature, Time};
+use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
 use crate::config::format::{DateStyle, HourStyle};
@@ -38,7 +39,8 @@ pub struct DisplayCommitOptions {
   pub message: DisplayCommitMessageLevel,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
 pub enum DisplayCommitMessageLevel {
   None,
   Subject,
