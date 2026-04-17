@@ -11,6 +11,7 @@ fn updates_all_bases() {
   local.feature(&["push"]).success();
 
   let bases = ["dev", "test"];
+  local.write_file("feature.toml", r#"bases = ["main", "dev", "test"]"#);
 
   // create some extra base branches
   for branch in bases {
@@ -19,10 +20,6 @@ fn updates_all_bases() {
     local.commit_all("B");
 
     local.feature(&["push"]).success();
-
-    local
-      .feature(&["config", "append", "bases", branch])
-      .success();
     local.git(&["switch", "main"]).success();
   }
 

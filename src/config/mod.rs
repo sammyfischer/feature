@@ -107,35 +107,11 @@ pub mod project {
   use std::path::PathBuf;
 
   use anyhow::Result;
-  use toml_edit::DocumentMut;
 
   use crate::config::Config;
 
   pub fn path() -> PathBuf {
     PathBuf::from("feature.toml")
-  }
-
-  /// Reads the config file and loads a mutable config document
-  pub fn load_doc() -> Result<DocumentMut> {
-    let path = self::path();
-    // if the file doesn't exist, return an empty document
-    if !path.exists() {
-      return Ok(DocumentMut::new());
-    };
-
-    let text = fs::read_to_string(path)?;
-    let doc = text.parse::<DocumentMut>()?;
-
-    Ok(doc)
-  }
-
-  pub fn save(doc: DocumentMut) -> Result<()> {
-    let path = self::path();
-    let text = doc.to_string();
-
-    fs::write(&path, text)?;
-    println!("Wrote to config file at {}", &path.to_string_lossy());
-    Ok(())
   }
 
   /// Saves an entire default config to the project directory
@@ -156,7 +132,6 @@ pub mod user {
   use std::path::PathBuf;
 
   use anyhow::{Result, anyhow};
-  use toml_edit::DocumentMut;
 
   use crate::config::Config;
 
@@ -189,30 +164,6 @@ pub mod user {
     }?;
 
     Ok(path)
-  }
-
-  /// Reads the config file and loads a mutable config document
-  pub fn load_doc() -> Result<DocumentMut> {
-    let path = self::path()?;
-
-    // if the file doesn't exist, return an empty document
-    if !path.exists() {
-      return Ok(DocumentMut::new());
-    };
-
-    let text = fs::read_to_string(path)?;
-    let doc = text.parse::<DocumentMut>()?;
-
-    Ok(doc)
-  }
-
-  pub fn save(doc: DocumentMut) -> Result<()> {
-    let path = self::ensure_path()?;
-    let text = doc.to_string();
-
-    fs::write(&path, text)?;
-    println!("Wrote to config file at {}", &path.to_string_lossy());
-    Ok(())
   }
 
   /// Saves an entire default config to the user config directory
