@@ -22,6 +22,8 @@ pub mod list;
 pub mod show;
 pub mod status;
 
+const SCHEMA_URL: &str = "https://raw.githubusercontent.com/sammyfischer/feature/refs/heads/main/feature-config.schema.json";
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct Config {
@@ -117,12 +119,13 @@ pub fn load_with_path(project: &Path) -> Result<Config> {
 }
 
 pub mod project {
-  use std::fs;
+  use std::fs::File;
+  use std::io::Write;
   use std::path::PathBuf;
 
   use anyhow::Result;
 
-  use crate::config::Config;
+  use crate::config::{Config, SCHEMA_URL};
 
   pub fn path() -> PathBuf {
     PathBuf::from("feature.toml")
@@ -134,20 +137,22 @@ pub mod project {
     let config = Config::default();
     let toml_raw = toml::to_string_pretty(&config)?;
 
-    fs::write(&path, toml_raw)?;
+    let mut file = File::create(&path)?;
+    file.write_all(format!("\"$schema\" = \"{}\"\n\n", SCHEMA_URL).as_bytes())?;
+    file.write_all(toml_raw.as_bytes())?;
     println!("Created default config file at {}", &path.to_string_lossy());
     Ok(())
   }
 }
 
 pub mod user {
-  use std::fs;
-  use std::io::ErrorKind;
+  use std::fs::{self, File};
+  use std::io::{ErrorKind, Write};
   use std::path::PathBuf;
 
   use anyhow::{Result, anyhow};
 
-  use crate::config::Config;
+  use crate::config::{Config, SCHEMA_URL};
 
   /// Returns the config file located in the platform's standard config directory
   /// # Errors
@@ -186,7 +191,9 @@ pub mod user {
     let config = Config::default();
     let toml_raw = toml::to_string_pretty(&config)?;
 
-    fs::write(&path, toml_raw)?;
+    let mut file = File::create(&path)?;
+    file.write_all(format!("\"$schema\" = \"{}\"\n\n", SCHEMA_URL).as_bytes())?;
+    file.write_all(toml_raw.as_bytes())?;
     println!("Created default config file at {}", &path.to_string_lossy());
     Ok(())
   }
