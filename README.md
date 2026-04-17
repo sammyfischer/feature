@@ -48,8 +48,6 @@ Here's a summary of the feature workflow:
 ### Housekeeping
 
 - show
-  - config file option for --message and --no-summary (new `[show]` section)
-  - diff output (send to either git diff or delta)
   - handle merge commits in different ways (currently shows diff against first parent)
 - use `git2::Object::short_id()` instead of just truncating hashes to 7 chars
 - configure clean git environment in tests so user configs don't cause any failures

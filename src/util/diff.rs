@@ -1,10 +1,13 @@
 //! Diff related helpers and display functions
 
 use std::fmt::Display;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
 use console::style;
 use git2::{Delta, Diff, DiffLineType};
+use which::which;
 
 use crate::util::display::display_plus_minus;
 
@@ -293,4 +296,39 @@ pub fn status_guide() -> String {
   writeln!(out, "  {} Typechange", style("T").yellow()).unwrap();
   writeln!(out, "  {} Unreadable", style("?").red()).unwrap();
   out
+}
+
+/// Gets the bytes of a diff, possibly fitlering it through delta
+pub fn get_formatted_diff(diff: &Diff) -> Result<Vec<u8>> {
+  // collect diff output
+  let mut bytes: Vec<u8> = Vec::new();
+  diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+    let prefix = match line.origin_value() {
+      DiffLineType::Context => ' '.to_string(),
+      DiffLineType::Addition => '+'.to_string(),
+      DiffLineType::Deletion => '-'.to_string(),
+      _ => String::new(),
+    };
+    bytes.extend_from_slice(prefix.as_bytes());
+    bytes.extend_from_slice(line.content());
+    true
+  })?;
+
+  if let Ok(delta) = which("delta") {
+    // pass bytes to delta if found, then return its output
+    let mut cmd = Command::new(delta)
+      .stdin(Stdio::piped())
+      .stdout(Stdio::piped())
+      .spawn()?;
+
+    if let Some(stdin) = &mut cmd.stdin {
+      stdin.write_all(&bytes)?;
+    }
+
+    let out = cmd.wait_with_output()?;
+    Ok(out.stdout)
+  } else {
+    // just return the bytes
+    Ok(bytes)
+  }
 }

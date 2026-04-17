@@ -8,30 +8,44 @@ use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
 
+use crate::config::advice::AdviceConfig;
 use crate::config::format::FormatConfig;
+use crate::config::list::ListConfig;
+use crate::config::show::ShowConfig;
+use crate::config::status::StatusConfig;
 
+pub mod advice;
 pub mod format;
+pub mod list;
+pub mod show;
+pub mod status;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-  /// Main remote name
+  /// Name of the remote to use when one can't be determined automatically
   pub default_remote: String,
 
   /// List of possible base branches
   pub bases: Vec<String>,
 
-  /// List of branches to protect from pushes/deletion. By default, base branches are already
+  /// List of branches to protect from force-pushes/deletion. By default, base branches are already
   /// protected and don't need to be added
   pub protect: Vec<String>,
 
-  /// Hide untracked files in diff outputs
-  pub hide_untracked: bool,
+  /// Options for the status command
+  pub status: StatusConfig,
 
-  /// Section for formatting config
+  /// Options for the list command
+  pub list: ListConfig,
+
+  /// Options for the show command
+  pub show: ShowConfig,
+
+  /// Formatting options
   pub format: FormatConfig,
 
-  /// Section for advice config
+  /// Advice options
   pub advice: AdviceConfig,
 }
 
@@ -41,47 +55,22 @@ impl Default for Config {
       default_remote: "origin".into(),
       bases: vec!["main".into()],
       protect: vec![],
-      hide_untracked: Default::default(),
+      status: Default::default(),
+      list: Default::default(),
+      show: Default::default(),
       format: Default::default(),
       advice: Default::default(),
     }
   }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AdviceConfig {
-  /// Advice on staging/unstaging
-  pub status: bool,
-
-  /// Advice on rebase conflicts
-  pub rebase: bool,
-
-  /// Advice on merge conflicts
-  pub merge: bool,
-
-  /// Advice on cherry-pick conflicts
-  pub cherry_pick: bool,
-
-  /// Advice on revert conflicts
-  pub revert: bool,
-
-  /// Advice on bisect
-  pub bisect: bool,
-}
-
-impl Default for AdviceConfig {
-  fn default() -> Self {
-    Self {
-      // false bc people generally know how to stage/unstage
-      status: false,
-      rebase: true,
-      merge: true,
-      cherry_pick: true,
-      revert: true,
-      // false bc bisect is a state you enter intentionally
-      bisect: false,
-    }
-  }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum PageWhen {
+  #[default]
+  Auto,
+  Always,
+  Never,
 }
 
 /// Loads a layered config, searching the default locations for each.
@@ -118,35 +107,11 @@ pub mod project {
   use std::path::PathBuf;
 
   use anyhow::Result;
-  use toml_edit::DocumentMut;
 
   use crate::config::Config;
 
   pub fn path() -> PathBuf {
     PathBuf::from("feature.toml")
-  }
-
-  /// Reads the config file and loads a mutable config document
-  pub fn load_doc() -> Result<DocumentMut> {
-    let path = self::path();
-    // if the file doesn't exist, return an empty document
-    if !path.exists() {
-      return Ok(DocumentMut::new());
-    };
-
-    let text = fs::read_to_string(path)?;
-    let doc = text.parse::<DocumentMut>()?;
-
-    Ok(doc)
-  }
-
-  pub fn save(doc: DocumentMut) -> Result<()> {
-    let path = self::path();
-    let text = doc.to_string();
-
-    fs::write(&path, text)?;
-    println!("Wrote to config file at {}", &path.to_string_lossy());
-    Ok(())
   }
 
   /// Saves an entire default config to the project directory
@@ -167,7 +132,6 @@ pub mod user {
   use std::path::PathBuf;
 
   use anyhow::{Result, anyhow};
-  use toml_edit::DocumentMut;
 
   use crate::config::Config;
 
@@ -200,30 +164,6 @@ pub mod user {
     }?;
 
     Ok(path)
-  }
-
-  /// Reads the config file and loads a mutable config document
-  pub fn load_doc() -> Result<DocumentMut> {
-    let path = self::path()?;
-
-    // if the file doesn't exist, return an empty document
-    if !path.exists() {
-      return Ok(DocumentMut::new());
-    };
-
-    let text = fs::read_to_string(path)?;
-    let doc = text.parse::<DocumentMut>()?;
-
-    Ok(doc)
-  }
-
-  pub fn save(doc: DocumentMut) -> Result<()> {
-    let path = self::ensure_path()?;
-    let text = doc.to_string();
-
-    fs::write(&path, text)?;
-    println!("Wrote to config file at {}", &path.to_string_lossy());
-    Ok(())
   }
 
   /// Saves an entire default config to the user config directory

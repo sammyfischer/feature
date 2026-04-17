@@ -18,6 +18,7 @@ serde = { version = "1.0.228", features = ["derive", "serde_derive"] }
 toml = "1.0.3"
 toml_edit = "0.25.3"
 unicode-width = "0.2.2"
+which = "8.0.2"
 
 [dev-dependencies]
 assert_cmd = "2.1.2"

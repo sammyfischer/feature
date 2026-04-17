@@ -1,13 +1,11 @@
 //! Helper functions pertaining to the terminal
 
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::process::{Command, Stdio};
 
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use console::Term;
 use dialoguer::Confirm;
-
-use crate::await_child;
 
 pub fn is_term() -> bool {
   Term::stdout().is_term()
@@ -27,21 +25,29 @@ pub fn get_user_confirmation(prompt: &str) -> Result<bool> {
   Ok(result)
 }
 
-/// Takes a string and sends its output to less with the following options:
+/// Sends bytes to less with the following options:
 /// - `-F` to print to stdout directly if the terminal is tall enough
 /// - `-R` to print raw control characters
-pub fn paginate(s: &str) -> Result<()> {
+/// - `-S` to turn off line-wrapping
+pub fn paginate(buf: &[u8]) -> Result<()> {
   let mut cmd = Command::new("less")
-    .arg("-FR")
+    .arg("-FRS")
     .stdin(Stdio::piped())
     .spawn()
-    .expect("Failed to start less");
+    .context("Failed to start pager")?;
 
-  let stdin = cmd.stdin.as_mut().expect("Failed to send output to less");
+  match cmd
+    .stdin
+    .as_mut()
+    .ok_or(anyhow!("Failed to open pipe to pager"))?
+    .write_all(buf)
+  {
+    Ok(_) => {}
+    // broken pipe will happen if the user exits less but there's still more output
+    Err(e) if e.kind() == ErrorKind::BrokenPipe => {}
+    Err(e) => return Err(anyhow!(e).context("Failed to write to pager")),
+  };
 
-  stdin
-    .write_all(s.as_bytes())
-    .expect("Failed to send output to less");
-
-  await_child!(cmd, "Less")
+  cmd.wait()?;
+  Ok(())
 }

@@ -49,9 +49,7 @@ fn starts_from_specified_base() {
   repo.write_file("b.txt", "B");
   repo.commit_all("B");
 
-  repo
-    .feature(&["config", "append", "bases", "main", "dev"])
-    .success();
+  repo.write_file("feature.toml", r#"bases = ["main", "dev"]"#);
 
   repo
     .feature(&["start", "--from", "main", "main-feature"])

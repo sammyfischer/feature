@@ -53,7 +53,7 @@ pub struct Args {
   pub format: Option<String>,
 
   /// Which base branch to start from
-  #[arg(long)]
+  #[arg(long, value_name = "BRANCH")]
   pub from: Option<String>,
 
   /// Words to join together as branch name

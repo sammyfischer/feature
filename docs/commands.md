@@ -99,10 +99,12 @@ feature st
 
 Prints the current status of the repo. This includes the current branch, the commit it points to, git username and email, and a summary of staged/unstaged changes.
 
+If applicable, displays any active state the repo is in (e.g. merge conflicts, cherry-pick conflicts) and extra info about the state (including a list of conflicted files).
+
 This similar to `git status`, except that:
 
 - it displays more info
-- the info is more compact
+- it's more compact
 - it's more colorful
 
 ## List
@@ -155,13 +157,33 @@ git log --graph --all --pretty='format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(
 
 Like log, you can customize the format. Unlike log, this will truncate each line to the terminal width, so one commit will never take up multiple lines (unless you resize the terminal).
 
+## Show
+
+```bash
+feature show
+feature show main --no-summary
+feature show 9fe6b04 --message=subject
+```
+
+View details of a particular commit. You can disable different parts of the output with the command line options and config file options, e.g. hiding the patch diff. You can customize the timestamp formatting in the `[format]` section of the config file.
+
+By default, shows HEAD. You can pass in anything that can be resolved to a commit, e.g. branch names, tag names, and `HEAD^1`.
+
+For commits with multiple parents, the diff output will be against the first parent. For merge commits, the first parent is always the branch being merged into (i.e. the current branch at the time of the merge). In other words, the diff shows the changes that were brought into the branch by the merge, rather than the changes made specifically in that commit.
+
+For the stash commit (`feature show refs/stash`), the first parent is the HEAD at the time the stash was created. In other words, the diff shows all the changes that were stashed.
+
+This command is similar to `git show` except:
+
+- the output is in the style of other feature commands
+
 ## Config
 
 ```bash
 feature config …
 ```
 
-Subcommands to edit feature config files. Use `feature config --help` to see the details.
+Subcommands related to feature config files. Use `feature config --help` to see the its subcommands. View details of each subcommand with `feature config <subcommand> --help`.
 
 ## Base
 
