@@ -22,8 +22,8 @@ pub struct FormatConfig {
   pub hour: HourStyle,
 
   /// Date format (respect hour format)
-  /// Verbose: Apr 14, 2026 at 11:26 PM
-  /// Compact: 2026-14-04 11:26 PM
+  /// Textual: Apr 14, 2026 at 11:26 PM
+  /// Numeric: 2026-14-04 11:26 PM
   pub date: DateStyle,
 
   /// Whether to show timezone offset

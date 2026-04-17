@@ -87,16 +87,16 @@ impl Widths {
 #[command(visible_alias = "ls", about = "Lists branches", long_about = LONG_ABOUT)]
 pub struct Args {
   /// Hides hash column
-  #[arg(long, value_name = "HIDE")]
-  pub no_hash: bool,
+  #[arg(short = 'H', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_hash: Option<bool>,
 
   /// Hides upstream branch column
-  #[arg(long, value_name = "HIDE")]
-  pub no_upstream: bool,
+  #[arg(short = 'U', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_upstream: Option<bool>,
 
   /// Hides base branch column
-  #[arg(long, value_name = "HIDE")]
-  pub no_base: bool,
+  #[arg(short = 'B', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_base: Option<bool>,
 }
 
 impl Args {
@@ -170,7 +170,7 @@ impl Args {
       }
 
       'hash: {
-        if self.no_hash {
+        if self.no_hash.unwrap_or(!state.config.list.hash) {
           break 'hash;
         }
 
@@ -184,7 +184,7 @@ impl Args {
       }
 
       'upstream: {
-        if self.no_upstream {
+        if self.no_upstream.unwrap_or(!state.config.list.upstream) {
           break 'upstream;
         }
 
@@ -203,7 +203,7 @@ impl Args {
       }
 
       'base: {
-        if self.no_base {
+        if self.no_base.unwrap_or(!state.config.list.base) {
           break 'base;
         }
 
