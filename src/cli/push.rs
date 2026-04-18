@@ -2,9 +2,10 @@ use std::fmt::Write;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{ErrorClass, ErrorCode, PushOptions};
+use git2::{ErrorClass, ErrorCode, Oid, PushOptions};
 
 use crate::util::branch::get_current_branch_name;
+use crate::util::display::{display_hash, trim_hash};
 use crate::util::get_remote_callbacks;
 use crate::{App, lossy};
 
@@ -103,6 +104,40 @@ impl Args {
         return Err(git2::Error::from_str(msg));
       }
       Ok(())
+    });
+
+    cbs.sideband_progress(|bytes| {
+      print!("{}", lossy!(bytes));
+      true
+    });
+    cbs.update_tips(|refname, old_id, new_id| {
+      let zero = Oid::zero();
+      let refname = refname.trim_prefix("refs/remotes/");
+
+      if old_id == zero {
+        println!(
+          "{} {} {}",
+          style("Created").green(),
+          refname,
+          display_hash(&new_id)
+        );
+      } else if new_id == zero {
+        println!(
+          "{} {} {}",
+          style("Deleted").red(),
+          refname,
+          style(&format!("(was {})", trim_hash(&old_id))).dim()
+        );
+      } else {
+        println!(
+          "{} {}: {} -> {}",
+          style("Updated").green(),
+          refname,
+          display_hash(&old_id),
+          display_hash(&new_id)
+        );
+      }
+      true
     });
 
     opts.remote_callbacks(cbs);
