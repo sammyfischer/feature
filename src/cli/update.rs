@@ -3,13 +3,13 @@ use std::fs;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{ErrorCode, Rebase, Repository};
+use git2::{ErrorCode, Oid, Rebase, Repository};
 
 use crate::util::advice::{NO_SIGNATURE_MSG, REBASE_CONFLICT_ADVICE};
-use crate::util::branch::get_current_branch_name;
+use crate::util::branch::{get_current_branch_name, get_head};
 use crate::util::diff::DiffSummary;
-use crate::util::display::display_hash;
-use crate::util::get_current_commit;
+use crate::util::display::trim_hash;
+use crate::util::{get_current_commit, resolve_commit_name};
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
@@ -98,18 +98,6 @@ impl Args {
       .context("Failed to initiate rebase")?;
 
     self.rebase(&state.repo, &mut rebase)?;
-
-    println!(
-      "{} {} with changes from {}",
-      style("Updated").green(),
-      style(branch_name).blue(),
-      style(
-        base_name
-          .trim_prefix("refs/remotes/")
-          .trim_prefix("refs/heads/")
-      )
-      .magenta()
-    );
     Ok(())
   }
 
@@ -150,14 +138,36 @@ impl Args {
 
       let signature = repo.signature().context(NO_SIGNATURE_MSG)?;
 
-      rebase
+      let new_id = rebase
         .commit(None, &signature, None)
         .context(COMMIT_FAILED_MSG)?;
 
-      println!("{} commit {}", style("Applied").green(), display_hash(&id));
+      println!(
+        "{} commit {} as {}",
+        style("Applied").green(),
+        style(trim_hash(&id)).blue(),
+        style(trim_hash(&new_id)).magenta()
+      );
     }
 
+    let orig_head = rebase.orig_head_id();
+    let curr_head = get_head(repo)?;
+
+    let summary = if let Some(orig_head) = orig_head
+      && let Some(curr_head) = curr_head
+    {
+      let old = repo.find_commit(orig_head)?.tree()?;
+      let new = curr_head.peel_to_tree()?;
+      let mut diff = repo.diff_tree_to_tree(Some(&old), Some(&new), None)?;
+      diff.find_similar(None)?;
+      Some(DiffSummary::new(&diff)?)
+    } else {
+      None
+    };
+
+    let out = display_success(repo, rebase, summary.as_ref())?;
     rebase.finish(None).context("Failed to finish rebase")?;
+    println!("{}", out);
     Ok(())
   }
 
@@ -173,7 +183,8 @@ impl Args {
     }
 
     let mut rebase = repo.open_rebase(None).context("Failed to open rebase")?;
-    self.rebase(repo, &mut rebase)
+    self.rebase(repo, &mut rebase)?;
+    Ok(())
   }
 
   /// Opens and aborts an existing rebase
@@ -245,4 +256,42 @@ impl Args {
 
     Ok(())
   }
+}
+
+/// Display a message upon successful rebase
+fn display_success(
+  repo: &Repository,
+  rebase: &Rebase,
+  summary: Option<&DiffSummary>,
+) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::with_capacity(100);
+
+  let branch_name = match rebase.orig_head_name() {
+    Some(name) => style(name.trim_prefix("refs/remotes/").trim_prefix("refs/heads/")).blue(),
+    None => style("unknown").red(),
+  };
+
+  let base_name = fs::read_to_string(repo.path().join("rebase-merge/onto"))?;
+  let base_name = base_name.trim();
+  let base_name = resolve_commit_name(repo, &Oid::from_str(base_name)?)?;
+
+  write!(
+    out,
+    "{} {} with changes from {}",
+    style("Updated").green(),
+    branch_name,
+    style(
+      base_name
+        .trim_prefix("refs/remotes/")
+        .trim_prefix("refs/heads/")
+    )
+    .magenta()
+  )?;
+
+  if let Some(summary) = summary {
+    write!(out, "\n{}", summary)?;
+  }
+
+  Ok(out)
 }
