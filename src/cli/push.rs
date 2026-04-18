@@ -114,6 +114,10 @@ impl Args {
       let zero = Oid::zero();
       let refname = refname.trim_prefix("refs/remotes/");
 
+      if old_id == new_id {
+        return true;
+      }
+
       if old_id == zero {
         println!(
           "{} {} {}",
