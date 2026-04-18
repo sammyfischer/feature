@@ -47,6 +47,15 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
+- push
+  - check against base branch, warn user if current branch is not up to date
+    - also fetch latest base if it has an upstream
+  - check against upstream, warn if current is not up to date
+  - force should ignore these checks
+  - reimplement force with lease
+    - check local branch vs. tracking branch
+    - if tip is the same commit, force push
+    - else, maybe try normal push or warn user
 - show
   - handle merge commits in different ways (currently shows diff against first parent)
 - use `git2::Object::short_id()` instead of just truncating hashes to 7 chars
@@ -56,6 +65,10 @@ Here's a summary of the feature workflow:
   - use `GIT_CONFIG_NOSYSTEM`
 - run git gc every now and then
   - maybe in write commands like sync
+- config schema
+  - the generated config file from `config create` should link to a schema corresponding to the same version of feature
+  - CI should generate schema, maybe should be hosted somewhere else
+  - start versioning feature
 
 ### Features
 
