@@ -66,6 +66,34 @@ fn rebases_changes() {
   );
 }
 
+/// If base is a remote, it should be automatically fetched before updating
+#[test]
+fn auto_fetches_base() {
+  let (local, remote) = TestRepo::new_with_remote();
+  local.write_file("file.txt", "A");
+  local.commit_all("A");
+  local.feature(&["push"]).success();
+
+  // brand new file
+  local.feature(&["start", "feature"]).success();
+  local.write_file("feature.txt", "X");
+  local.commit_all("X");
+  local.feature(&["push"]).success();
+
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file("main.txt", "B");
+  local2.commit_all("B");
+  local2.feature(&["push"]).success();
+
+  local.feature(&["update"]).success();
+
+  assert_eq!(
+    local.list_commit_subjects("feature"),
+    "X\nB\nA",
+    "feature should be rebased onto main"
+  );
+}
+
 /// Feature should exit, pausing the rebase, when there are conflicts
 #[test]
 fn rebase_stops_when_conflicts() {
