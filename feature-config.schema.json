@@ -15,16 +15,6 @@
         "status": false
       }
     },
-    "bases": {
-      "description": "List of possible base branches",
-      "type": "array",
-      "default": [
-        "main"
-      ],
-      "items": {
-        "type": "string"
-      }
-    },
     "default_remote": {
       "description": "Name of the remote to use when one can't be determined automatically",
       "type": "string",
@@ -53,7 +43,7 @@
       }
     },
     "protect": {
-      "description": "List of branches to protect from force-pushes/deletion. By default, base branches are already\nprotected and don't need to be added",
+      "description": "List of branches to protect from force-pushes/deletion",
       "type": "array",
       "default": [],
       "items": {

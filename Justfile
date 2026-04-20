@@ -20,6 +20,9 @@ test target="":
     cargo test --quiet
   fi
 
+schema:
+  just run config schema > feature-config.schema.json
+
 # format with dprint
 fmt:
   dprint fmt --diff
