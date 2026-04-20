@@ -143,7 +143,6 @@ impl Args {
     for key in &args.keys {
       let value = match &**key {
         "default_remote" => config.default_remote.clone(),
-        "bases" => toml_stringify!(config.bases.clone()),
         "protect" => toml_stringify!(config.protect.clone()),
 
         "status.show_untracked" => toml_stringify!(config.status.show_untracked),

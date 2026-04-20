@@ -128,19 +128,6 @@ fn pushes_base_branch() {
   );
 }
 
-#[test]
-fn refuses_to_force_push_base_branch() {
-  let (local, remote) = TestRepo::new_with_remote();
-  local.init_commit();
-  local.feature(&["push", "-f"]).failure();
-
-  assert_ne!(
-    local.list_commits_on_branch("main"),
-    remote.list_commits_on_branch("main"),
-    "Local and remote main should be different after push fails"
-  );
-}
-
 /// Pushes to a remote other than the default
 #[test]
 fn pushes_to_different_remote() {

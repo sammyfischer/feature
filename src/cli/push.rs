@@ -72,12 +72,7 @@ impl Args {
     }
     let branch_name = lossy!(branch_ref.shorthand_bytes()).to_string();
 
-    // allow pushing bases, but as fast-forward only. the remote can still choose to reject
-    if state.config.bases.contains(&branch_name) && self.force {
-      return Err(anyhow!("Cannot force push a base branch"));
-    }
-
-    // same for protected branches
+    // allow pushing protected branches, but as fast-forward only
     if state.config.protect.contains(&branch_name) && self.force {
       return Err(anyhow!("Cannot force push a protected branch"));
     }

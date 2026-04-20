@@ -4,22 +4,26 @@
 
 You can run `feature <command> --help` to get info about a particular command, or `feature --help` to get list the available commands.
 
-Many commands support support a `--dry-run` option. Use `--help` to check.
+Many commands support support a `--dry-run` option, which doesn't modify the repo but displays command output as if the command were run. Use `--help` to check. Dry-run mode may still fetch remote-tracking branches.
 
 ## Start
 
 ```bash
 feature start my new branch
+feature start --from dev my new branch
+feature start --stay create but dont switch
 ```
 
 Starts a new feature branch. Must be called from a known base branch.
 
 This is similar to calling `git switch -c`, except that:
 
-- feature will automatically detect the current branch as its base
+- feature will automatically detect the starting branch as its base
 - feature will take all trailing command line args and string them together as the branch name
 - you can specify a custom template for all branch names to follow
   - view `feature start --help` for detailed info
+
+Using the `--stay` option is similar to calling `git branch …`.
 
 ## Commit
 
@@ -39,9 +43,10 @@ These are similar to `git commit` except that:
 
 - command line args are concatenated as the commit message
 - running with `--amend` doesn't require a commit message, and will instead reuse the existing message
-- feature displays a summary of files changed by the commit
-  - for an amend, it displays only the amended changes, not the total changes from its parent commit
 - you can commit anywhere using `--to`
+- it displays a summary of files changed by the commit, and the authorship info used for the commit
+  - for an amend, it displays only the amended changes, not the total changes from its parent commit
+  - for a merge commit, it displays all the changes brought into the target branch by the merge (i.e. diff against its first parent)
 
 ## Update
 
@@ -69,6 +74,12 @@ This is similar to `git push` except that:
 - you never need to specify the upstream with `-u`
   - if it's your first push, it will push to the default remote with the same name
   - on subsequent pushes, it uses the existing upstream name
+- it performs checks against the upstream and base, if they exist
+  - these checks ensure that new commits are reflected in the branch before you push
+  - feature automatically fetches the upstream and base to ensure the latest commits are being checked
+  - if an automatic fast-forward can be done safely, then it does that and continues with the push
+  - if the branches have diverged, stops and asks the user to bring in the changes manually
+  - `--force` skips these checks
 
 ## Sync
 
@@ -76,9 +87,17 @@ This is similar to `git push` except that:
 feature sync
 ```
 
-Fetches all branches from all remotes (pruning upstreams that no longer exist), then updates each base branch. It's similar to running `git fetch --all -p`, then `git pull` on each base branch.
+Fetches all branches from all remotes (pruning upstreams that no longer exist), fast-forwards all local branches with upstreams, and then prunes merged branches.
 
-Feature only fast-forwards branches. It checks that the local copy is a direct ancestor of the remote copy, then updates the reference of the branch.
+It's similar to running:
+
+1. `git fetch --all -p`
+2. `git pull` on every branch
+3. `feature prune`
+
+Feature only fast-forwards branches. It checks that the local copy is a direct ancestor of the remote copy, then updates the reference of the branch. If a branch can't be fast-forwarded, it's left as-is.
+
+Feature won't update the current branch if there are changes in the working directory, but it will still attempt to sync other branches.
 
 ## Prune
 
@@ -90,6 +109,26 @@ Deletes all local feature branches that have been merged into their base.
 
 If a branch doesn't have a known base, it won't be deleted. Branches are only deleted if they're a direct ancestor of, or exactly the same as, their base branch. These branches can easily be restored by checking out to the commit they pointed to and recreating them.
 
+Never deletes the currently checked-out branch.
+
+Similar to running:
+
+```bash
+branch_tip=$(git rev-parse branch)
+base_tip=$(git rev-parse base)
+
+if [ "$branch_tip" = $"base_tip"]; then
+  git branch -D branch
+  exit 0
+fi
+
+if git merge-base --is-ancestor branch base; then
+  git branch -D branch
+fi
+```
+
+on each `(branch, base)` pair.
+
 ## Status
 
 ```bash
@@ -99,7 +138,7 @@ feature st
 
 Prints the current status of the repo. This includes the current branch, the commit it points to, git username and email, and a summary of staged/unstaged changes.
 
-If applicable, displays any active state the repo is in (e.g. merge conflicts, cherry-pick conflicts) and extra info about the state (including a list of conflicted files).
+If applicable, displays any active state the repo is in (e.g. merge conflicts, cherry-pick conflicts) and extra info about the state (e.g. a list of conflicted files).
 
 This similar to `git status`, except that:
 
@@ -118,7 +157,7 @@ Lists all local branches (not just feature branches).
 
 This is similar to `git branch` except that:
 
-- it shows the feature-base-branch, if present
+- it shows the base branch, if present
 - it displays as a table
 - it's has simpler config options
   - columns can be hidden with cli or config file options
@@ -189,6 +228,9 @@ Subcommands related to feature config files. Use `feature config --help` to see 
 
 ```bash
 feature base main
+feature base main --branch feature-branch
 ```
 
-Tells feature which base branch to use for the current branch. If another arg is specified after the base, it's interpreted as the feature branch.
+Sets the base branch of `branch`. If no `branch` is specified, uses the current branch.
+
+The base branch is metadata used solely by feature. It only accepts short local branch names, e.g. `main`. It doesn't accept `origin/main` or `refs/heads/main`, for example. It will automatically determine if the branch has an upstream, and use that if available.

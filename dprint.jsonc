@@ -107,6 +107,7 @@
     "logs/*",
     "**/.svelte-kit",
     "**/*.txt",
+    "feature-config.schema.json",
   ],
 
   "plugins": [

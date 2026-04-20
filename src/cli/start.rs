@@ -1,6 +1,6 @@
 //! Start subcommand
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use console::style;
 
 use crate::templater::{LongVar, ShortVar, Templater};
@@ -13,12 +13,17 @@ use crate::util::branch::{
 use crate::util::get_signature;
 use crate::{App, data, lossy};
 
-const LONG_ABOUT: &str = r"Creates and switches to a new branch.
-This command does no checks to validate the branch name or verify that it
-doesn't already exist.
+const LONG_ABOUT: &str = r#"Creates and switches to a new branch.
+
+All trailing args are joined together to form the branch name. To avoid
+unexpected behavior, you should specify all cli options first, then add branch
+name args.
+
+To be more explicit, you can separate WORDS with "--":
+• feature start --sep='_' -- remaining args
 
 Supports several custom formatting options that can be specified in the command
-line or config file.";
+line or config file."#;
 
 const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
   %%      -> a literal '%'
@@ -29,10 +34,6 @@ const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
 
 const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a branch or specify one manually
 with the --from option.";
-
-const NOT_ON_BASE_MSG: &str = r"Must start from a base branch. You can add a base branch with:
-
-`feature config append bases <BRANCH_NAME>`";
 
 const EMPTY_REPO_MSG: &str =
   r"Cannot call start on an empty repository. Create at least one commit first.";
@@ -56,6 +57,10 @@ pub struct Args {
   #[arg(long, value_name = "BRANCH")]
   pub from: Option<String>,
 
+  /// Whether to stay on the current branch
+  #[arg(long)]
+  pub stay: bool,
+
   /// Words to join together as branch name
   #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
   pub words: Vec<String>,
@@ -68,10 +73,6 @@ impl Args {
       .as_ref()
       .unwrap_or(&get_current_branch_name(&state.repo)?.context(NOT_ON_BRANCH_MSG)?)
       .clone();
-
-    if !state.config.bases.contains(&base_name) {
-      return Err(anyhow!(NOT_ON_BASE_MSG));
-    }
 
     let base = name_to_branch(&state.repo, &base_name)?;
     let branch_name = self.build_branch_name(state, &base_name)?;
@@ -92,33 +93,37 @@ impl Args {
 
     display_branch_creation(&branch_name, &base_name);
 
-    // get tree to checkout
-    let tree = branch
-      .get()
-      .peel_to_tree()
-      .context("Failed to get branch as tree to checkout")?;
+    // checkout branch if user didn't specify --stay
+    if !self.stay {
+      // get tree to checkout
+      let tree = branch
+        .get()
+        .peel_to_tree()
+        .context("Failed to get branch as tree to checkout")?;
 
-    // checkout branch
-    state
-      .repo
-      .checkout_tree(tree.as_object(), None)
-      .context("Failed to switch to branch")?;
+      // checkout branch
+      state
+        .repo
+        .checkout_tree(tree.as_object(), None)
+        .context("Failed to switch to branch")?;
 
-    // update HEAD
-    state
-      .repo
-      .set_head(&format!("refs/heads/{}", branch_name))
-      .with_context(|| {
-        format!(
-          "Failed to update HEAD to new branch {0}. Run: \
+      // update HEAD
+      state
+        .repo
+        .set_head(&format!("refs/heads/{}", branch_name))
+        .with_context(|| {
+          format!(
+            "Failed to update HEAD to new branch {0}. Run: \
           \
           `git switch {0}`",
-          branch_name
-        )
-      })?;
+            branch_name
+          )
+        })?;
+    }
 
+    // set feature-base in config
     let feature_base_name = {
-      // we want the upstream of the base, e.g. refs/remotes/origin/main
+      // ideally we want the upstream of the base, e.g. refs/remotes/origin/main
       let base_upstream = get_upstream(&base)?;
 
       match base_upstream {
