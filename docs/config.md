@@ -2,13 +2,13 @@
 
 Feature supports both a project/local config file and a global/user config file.
 
-The project file takes precedence and is designed to be tracked by version control. It should contain project-specific config for all developers on the team to use, e.g. names of base branches and branch name template. It should not contain command output preferences, e.g. advice config and date formatting.
+The project file takes precedence and is designed to be tracked by version control. It should contain project-specific config for all developers on the team to use, e.g. names of protected branches and branch name template. It should not contain command output preferences, e.g. advice config and date formatting.
 
 The global config file exists in your platforms standard location. There you can customize your own general preferences.
 
 Use `feature config create` to create a project config file with all defaults. Use `feature config create -g` to do the same with a global config file. Each command outputs the location of the newly created file. It's not recommended to leave this as-is. Customize the values you want and delete keys you want to leave as default.
 
-> Note: arrays in different config levels overwrite each other. They don't attempt to append or combine in any way. This means that if you generate a default config at the project level, which contains an empty array for `protect`, then none of the branche names in your global will be protected. This also means that if you have `bases = ["main", "dev"]` in your global, and only `["main"]` in your project-level, then "dev" will not be considered a base.
+> Note: arrays in different config levels overwrite each other. They don't attempt to append or combine in any way. This means that if you generate a default config at the project level, which contains an empty array for `protect`, then none of the branch names in your global config will be protected.
 
 ## Command config
 

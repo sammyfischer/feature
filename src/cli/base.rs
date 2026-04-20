@@ -8,9 +8,9 @@ use crate::{App, data};
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
 
 Feature automatically tracks base branches when you use "feature start", but if
-you use other tools you'll have to tell feature which one to use. Base branches
-can't be quickly or reliably determined, so you will have to specify it
-manually for some feature commands to work."#;
+you use another tool to create a branch you'll have to tell feature which one to
+use. Base branches can't be quickly or reliably determined, so you will have to
+specify it manually for some feature commands to work."#;
 
 const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a branch or specify one manually
 with the --branch option.";

@@ -57,12 +57,7 @@ pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
 /// - it's not the current branch
 /// - it's changes are merged into its base
 fn safe_delete_branch(state: &App, branch_name: &String, dry_run: bool) -> Result<()> {
-  // skip base branches
-  if state.config.bases.contains(branch_name) {
-    return Ok(());
-  }
-
-  // skip other protected branches
+  // skip protected branches
   if state.config.protect.contains(branch_name) {
     return Ok(());
   }

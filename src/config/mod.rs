@@ -30,11 +30,7 @@ pub struct Config {
   /// Name of the remote to use when one can't be determined automatically
   pub default_remote: String,
 
-  /// List of possible base branches
-  pub bases: Vec<String>,
-
-  /// List of branches to protect from force-pushes/deletion. By default, base branches are already
-  /// protected and don't need to be added
+  /// List of branches to protect from force-pushes/deletion
   pub protect: Vec<String>,
 
   /// Options for the status command
@@ -57,7 +53,6 @@ impl Default for Config {
   fn default() -> Self {
     Self {
       default_remote: "origin".into(),
-      bases: vec!["main".into()],
       protect: vec![],
       status: Default::default(),
       list: Default::default(),

@@ -1,6 +1,6 @@
 //! Start subcommand
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use console::style;
 
 use crate::templater::{LongVar, ShortVar, Templater};
@@ -34,10 +34,6 @@ const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
 
 const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a branch or specify one manually
 with the --from option.";
-
-const NOT_ON_BASE_MSG: &str = r"Must start from a base branch. You can add a base branch with:
-
-`feature config append bases <BRANCH_NAME>`";
 
 const EMPTY_REPO_MSG: &str =
   r"Cannot call start on an empty repository. Create at least one commit first.";
@@ -77,10 +73,6 @@ impl Args {
       .as_ref()
       .unwrap_or(&get_current_branch_name(&state.repo)?.context(NOT_ON_BRANCH_MSG)?)
       .clone();
-
-    if !state.config.bases.contains(&base_name) {
-      return Err(anyhow!(NOT_ON_BASE_MSG));
-    }
 
     let base = name_to_branch(&state.repo, &base_name)?;
     let branch_name = self.build_branch_name(state, &base_name)?;

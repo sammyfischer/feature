@@ -29,15 +29,6 @@ fn empty_branch_name_fails() {
   repo.feature(&["start", ""]).failure();
 }
 
-#[test]
-fn only_starts_on_base_branch() {
-  let repo = TestRepo::new();
-  repo.init_commit();
-
-  repo.feature(&["start", "feature1"]).success();
-  repo.feature(&["start", "feature2"]).failure();
-}
-
 /// If the user specifies `--from` as a valid base, then start should start from that branch
 #[test]
 fn starts_from_specified_base() {

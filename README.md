@@ -32,21 +32,23 @@ While feature's functionality is generally meant to work with the concept of fea
 
 Here's a summary of the feature workflow:
 
-1. Switch to a base branch. Optionally, tell feature that it's a base with `feature config append bases <branch_name>`, or edit the config file directly.
+1. Switch to a base branch.
 2. Start a feature branch with `feature start …`.
-3. Begin implementing the feature
+   - tip: instead of switching to the branch first, you can use `feature start --from <base> …`
+3. Begin implementing the feature.
 4. If it's a new day, check `feature st` to remember where you were and what changes you have.
 5. Finish and commit with `feature commit …`.
 6. If some time has passed, or you know that there are new changes on the base branch, run `feature update`.
 7. Push changes to remote with `feature push`.
 8. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
-9. Switch back to the base branch with `git switch <base>`
-10. Update bases and prune feature branches with `feature sync`.
+9. Switch back to the base branch with `git switch <base>`.
+10. Update and clean up branches with `feature sync`.
 
 ## Todo list
 
 ### Housekeeping
 
+- update should fetch the latest base first
 - show
   - handle merge commits in different ways (currently shows diff against first parent)
 - use `git2::Object::short_id()` instead of just truncating hashes to 7 chars
@@ -63,6 +65,8 @@ Here's a summary of the feature workflow:
 
 ### Features
 
+- some kind of check command
+  - fetches base/upstream and checks that a branch is up to date, but doesn't do anything after (unlike update/push)
 - undo
   - uses reflog, undoes latest change
 - stash
@@ -86,4 +90,3 @@ Here's a summary of the feature workflow:
   - summary mode, prints like status output (print patch by default)
 - reflog
   - view reflog for a branch, select one to restore to that state
-- blame
