@@ -3,14 +3,14 @@ use std::fs;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{ErrorCode, Oid, Rebase, Repository};
+use git2::{ErrorCode, FetchOptions, Oid, Rebase, Repository};
 
 use crate::util::advice::{NO_SIGNATURE_MSG, REBASE_CONFLICT_ADVICE};
-use crate::util::branch::{get_current_branch_name, get_head};
+use crate::util::branch::{get_current_branch_name, get_head, resolve_branch_name};
 use crate::util::diff::DiffSummary;
 use crate::util::display::trim_hash;
-use crate::util::{get_current_commit, resolve_commit_name};
-use crate::{App, data};
+use crate::util::{get_current_commit, get_remote_callbacks, resolve_commit_name};
+use crate::{App, data, lossy, style};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
 rebase.";
@@ -29,7 +29,7 @@ const COMMIT_FAILED_MSG: &str = r#"Failed to apply commit. You can:
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Updates this branch with its base", long_about = LONG_ABOUT)]
 pub struct Args {
-  /// Output which base branch will be used, but don't perform the rebase or modify the database.
+  /// Output which base branch will be used, but don't perform the rebase
   #[arg(long)]
   dry_run: bool,
 
@@ -64,33 +64,55 @@ impl Args {
     let branch_name = get_current_branch_name(&state.repo)?
       .context("Not currently on a branch! Nothing to update.")?;
 
-    let base_name = match &self.base {
-      Some(it) => it.clone(),
+    let base_refname = match &self.base {
+      Some(base_name) => {
+        let base = resolve_branch_name(&state.repo, base_name)?
+          .with_context(|| format!("Failed to find branch: {}", base_name))?;
+
+        lossy!(base.into_reference().name_bytes()).to_string()
+      }
       None => data::get_feature_base(&config, &branch_name)
         .ok_or(anyhow!(NO_BASE_MSG))?
         .clone(),
     };
 
     if self.dry_run {
+      let base_ref = state.repo.find_reference(&base_refname)?;
+      let base_name = lossy!(base_ref.shorthand_bytes());
       println!("Using base: {}", base_name);
       return Ok(());
     }
 
-    // error instead of panic, base name could be invalid
-    let base = state
-      .repo
-      .revparse_single(&base_name)
-      .with_context(|| format!("Failed to get reference to base branch: {}", base_name))?;
+    // if base is an upstream, fetch the latest
+    if base_refname.starts_with("refs/remotes") {
+      let base_name = base_refname.trim_prefix("refs/remotes/");
+      let (remote_name, base_shorter_name) = base_name
+        .split_once('/')
+        .expect("Invalid format for upstream branch name");
+
+      let mut remote = state.repo.find_remote(remote_name)?;
+      let mut opts = FetchOptions::new();
+      opts.remote_callbacks(get_remote_callbacks());
+
+      remote.fetch(
+        &[&format!(
+          "+refs/heads/{}:{}",
+          base_shorter_name, &base_refname
+        )],
+        Some(&mut opts),
+        None,
+      )?;
+
+      println!("{}", style!("Fetched {}", base_name).dim());
+    }
+
+    // important: find reference after fetching
+    let base = state.repo.find_reference(&base_refname)?;
 
     let base_commit = state
       .repo
-      .find_annotated_commit(
-        base
-          .peel_to_commit()
-          .with_context(|| format!("Failed to find commit pointed to by {}", base_name))?
-          .id(),
-      )
-      .with_context(|| format!("Failed to find commit pointed to by {}", base_name))?;
+      .find_annotated_commit(base.peel_to_commit()?.id())
+      .with_context(|| format!("Failed to find commit pointed to by {}", base_refname))?;
 
     let mut rebase = state
       .repo
