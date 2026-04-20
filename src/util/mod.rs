@@ -99,8 +99,10 @@ pub fn read_commit_msg(path: &Path) -> Result<String> {
   Ok(real_lines.join("\n"))
 }
 
-/// Gets remote callbacks to use for remote operations with git2
-pub fn get_remote_callbacks<'repo>() -> RemoteCallbacks<'repo> {
+/// Gets remote callbacks with configured credential handling
+/// # Lifetimes
+/// - `cbs` - the lifetime of each callback function
+pub fn get_remote_callbacks<'cbs>() -> RemoteCallbacks<'cbs> {
   let mut callbacks = RemoteCallbacks::new();
 
   callbacks.credentials(|url, username_from_url, allowed_types| {

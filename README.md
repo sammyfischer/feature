@@ -56,6 +56,10 @@ Here's a summary of the feature workflow:
   - use `GIT_CONFIG_NOSYSTEM`
 - run git gc every now and then
   - maybe in write commands like sync
+- config schema
+  - the generated config file from `config create` should link to a schema corresponding to the same version of feature
+  - CI should generate schema, maybe should be hosted somewhere else
+  - start versioning feature
 
 ### Features
 
