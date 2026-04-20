@@ -65,7 +65,7 @@ fn safe_delete_branch(state: &App, branch_name: &String, dry_run: bool) -> Resul
   // skip current branch
   let current_branch = get_current_branch_name(&state.repo)?;
   if current_branch.as_ref().is_some_and(|it| it == branch_name) {
-    // not necessarily an error, but the user should know that a non-base non-protected branch was
+    // not necessarily an error, but the user should know that a non-protected branch was
     // skipped and may manually need to be deleted
     println!(
       "{}",

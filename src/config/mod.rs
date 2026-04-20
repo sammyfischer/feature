@@ -53,7 +53,7 @@ impl Default for Config {
   fn default() -> Self {
     Self {
       default_remote: "origin".into(),
-      protect: vec![],
+      protect: vec!["main".into()],
       status: Default::default(),
       list: Default::default(),
       show: Default::default(),
