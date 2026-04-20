@@ -93,7 +93,7 @@ It's similar to running:
 
 1. `git fetch --all -p`
 2. `git pull` on every branch
-3. `feature prune` (no git equivalent)
+3. `feature prune`
 
 Feature only fast-forwards branches. It checks that the local copy is a direct ancestor of the remote copy, then updates the reference of the branch. If a branch can't be fast-forwarded, it's left as-is.
 
@@ -110,6 +110,24 @@ Deletes all local feature branches that have been merged into their base.
 If a branch doesn't have a known base, it won't be deleted. Branches are only deleted if they're a direct ancestor of, or exactly the same as, their base branch. These branches can easily be restored by checking out to the commit they pointed to and recreating them.
 
 Never deletes the currently checked-out branch.
+
+Similar to running:
+
+```bash
+branch_tip=$(git rev-parse branch)
+base_tip=$(git rev-parse base)
+
+if [ "$branch_tip" = $"base_tip"]; then
+  git branch -D branch
+  exit 0
+fi
+
+if git merge-base --is-ancestor branch base; then
+  git branch -D branch
+fi
+```
+
+on each `(branch, base)` pair.
 
 ## Status
 
