@@ -1,29 +1,31 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Diff, FetchOptions, ObjectType, Oid, Repository, Status, StatusOptions};
+use git2::{Branch, BranchType, Diff, ObjectType, Oid, Repository, Status, StatusOptions};
 
 use crate::App;
 use crate::cli::prune::prune_branches;
-use crate::util::branch::{branch_to_name, fetch_all, get_current_branch_name, name_to_branch};
+use crate::util::branch::{branch_to_name, fetch_all, get_current_branch_name, get_upstream};
 use crate::util::diff::DiffSummary;
 use crate::util::display::trim_hash;
-use crate::util::get_remote_callbacks;
 
-const LONG_ABOUT: &str = r"Updates all base branches with their remotes, then prunes merged feature
-branches.
+const LONG_ABOUT: &str = r"Updates all branches with their remotes (if they have one), then prunes merged
+feature branches.
 
-Base branches are fast-forwarded, meaning they may fail to update if their
-history is diverged from upstream. That must be resolved manually.";
+Branches are fast-forwarded, meaning they may fail to update if their history is
+diverged from upstream. That must be resolved manually.
+
+The currently checked-out branch cannot be updated if there are changes in the
+working directory. If so, only the current branch will be skipped.";
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Syncs all base branches with their remotes", long_about = LONG_ABOUT)]
+#[command(about = "Updates branches with their remotes and prunes redundant branches", long_about = LONG_ABOUT)]
 pub struct Args {
   /// Display output but don't modify any branches. Will still fetch all remotes.
   #[arg(long)]
   pub dry_run: bool,
 
   /// Don't prune after updating
-  #[arg(long)]
+  #[arg(short = 'P', long)]
   pub no_prune: bool,
 }
 
@@ -40,13 +42,19 @@ impl Args {
 
     let current_branch =
       get_current_branch_name(&state.repo).context("Failed to get current branch")?;
-    let bases = &state.config.bases;
+    let branches = state.repo.branches(Some(BranchType::Local))?;
 
-    let mut opts = FetchOptions::new();
-    opts.remote_callbacks(get_remote_callbacks());
+    for (mut branch, _) in branches.flatten() {
+      let branch_name = branch_to_name(&branch)?.to_string();
+      let is_current = current_branch.as_ref().is_some_and(|it| *it == branch_name);
 
-    for branch_name in bases {
-      let is_current = current_branch.as_ref().is_some_and(|it| it == branch_name);
+      let upstream = get_upstream(&branch)?;
+      let Some(upstream) = upstream else {
+        // no upstream, nothing to update
+        continue;
+      };
+      let upstream_name = branch_to_name(&upstream)?;
+
       if is_current {
         // check for local changes
         if has_local_changes(&state.repo)? {
@@ -66,7 +74,15 @@ impl Args {
         }
       }
 
-      if let Err(e) = fast_forward(&state.repo, branch_name, is_current, self.dry_run) {
+      if let Err(e) = fast_forward(
+        &state.repo,
+        &mut branch,
+        &branch_name,
+        &upstream,
+        &upstream_name,
+        is_current,
+        self.dry_run,
+      ) {
         eprintln!("Failed to update: {}", e);
         continue;
       }
@@ -79,13 +95,19 @@ impl Args {
   }
 }
 
-/// Merges a branch with its upstream if it can be fast-forwarded. Set `current` to true when
-/// fast-forwarding the currently checked-out branch.
-fn fast_forward(repo: &Repository, branch_name: &str, current: bool, dry_run: bool) -> Result<()> {
-  let branch = name_to_branch(repo, branch_name)?;
-  let upstream = branch.upstream()?;
-  let upstream_name = branch_to_name(&upstream)?;
-
+/// Fast-forwards a branch to match upstream. Set `current` to true when fast-forwarding the
+/// currently checked-out branch, so that HEAD and the workdir are correctly updated.
+/// # Errors
+/// If the branch cannot be fast-forwarded.
+fn fast_forward(
+  repo: &Repository,
+  branch: &mut Branch,
+  branch_name: &str,
+  upstream: &Branch,
+  upstream_name: &str,
+  current: bool,
+  dry_run: bool,
+) -> Result<()> {
   let branch_tip = branch.get().peel_to_commit()?;
   let upstream_tip = upstream.get().peel_to_commit()?;
 
@@ -110,7 +132,8 @@ fn fast_forward(repo: &Repository, branch_name: &str, current: bool, dry_run: bo
 
 Option (1) is recommended for base branches that are supposed to reflect the
 remote copy rather than be modified directly (e.g. if you're working on a
-project with others, or the branch has branch protections on the remote).",
+project with others, or the branch has branch protections on the remote).
+",
       branch_name,
       upstream_name
     ));
@@ -135,7 +158,7 @@ project with others, or the branch has branch protections on the remote).",
   } else {
     // for other branches, we just move them to the upstream commit
     branch
-      .into_reference()
+      .get_mut()
       .set_target(upstream_tip.id(), "feature sync fast-forward")?;
   }
 
@@ -174,12 +197,12 @@ fn has_local_changes(repo: &Repository) -> Result<bool> {
   Ok(false)
 }
 
-fn display_update(branch_name: &str, diff: &Diff, commit_id: &Oid) -> Result<()> {
+fn display_update(branch_name: &str, diff: &Diff, old_id: &Oid) -> Result<()> {
   println!(
     "{} {} {} | {}",
     style("Updated").green(),
     branch_name,
-    style(format!("(was {})", trim_hash(commit_id))).dim(),
+    style(format!("(was {})", trim_hash(old_id))).dim(),
     DiffSummary::new(diff)?.display_header()
   );
   Ok(())
