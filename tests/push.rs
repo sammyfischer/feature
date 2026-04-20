@@ -24,9 +24,9 @@ fn create_upstream_and_feature_branch() -> (TestRepo, TestRemote) {
   (local, remote)
 }
 
-/// Pushing should use the already-existing upstream branch if available
+/// Pushing should use the already-existing with a name that differs from the current branch name
 #[test]
-fn pushes_to_upstream() {
+fn pushes_to_upstream_with_different_name() {
   let (local, _remote) = create_upstream_and_feature_branch();
 
   // push to remote with different name
@@ -45,8 +45,6 @@ fn pushes_to_upstream() {
   local.feature(&["push"]).success();
 
   let text = local.list_branches_and_upstreams();
-
-  println!("{}", text);
   assert!(text.contains("refs/heads/feature1 refs/remotes/origin/feature1-remote"));
 }
 
@@ -60,8 +58,6 @@ fn creates_upstream() {
   local.feature(&["push"]).success();
 
   let text = local.list_branches_and_upstreams();
-
-  println!("{}", text);
   assert!(text.contains("refs/heads/feature1 refs/remotes/origin/feature1"));
 }
 
@@ -295,4 +291,64 @@ fn pushes_in_bare_repo() {
 
   // make sure they got pushed
   assert_eq!(remote.list_commit_subjects("main").trim(), "B\nA");
+}
+
+/// Push should fail if upstream branch is diverged, even when the user hasn't fetched
+#[test]
+fn fails_when_upstream_diverges() {
+  let (local, remote) = TestRepo::new_with_remote();
+  let file_name = "file.txt";
+  local.write_file(file_name, "A");
+  local.commit_all("A");
+  local.feature(&["push"]).success();
+
+  // create but don't push changes on repo 1
+  local.feature(&["start", "topic"]).success();
+  local.feature(&["push"]).success();
+  local.write_file(file_name, "B");
+  local.commit_all("B");
+
+  // push new changes from repo 2
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.git(&["switch", "topic"]).success();
+  local2.feature(&["base", "main"]).success();
+  local2.write_file(file_name, "C");
+  local2.commit_all("C");
+  local2.feature(&["push"]).success();
+
+  // branches diverged
+  let cmd = local.feature(&["push"]).failure();
+  assert!(
+    get_stderr!(cmd).starts_with("Branch has diverged from its upstream"),
+    "Error should use the custom error message"
+  );
+}
+
+/// Push should fail if base branch is diverged, even when the user hasn't fetched
+#[test]
+fn fails_when_base_diverges() {
+  let (local, remote) = TestRepo::new_with_remote();
+  let file_name = "file.txt";
+  local.write_file(file_name, "A");
+  local.commit_all("A");
+  local.feature(&["push"]).success();
+
+  // create but don't push changes on repo 1
+  local.feature(&["start", "topic"]).success();
+  local.feature(&["push"]).success();
+  local.write_file(file_name, "B");
+  local.commit_all("B");
+
+  // change base from repo 2
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file(file_name, "C");
+  local2.commit_all("C");
+  local2.feature(&["push"]);
+
+  // branches diverged
+  let cmd = local.feature(&["push"]).failure();
+  assert!(
+    get_stderr!(cmd).starts_with("Branch has diverged from its base"),
+    "Error should use the custom error message"
+  );
 }

@@ -14,6 +14,14 @@ use crate::config::Config;
 use crate::config::format::{DateStyle, HourStyle};
 use crate::lossy;
 
+// Creates a [StyledObject] with format args
+#[macro_export]
+macro_rules! style {
+  ($($arg:tt)*) => {
+    console::style(&format!($($arg)*))
+  };
+}
+
 pub fn trim_hash(id: &Oid) -> String {
   id.to_string()[..7].to_string()
 }
