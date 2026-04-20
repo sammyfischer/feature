@@ -154,7 +154,7 @@ fn advanced_custom_formats() {
 
 /// Dry run mode only prints the would-be branch name, and doesn't create or switch to a branch
 #[test]
-pub fn dry_run_prints_branch() {
+fn dry_run_prints_branch() {
   let repo = TestRepo::new();
   repo.init_commit();
   repo.write_file(
@@ -192,4 +192,24 @@ branch = "%(user)%(sep)%(base)%(sep)%s"
     get_stdout!(cmd).trim(),
     "Created test_main_new_branch (from main)"
   );
+}
+
+/// Should stay on current branch when user specifies --stay
+#[test]
+fn stays() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+  repo.feature(&["start", "--stay", "topic"]).success();
+
+  let cmd = repo.git(&["branch", "--show-current"]).success();
+  assert_eq!(get_stdout!(cmd).trim(), "main", "Should stay on main");
+
+  // combining --stay and --from
+  repo.write_file("feature.toml", r#"bases = ["main", "topic"]"#);
+  repo
+    .feature(&["start", "--stay", "--from", "topic", "subtopic"])
+    .success();
+
+  let cmd = repo.git(&["branch", "--show-current"]).success();
+  assert_eq!(get_stdout!(cmd).trim(), "main", "Should stay on main");
 }
