@@ -6,7 +6,7 @@ use console::style;
 use git2::{ErrorCode, FetchOptions, Oid, Rebase, Repository};
 
 use crate::util::advice::{NO_SIGNATURE_MSG, REBASE_CONFLICT_ADVICE};
-use crate::util::branch::{get_current_branch_name, get_head, resolve_branch_name};
+use crate::util::branch::{get_current_branch_name, get_head, name_to_branch};
 use crate::util::diff::DiffSummary;
 use crate::util::display::trim_hash;
 use crate::util::{get_current_commit, get_remote_callbacks, resolve_commit_name};
@@ -60,20 +60,23 @@ impl Args {
       return Err(anyhow!("A rebase is already in progress"));
     }
 
-    let config = data::git_config(&state.repo)?;
     let branch_name = get_current_branch_name(&state.repo)?
       .context("Not currently on a branch! Nothing to update.")?;
 
     let base_refname = match &self.base {
       Some(base_name) => {
-        let base = resolve_branch_name(&state.repo, base_name)?
+        let base = name_to_branch(&state.repo, base_name)?
           .with_context(|| format!("Failed to find branch: {}", base_name))?;
 
-        lossy!(base.into_reference().name_bytes()).to_string()
+        lossy!(base.get().name_bytes()).to_string()
       }
-      None => data::get_feature_base(&config, &branch_name)
-        .ok_or(anyhow!(NO_BASE_MSG))?
-        .clone(),
+      None => lossy!(
+        data::get_feature_base(&state.repo, &branch_name)?
+          .ok_or(anyhow!(NO_BASE_MSG))?
+          .get()
+          .name_bytes()
+      )
+      .to_string(),
     };
 
     if self.dry_run {

@@ -9,7 +9,6 @@ use crate::util::branch::{
   get_current_branch_name,
   get_upstream,
   get_worktree_branch_names,
-  name_to_remote_branch,
 };
 use crate::util::display::{display_plus_minus, trim_hash};
 use crate::util::term::{get_term_width, is_term};
@@ -256,12 +255,10 @@ impl Args {
       row.ab_upstream = display_plus_minus(a, b);
     }
 
-    let base_name = data::get_short_feature_base(&data::git_config(repo)?, &branch_name);
-    if let Some(base_name) = base_name {
-      row.base = base_name.clone();
-
-      let base = name_to_remote_branch(repo, &base_name)
-        .with_context(|| format!("Failed to get reference to base branch {}", base_name))?;
+    let base = data::get_feature_base(repo, &branch_name)?;
+    if let Some(base) = base {
+      let base_name = lossy!(&base.name_bytes()?);
+      row.base = base_name.to_string();
 
       let (a, b) = get_ahead_behind(repo, branch.get(), base.get()).with_context(|| {
         format!(

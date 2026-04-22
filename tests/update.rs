@@ -70,20 +70,22 @@ fn rebases_changes() {
 #[test]
 fn auto_fetches_base() {
   let (local, remote) = TestRepo::new_with_remote();
+  // commit A to main and push
   local.write_file("file.txt", "A");
   local.commit_all("A");
-  local.feature(&["push"]).success();
+  local.git(&["push", "-u", "origin", "main"]).success();
 
-  // brand new file
+  // commit X to feature (in new file) and push
   local.feature(&["start", "feature"]).success();
   local.write_file("feature.txt", "X");
   local.commit_all("X");
-  local.feature(&["push"]).success();
+  local.git(&["push", "-u", "origin", "feature"]).success();
 
+  // commit B to main and push
   let local2 = TestRepo::new_from(&remote, "repo2-");
   local2.write_file("main.txt", "B");
   local2.commit_all("B");
-  local2.feature(&["push"]).success();
+  local2.git(&["push", "-u", "origin", "main"]).success();
 
   local.feature(&["update"]).success();
 
