@@ -141,22 +141,6 @@ pub fn get_current_branch_name(repo: &Repository) -> Result<Option<String>> {
   }
 }
 
-pub fn get_all_branch_names(repo: &Repository) -> Result<Vec<String>> {
-  let branches = repo.branches(Some(BranchType::Local))?;
-  let mut output: Vec<String> = Vec::new();
-
-  // unwrap results and options, skip on error or none
-  for branch in branches {
-    if let Ok((branch, _)) = branch
-      && let Ok(Some(name)) = branch.name()
-    {
-      output.push(name.to_string());
-    }
-  }
-
-  Ok(output)
-}
-
 pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
   let mut names = Vec::new();
 

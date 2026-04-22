@@ -107,27 +107,40 @@ feature prune
 
 Deletes all local feature branches that have been merged into their base.
 
-If a branch doesn't have a known base, it won't be deleted. Branches are only deleted if they're a direct ancestor of, or exactly the same as, their base branch. These branches can easily be restored by checking out to the commit they pointed to and recreating them.
+Feature will not delete a branch if any of the following conditions are met:
 
-Never deletes the currently checked-out branch.
+- the branch has no know base branch
+- the branch has never been pushed to remote (i.e. there is no `remote` variable in the branch's git config)
+- the branch is not a direct ancestor of (or equal to) its base
+  - in other words, if the branch is diverged from or ahead of its base, which means it includes commits not in the base
 
 Similar to running:
 
 ```bash
-branch_tip=$(git rev-parse branch)
-base_tip=$(git rev-parse base)
+branch="$1"
+base="$2"
 
-if [ "$branch_tip" = $"base_tip"]; then
-  git branch -D branch
+branch_tip=$(git rev-parse "$branch")
+base_tip=$(git rev-parse "$base")
+
+# ignore if there's no known remote/upstream
+if ! git config "branch.$branch.remote"; then
   exit 0
 fi
 
+# delete if they point to the same commit
+if [ "$branch_tip" = $"base_tip"]; then
+  git branch -D "$branch"
+  exit 0
+fi
+
+# delete if branch is a direct ancestor
 if git merge-base --is-ancestor branch base; then
-  git branch -D branch
+  git branch -D "$branch"
 fi
 ```
 
-on each `(branch, base)` pair.
+on each `(branch, base)` pair. Note that this script does not cover branch iteration, or determining which base belongs to which branch.
 
 ## Status
 

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Branch, BranchType, Oid, Repository};
+use git2::{Branch, BranchType, ErrorCode, Oid, Repository};
 
-use crate::util::branch::{fetch_all, get_all_branch_names, get_current_branch_name};
+use crate::util::branch::{fetch_all, get_current_branch_name};
 use crate::util::display::trim_hash;
 use crate::{App, await_child, data, git, lossy};
 
@@ -40,16 +40,11 @@ impl Args {
 }
 
 pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
-  let branches = get_all_branch_names(&state.repo)?;
+  let branches = state.repo.branches(Some(BranchType::Local))?;
   let current_name = get_current_branch_name(&state.repo)?;
 
-  for branch_name in branches {
-    if let Err(e) = safe_delete_branch(
-      state,
-      &branch_name,
-      current_name.as_ref().is_some_and(|it| it == &branch_name),
-      dry_run,
-    ) {
+  for (mut branch, _) in branches.flatten() {
+    if let Err(e) = safe_delete_branch(state, &mut branch, current_name.as_deref(), dry_run) {
       eprintln!("{}", e);
     }
   }
@@ -62,19 +57,34 @@ pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
 /// - it's not a protected branch
 /// - it's not the current branch
 /// - it's changes are merged into its base
+///
+/// # Returns
+/// Whether the delete operation occured. `false` means the delete didn't occur because the branch
+/// was determined to be unsafe to delete, rather than anything going wrong. An error implies that
+/// something went wrong.
 fn safe_delete_branch(
   state: &App,
-  branch_name: &String,
-  is_current: bool,
+  branch: &mut Branch,
+  current_branch_name: Option<&str>,
   dry_run: bool,
-) -> Result<()> {
+) -> Result<bool> {
+  let branch_name = lossy!(branch.name_bytes()?).to_string();
+  let branch_refname = lossy!(branch.get().name_bytes()).to_string();
+
+  // skip branches that have never been pushed
+  match state.repo.branch_upstream_name(&branch_refname) {
+    Ok(_) => {}
+    Err(e) if e.code() == ErrorCode::NotFound => return Ok(false),
+    Err(e) => return Err(e.into()),
+  };
+
   // skip protected branches
-  if state.config.protect.contains(branch_name) {
-    return Ok(());
+  if state.config.protect.contains(&branch_name) {
+    return Ok(false);
   }
 
   // skip current branch
-  if is_current {
+  if current_branch_name.is_some_and(|it| it == branch_name) {
     // not necessarily an error, but the user should know that a non-protected branch was
     // skipped and may manually need to be deleted
     println!(
@@ -85,17 +95,14 @@ fn safe_delete_branch(
       ))
       .dim()
     );
-    return Ok(());
+    return Ok(false);
   }
 
-  let branch = &mut state
-    .repo
-    .find_branch(branch_name, BranchType::Local)
-    .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
-
   // find base branch from db, else skip
-  let base = data::get_feature_base(&state.repo, branch_name)?
-    .context("Cannot prune branches without a base")?;
+  let base = match data::get_feature_base(&state.repo, &branch_name)? {
+    Some(base) => base,
+    None => return Ok(false),
+  };
 
   let base_name = lossy!(base.name_bytes()?);
 
@@ -115,26 +122,29 @@ fn safe_delete_branch(
 
     // in dry-run mode, display output but don't delete
     if dry_run {
-      display_deletion(branch_name, &commit.id());
-      return Ok(());
+      display_deletion(&branch_name, &commit.id());
+      // still return true, this would've been a deletion
+      return Ok(true);
     }
 
     branch
       .delete()
       .with_context(|| format!("Failed to delete branch {}", branch_name))?;
 
-    display_deletion(branch_name, &commit.id());
+    display_deletion(&branch_name, &commit.id());
 
     // git2 can't remove entire config sections, but git provides a command to do so
-    let key = format!("branch.{}", branch_name);
-    let mut child = git!("config", "--remove-section", key)
-      .spawn()
-      .context("Failed to call git")?;
-
-    await_child!(child, "Git")?;
+    let key = format!("branch.{}", &branch_name);
+    match git!("config", "--remove-section", key).spawn() {
+      Ok(mut cmd) => await_child!(cmd, "Git"),
+      Err(e) => Err(e.into()),
+    }.with_context(|| format!(
+        r#"Failed to delete branch config. Run "git config --remove-section branch.{}" to remove it.""#,
+        &branch_name
+      ))?;
   }
 
-  Ok(())
+  Ok(true)
 }
 
 /// Whether branch is merged into base. A branch is considered merged if:
