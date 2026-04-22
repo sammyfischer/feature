@@ -25,6 +25,8 @@ This is similar to calling `git switch -c`, except that:
 
 Using the `--stay` option is similar to calling `git branch …`.
 
+![Start terminal output](../screenshots/start.png)
+
 ## Commit
 
 ```bash
@@ -47,6 +49,8 @@ These are similar to `git commit` except that:
 - it displays a summary of files changed by the commit, and the authorship info used for the commit
   - for an amend, it displays only the amended changes, not the total changes from its parent commit
   - for a merge commit, it displays all the changes brought into the target branch by the merge (i.e. diff against its first parent)
+
+![Commit terminal output](../screenshots/commit.png)
 
 ## Update
 
@@ -81,6 +85,10 @@ This is similar to `git push` except that:
   - if the branches have diverged, stops and asks the user to bring in the changes manually
   - `--force` skips these checks
 
+![First-time push terminal outupt](../screenshots/push.png)
+
+![Subsequent push terminal outupt](../screenshots/push2.png)
+
 ## Sync
 
 ```bash
@@ -98,6 +106,8 @@ It's similar to running:
 Feature only fast-forwards branches. It checks that the local copy is a direct ancestor of the remote copy, then updates the reference of the branch. If a branch can't be fast-forwarded, it's left as-is.
 
 Feature won't update the current branch if there are changes in the working directory, but it will still attempt to sync other branches.
+
+![Sync terminal output](../screenshots/sync.png)
 
 ## Prune
 
@@ -158,6 +168,8 @@ This similar to `git status`, except that:
 - it displays more info
 - it's more compact
 - it's more colorful
+
+![Status terminal output](../screenshots/status.png)
 
 ## List
 
