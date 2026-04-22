@@ -28,6 +28,22 @@ While feature's functionality is generally meant to work with the concept of fea
 - `start` and `commit` take all trailing command line args and put them together to form a branch name or commit message, respectively.
 - `commit`, `status`, and `list` print a customized outupt that is much more detailed, compact, and colorful than git's default output
 
+## Highlights
+
+> I'm using a bash alias to use `ft` instead of `feature`
+
+Commit
+
+![Commit terminal output](screenshots/commit.png)
+
+Status
+
+![Status terminal output](screenshots/status.png)
+
+First push without any cli options
+
+![First-time push terminal output](screenshots/push.png)
+
 ## Feature workflow
 
 Here's a summary of the feature workflow:
