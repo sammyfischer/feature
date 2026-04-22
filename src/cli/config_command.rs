@@ -145,7 +145,10 @@ impl Args {
         "default_remote" => config.default_remote.clone(),
         "protect" => toml_stringify!(config.protect.clone()),
 
+        "sync.prune" => toml_stringify!(config.sync.prune),
+
         "status.show_untracked" => toml_stringify!(config.status.show_untracked),
+
         "list.hash" => toml_stringify!(config.list.hash),
         "list.upstream" => toml_stringify!(config.list.upstream),
         "list.base" => toml_stringify!(config.list.base),

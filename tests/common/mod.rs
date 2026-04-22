@@ -151,12 +151,12 @@ impl TestRepo {
     self.git(&["commit", "-m", msg]).success();
   }
 
-  /// Creates the file "file.txt" and commits with the message "initial commit"
+  /// Creates the file "file.txt" and commits with the message "A"
   pub fn init_commit(&self) {
     let file_name = "file.txt";
-    self.write_file(file_name, "hello world");
+    self.write_file(file_name, "A");
     self.git(&["add", &file_name]).success();
-    self.git(&["commit", "-m", "initial commit"]).success();
+    self.git(&["commit", "-m", "A"]).success();
   }
 
   pub fn get_current_branch(&self) -> String {

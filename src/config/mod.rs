@@ -15,12 +15,14 @@ use crate::config::format::FormatConfig;
 use crate::config::list::ListConfig;
 use crate::config::show::ShowConfig;
 use crate::config::status::StatusConfig;
+use crate::config::sync::SyncConfig;
 
 pub mod advice;
 pub mod format;
 pub mod list;
 pub mod show;
 pub mod status;
+pub mod sync;
 
 const SCHEMA_URL: &str = "https://raw.githubusercontent.com/sammyfischer/feature/refs/heads/main/feature-config.schema.json";
 
@@ -32,6 +34,9 @@ pub struct Config {
 
   /// List of branches to protect from force-pushes/deletion
   pub protect: Vec<String>,
+
+  /// Options for the sync command
+  pub sync: SyncConfig,
 
   /// Options for the status command
   pub status: StatusConfig,
@@ -54,6 +59,7 @@ impl Default for Config {
     Self {
       default_remote: "origin".into(),
       protect: vec!["main".into()],
+      sync: Default::default(),
       status: Default::default(),
       list: Default::default(),
       show: Default::default(),
