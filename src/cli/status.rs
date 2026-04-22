@@ -259,7 +259,8 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
   // upstream and base ahead/behind if we're on a branch
   if head.is_some_and(|it| it.is_branch()) {
     let branch_name = branch_name.context("Branch name should exist when HEAD is not detached")?;
-    let branch = name_to_branch(&state.repo, &branch_name)?;
+    let branch = name_to_branch(&state.repo, &branch_name)?
+      .with_context(|| format!("Branch {} does not exist", &branch_name))?;
 
     let mut rows: Vec<[String; 2]> = Vec::with_capacity(2);
     // the label is either "Upstream" or "Base", these are printed with alignment so the branch
@@ -288,14 +289,12 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
     }
 
     // base row
-    let base_name = data::get_feature_base(&data::git_config(&state.repo)?, &branch_name);
-    if let Some(base_name) = base_name {
-      let (a, b) = get_ahead_behind(
-        &state.repo,
-        branch.get(),
-        &state.repo.find_reference(&base_name)?,
-      )
-      .context("Failed to get ahead/behind for base")?;
+    let base = data::get_feature_base(&state.repo, &branch_name)?;
+    if let Some(base) = base {
+      let base_name = lossy!(base.get().shorthand_bytes());
+
+      let (a, b) = get_ahead_behind(&state.repo, branch.get(), base.get())
+        .context("Failed to get ahead/behind for base")?;
 
       let row = [
         style("Base").magenta().to_string(),

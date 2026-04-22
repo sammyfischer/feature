@@ -286,12 +286,13 @@ impl Args {
     let branch_name = lossy!(branch_ref.shorthand_bytes());
 
     // if base exists
-    if let Some(base_refname) = data::get_feature_base(&data::git_config(repo)?, &branch_name) {
+    if let Some(base) = data::get_feature_base(repo, &branch_name)? {
       // if it's a remote, fetch latest changes
+      let base_refname = lossy!(base.get().name_bytes());
+
       if base_refname.starts_with("refs/remotes") {
-        let base_ref = repo.find_reference(&base_refname)?;
-        let base_name = lossy!(base_ref.shorthand_bytes());
-        let base_super_short_name = base_name
+        let base_name = lossy!(base.get().shorthand_bytes());
+        let base_shorter_name = base_name
           .split_once('/')
           .expect("Invalid format for base branch name")
           .1;
@@ -300,7 +301,7 @@ impl Args {
         let remote_name = lossy!(&remote_name);
 
         let mut remote = repo.find_remote(&remote_name)?;
-        let refspec = format!("+refs/heads/{}:{}", base_super_short_name, base_refname);
+        let refspec = format!("+refs/heads/{}:{}", base_shorter_name, base_refname);
 
         let mut opts = FetchOptions::new();
         opts.remote_callbacks(get_remote_callbacks());

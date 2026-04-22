@@ -56,26 +56,9 @@ pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
   Ok(lossy!(&branch.name_bytes()?))
 }
 
-pub fn name_to_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Branch<'repo>> {
-  let branch = repo
-    .find_branch(name, BranchType::Local)
-    .with_context(|| format!("Failed to find branch named {}", name))?;
-  Ok(branch)
-}
-
-pub fn name_to_remote_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Branch<'repo>> {
-  let branch = repo
-    .find_branch(name, BranchType::Remote)
-    .with_context(|| format!("Failed to find branch named {}", name))?;
-  Ok(branch)
-}
-
 /// Searches local and remote branches to find one matching the given name. Returns None when no
 /// matching branch is found.
-pub fn resolve_branch_name<'repo>(
-  repo: &'repo Repository,
-  name: &'repo str,
-) -> Result<Option<Branch<'repo>>> {
+pub fn name_to_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Option<Branch<'repo>>> {
   match repo.find_branch(name, BranchType::Local) {
     Ok(branch) => Ok(Some(branch)),
 

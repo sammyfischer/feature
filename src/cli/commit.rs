@@ -15,7 +15,7 @@ use crate::util::branch::{
   get_merge_head,
   get_pick_head,
   get_revert_head,
-  resolve_branch_name,
+  name_to_branch,
 };
 use crate::util::diff::DiffSummary;
 use crate::util::display::{
@@ -100,7 +100,7 @@ impl Args {
         let commit = object.peel_to_commit()?;
         let display_name = resolve_commit_name(&state.repo, &commit.id())?;
 
-        Some(match resolve_branch_name(&state.repo, to)? {
+        Some(match name_to_branch(&state.repo, to)? {
           Some(branch) => CommitTarget {
             commit,
             display_name,

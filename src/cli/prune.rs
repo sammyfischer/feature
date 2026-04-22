@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{BranchType, Oid, Repository};
+use git2::{Branch, BranchType, Oid, Repository};
 
 use crate::util::branch::{fetch_all, get_all_branch_names, get_current_branch_name};
 use crate::util::display::trim_hash;
-use crate::{App, await_child, data, git};
+use crate::{App, await_child, data, git, lossy};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
 • have a known base branch
@@ -41,9 +41,15 @@ impl Args {
 
 pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
   let branches = get_all_branch_names(&state.repo)?;
+  let current_name = get_current_branch_name(&state.repo)?;
 
   for branch_name in branches {
-    if let Err(e) = safe_delete_branch(state, &branch_name, dry_run) {
+    if let Err(e) = safe_delete_branch(
+      state,
+      &branch_name,
+      current_name.as_ref().is_some_and(|it| it == &branch_name),
+      dry_run,
+    ) {
       eprintln!("{}", e);
     }
   }
@@ -56,15 +62,19 @@ pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
 /// - it's not a protected branch
 /// - it's not the current branch
 /// - it's changes are merged into its base
-fn safe_delete_branch(state: &App, branch_name: &String, dry_run: bool) -> Result<()> {
+fn safe_delete_branch(
+  state: &App,
+  branch_name: &String,
+  is_current: bool,
+  dry_run: bool,
+) -> Result<()> {
   // skip protected branches
   if state.config.protect.contains(branch_name) {
     return Ok(());
   }
 
   // skip current branch
-  let current_branch = get_current_branch_name(&state.repo)?;
-  if current_branch.as_ref().is_some_and(|it| it == branch_name) {
+  if is_current {
     // not necessarily an error, but the user should know that a non-protected branch was
     // skipped and may manually need to be deleted
     println!(
@@ -78,14 +88,19 @@ fn safe_delete_branch(state: &App, branch_name: &String, dry_run: bool) -> Resul
     return Ok(());
   }
 
-  let config = &state.repo.config().context("Failed to get git config")?;
+  let branch = &mut state
+    .repo
+    .find_branch(branch_name, BranchType::Local)
+    .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
 
   // find base branch from db, else skip
-  let base_name =
-    data::get_feature_base(config, branch_name).context("Cannot prune branches without a base")?;
+  let base = data::get_feature_base(&state.repo, branch_name)?
+    .context("Cannot prune branches without a base")?;
+
+  let base_name = lossy!(base.name_bytes()?);
 
   // detect if branch is merged (i.e. has no commits that aren't on its base)
-  let is_merged = is_merged(&state.repo, branch_name, &base_name).with_context(|| {
+  let is_merged = is_merged(&state.repo, branch, &base).with_context(|| {
     format!(
       "Failed to determine if {} is merged into {}",
       branch_name, base_name
@@ -93,11 +108,6 @@ fn safe_delete_branch(state: &App, branch_name: &String, dry_run: bool) -> Resul
   })?;
 
   if is_merged {
-    let branch = &mut state
-      .repo
-      .find_branch(branch_name, BranchType::Local)
-      .with_context(|| format!("Failed to get reference to branch {}", branch_name))?;
-
     let commit = branch
       .get()
       .peel_to_commit()
@@ -130,12 +140,9 @@ fn safe_delete_branch(state: &App, branch_name: &String, dry_run: bool) -> Resul
 /// Whether branch is merged into base. A branch is considered merged if:
 /// - it points to the same commit as its base
 /// - it's not a descendant of base (i.e. there are no new commits)
-fn is_merged(repo: &Repository, branch_name: &str, base_name: &str) -> Result<bool> {
-  let branch = repo.revparse_single(branch_name)?;
-  let base = repo.revparse_single(base_name)?;
-
-  let branch_commit = branch.peel_to_commit()?.id();
-  let base_commit = base.peel_to_commit()?.id();
+fn is_merged(repo: &Repository, branch: &Branch, base: &Branch) -> Result<bool> {
+  let branch_commit = branch.get().peel_to_commit()?.id();
+  let base_commit = base.get().peel_to_commit()?.id();
 
   if branch_commit == base_commit {
     return Ok(true);

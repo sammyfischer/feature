@@ -74,7 +74,8 @@ impl Args {
       .unwrap_or(&get_current_branch_name(&state.repo)?.context(NOT_ON_BRANCH_MSG)?)
       .clone();
 
-    let base = name_to_branch(&state.repo, &base_name)?;
+    let base = name_to_branch(&state.repo, &base_name)?
+      .with_context(|| format!("Branch {} does not exist", &base_name))?;
     let branch_name = self.build_branch_name(state, &base_name)?;
 
     if self.dry_run {
@@ -134,7 +135,7 @@ impl Args {
       }
     };
 
-    let mut config = data::git_config(&state.repo)?;
+    let mut config = state.repo.config()?;
     data::set_feature_base(&mut config, &branch_name, &feature_base_name)?;
 
     Ok(())

@@ -28,15 +28,15 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let mut config = data::git_config(&state.repo)?;
+    let mut config = state.repo.config()?;
 
     let branch_name = match &self.branch {
       Some(it) => it,
       None => &get_current_branch_name(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
-    let base = name_to_branch(&state.repo, &self.base)
-      .with_context(|| format!("Failed to get base branch {}", &self.base))?;
+    let base = name_to_branch(&state.repo, &self.base)?
+      .with_context(|| format!("Branch {} does not exist", &self.base))?;
 
     let feature_base_name = {
       // we want the upstream of the base, e.g. refs/remotes/origin/main

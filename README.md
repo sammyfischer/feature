@@ -62,6 +62,7 @@ Here's a summary of the feature workflow:
   - the generated config file from `config create` should link to a schema corresponding to the same version of feature
   - CI should generate schema, maybe should be hosted somewhere else
   - start versioning feature
+- screenshots in readme and docs
 
 ### Features
 

@@ -1,6 +1,7 @@
 # editor
 .vscode
 !.vscode/extensions.json
+.zed
 
 # build
 /target
