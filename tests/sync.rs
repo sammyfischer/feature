@@ -90,3 +90,35 @@ fn dry_run_doesnt_update() {
     "Main should not be updated"
   );
 }
+
+/// Should respect the --no-prune cli option, and the prune = false config option
+#[test]
+fn respects_no_prune() {
+  let (local, _remote) = TestRepo::new_with_remote();
+  local.init_commit();
+
+  local.feature(&["start", "topic"]).success();
+  local.git(&["push", "-u", "origin", "topic"]).success();
+
+  local.git(&["switch", "main"]).success();
+  local.feature(&["sync", "--no-prune"]).success();
+
+  let text = local.list_branches_and_upstreams();
+  assert!(
+    text.contains("refs/heads/topic refs/remotes/origin/topic"),
+    "Sync should respect cli option"
+  );
+
+  local.write_file(
+    "feature.toml",
+    r#"[sync]
+prune = false"#,
+  );
+  local.feature(&["sync"]).success();
+
+  let text = local.list_branches_and_upstreams();
+  assert!(
+    text.contains("refs/heads/topic refs/remotes/origin/topic"),
+    "Sync should respect config file"
+  );
+}

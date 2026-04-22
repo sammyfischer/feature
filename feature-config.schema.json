@@ -45,7 +45,9 @@
     "protect": {
       "description": "List of branches to protect from force-pushes/deletion",
       "type": "array",
-      "default": [],
+      "default": [
+        "main"
+      ],
       "items": {
         "type": "string"
       }
@@ -65,6 +67,13 @@
       "$ref": "#/$defs/StatusConfig",
       "default": {
         "show_untracked": true
+      }
+    },
+    "sync": {
+      "description": "Options for the sync command",
+      "$ref": "#/$defs/SyncConfig",
+      "default": {
+        "prune": true
       }
     }
   },
@@ -242,6 +251,18 @@
       },
       "required": [
         "show_untracked"
+      ]
+    },
+    "SyncConfig": {
+      "type": "object",
+      "properties": {
+        "prune": {
+          "description": "Whether to prune after syncing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "prune"
       ]
     }
   }

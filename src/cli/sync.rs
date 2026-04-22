@@ -25,8 +25,8 @@ pub struct Args {
   pub dry_run: bool,
 
   /// Don't prune after updating
-  #[arg(short = 'P', long)]
-  pub no_prune: bool,
+  #[arg(short = 'P', long, num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_prune: Option<bool>,
 }
 
 impl Args {
@@ -88,7 +88,7 @@ impl Args {
       }
     }
 
-    if !self.no_prune {
+    if !self.no_prune.unwrap_or(!state.config.sync.prune) {
       prune_branches(state, self.dry_run)?;
     }
     Ok(())
