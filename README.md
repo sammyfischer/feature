@@ -48,7 +48,6 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
-- update should fetch the latest base first
 - show
   - handle merge commits in different ways (currently shows diff against first parent)
 - use `git2::Object::short_id()` instead of just truncating hashes to 7 chars
