@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use git2::{Branch, BranchType, ErrorCode, Reference, Repository};
 
-use crate::lossy;
+use crate::util::lossy::ToStrLossyOwned;
 
 // In the future, this could keep a private cached value of the reference, and the resolve function
 // would reuse that. The caller would have to invalidate the cahce after a fetch. This keeps the
@@ -83,17 +83,22 @@ impl BranchMeta {
 
   /// Creates a [BranchMeta] from a [Branch] (uses the [TryInto] impl)
   #[inline]
-  pub fn from_branch<'branch>(branch: Branch<'branch>) -> Result<Self> {
-    branch.try_into()
+  pub fn from_branch<'branch>(branch: &Branch<'branch>) -> Result<Self> {
+    let reference = branch.get();
+    Self::from_reference(reference)
   }
 
   /// Creates a [BranchMeta] from a [Reference] (uses the [TryInto] impl)
-  pub fn from_reference<'branch>(reference: Reference<'branch>) -> Result<Self> {
-    let refname = lossy!(reference.name_bytes()).to_string();
-    if !reference.is_branch() {
-      return Err(anyhow!("Reference is not a branch: {}", refname));
+  pub fn from_reference<'branch>(reference: &Reference<'branch>) -> Result<Self> {
+    let refname = reference.name_bytes().to_str_lossy_owned();
+    if !refname.starts_with("refs/heads/") && !refname.starts_with("refs/remotes/") {
+      return Err(anyhow!(
+        "Reference is not a local or remote branch: {}",
+        refname
+      ));
     }
-    let name = lossy!(reference.shorthand_bytes()).to_string();
+
+    let name = reference.shorthand_bytes().to_str_lossy_owned();
     let ty = get_branch_type(&refname);
 
     Ok(Self { refname, name, ty })
@@ -103,7 +108,7 @@ impl BranchMeta {
   /// matching branch.
   pub fn from_refname(repo: &Repository, refname: &str) -> Result<Self> {
     let reference = repo.find_reference(refname)?;
-    let name = lossy!(reference.shorthand_bytes()).to_string();
+    let name = reference.shorthand_bytes().to_str_lossy_owned();
     let ty = get_branch_type(refname);
 
     Ok(Self {
@@ -117,22 +122,34 @@ impl BranchMeta {
   #[inline]
   pub fn from_name_dwim(repo: &Repository, name: &str) -> Result<Option<Self>> {
     Ok(match repo.resolve_reference_from_short_name(name) {
-      Ok(it) => Some(Self::from_reference(it)?),
+      Ok(it) => Some(Self::from_reference(&it)?),
       Err(e) if e.code() == ErrorCode::NotFound => None,
       Err(e) => return Err(e.into()),
     })
   }
-}
 
-impl<'branch> TryFrom<Branch<'branch>> for BranchMeta {
-  type Error = anyhow::Error;
+  /// Creates a [BranchMeta] of the currently checked-out branch
+  ///
+  /// # Returns
+  ///
+  /// None if the repo is in detached HEAD
+  #[inline]
+  pub fn current(repo: &Repository) -> Result<Option<Self>> {
+    let head = repo.find_reference("HEAD")?;
 
-  fn try_from(value: Branch<'branch>) -> Result<Self> {
-    let refname = lossy!(value.get().name_bytes()).to_string();
-    let name = lossy!(value.get().shorthand_bytes()).to_string();
-    let ty = get_branch_type(&refname);
+    if head.symbolic_target_bytes().is_none() {
+      return Ok(None);
+    }
 
-    Ok(Self { refname, name, ty })
+    // peel away symbolic ref
+    let head = head.resolve()?;
+
+    // still not point to a branch
+    if !head.is_branch() {
+      return Ok(None);
+    }
+
+    Ok(Some(Self::from_reference(&head)?))
   }
 }
 

@@ -43,6 +43,7 @@ pub struct Args {
   abort: bool,
 
   /// The name of the base branch to use.
+  #[arg(value_name = "BRANCH-ISH")]
   base: Option<String>,
 }
 
@@ -61,14 +62,8 @@ impl Args {
       return Err(anyhow!("A rebase is already in progress"));
     }
 
-    let branch = {
-      let head = get_head(&state.repo)?.context("Not currently on a branch! Nothing to update.")?;
-      if !head.is_branch() {
-        return Err(anyhow!("Must be on a branch to rebase"));
-      }
-
-      BranchMeta::from_reference(head)?
-    };
+    let branch =
+      BranchMeta::current(&state.repo)?.context("Not currently on a branch! Nothing to update.")?;
 
     let base = match &self.base {
       Some(base_name) => BranchMeta::from_name_dwim(&state.repo, base_name)?
@@ -291,19 +286,15 @@ fn display_success(
 
   let base_name = fs::read_to_string(repo.path().join("rebase-merge/onto"))?;
   let base_name = base_name.trim();
-  let base_name = resolve_commit_name(repo, &Oid::from_str(base_name)?)?;
+  let base_commit = repo.find_commit(Oid::from_str(base_name)?)?;
+  let base_name = resolve_commit_name(repo, &base_commit)?;
 
   write!(
     out,
     "{} {} with changes from {}",
     style("Updated").green(),
     branch_name,
-    style(
-      base_name
-        .trim_prefix("refs/remotes/")
-        .trim_prefix("refs/heads/")
-    )
-    .magenta()
+    style(base_name).magenta()
   )?;
 
   if let Some(summary) = summary {

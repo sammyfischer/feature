@@ -23,6 +23,7 @@ fn sets_base_using_upstream() {
 
   local.git(&["switch", "-c", "topic"]).success();
   local.feature(&["base", "main"]).success();
+
   let cmd = local
     .git(&["config", "branch.topic.feature-base"])
     .success();

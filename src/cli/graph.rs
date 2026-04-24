@@ -4,8 +4,9 @@ use std::str::Lines;
 use anyhow::{Context, Result};
 use console::{style, truncate_str};
 
+use crate::util::lossy::ToStrLossy;
 use crate::util::term::{get_term_width, paginate};
-use crate::{App, git, lossy};
+use crate::{App, git};
 
 const LONG_ABOUT: &str = r"View a graph of commits.
 
@@ -26,7 +27,7 @@ customize this."#;
 #[command(about = "View a graph of commits", long_about = LONG_ABOUT)]
 pub struct Args {
   /// The format passed to git log
-  #[arg(long, long_help = FORMAT_LONG_HELP)]
+  #[arg(long, visible_alias = "fmt", long_help = FORMAT_LONG_HELP)]
   format: Option<String>,
 }
 
@@ -46,7 +47,7 @@ impl Args {
     .output()
     .context("Failed to get git output")?;
 
-    let string_output = lossy!(&output.stdout);
+    let string_output = &output.stdout.to_str_lossy();
 
     // if stdout is not a terminal, just print and return
     if !std::io::stdout().is_terminal() {

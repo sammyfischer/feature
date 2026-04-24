@@ -1,11 +1,12 @@
 use anyhow::{Result, anyhow};
 use git2::ErrorCode;
 
+use crate::App;
 use crate::config::PageWhen;
 use crate::util::diff::{DiffSummary, get_formatted_diff};
 use crate::util::display::{DisplayCommitMessageLevel, DisplayCommitOptions, display_commit};
+use crate::util::lossy::ToStrLossy;
 use crate::util::term::{is_term, paginate};
-use crate::{App, lossy};
 
 const LONG_ABOUT: &str = r#"Show info about a commit
 
@@ -20,15 +21,15 @@ Use "-S" to force the summary to be hidden."#;
 #[command(about = "Show info about a commit", long_about = LONG_ABOUT)]
 pub struct Args {
   /// Hide the diff summary
-  #[arg(short = 'S', long, num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  #[arg(short = 'S', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_summary: Option<bool>,
 
   /// Hide the diff patch
-  #[arg(short = 'P', long, num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_patch: Option<bool>,
 
   /// How much of the commit message to show
-  #[arg(short, long)]
+  #[arg(short, long, value_name = "LEVEL")]
   pub message: Option<DisplayCommitMessageLevel>,
 
   /// When to page output
@@ -36,6 +37,7 @@ pub struct Args {
   pub paging: Option<PageWhen>,
 
   /// The git revision string, e.g. HEAD^2, commit hash, branch name. See "man gitrevisions".
+  #[arg(value_name = "REV")]
   pub revision: Option<String>,
 }
 
@@ -93,7 +95,7 @@ impl Args {
     match (paging, is_term()) {
       (PageWhen::Auto, true) | (PageWhen::Always, _) => paginate(&buf),
       (PageWhen::Auto, false) | (PageWhen::Never, _) => {
-        print!("{}", lossy!(&buf));
+        print!("{}", buf.to_str_lossy());
         Ok(())
       }
     }

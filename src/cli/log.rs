@@ -18,7 +18,7 @@ customize this."#;
 #[command(about = "View commit logs", long_about = LONG_ABOUT)]
 pub struct Args {
   /// The format passed to git log
-  #[arg(long, long_help = FORMAT_LONG_HELP)]
+  #[arg(long, visible_alias = "fmt", long_help = FORMAT_LONG_HELP)]
   format: Option<String>,
 }
 

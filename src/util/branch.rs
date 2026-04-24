@@ -19,8 +19,7 @@ use git2::{
   ResetType,
 };
 
-use crate::lossy;
-use crate::util::display::trim_hash;
+use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 use crate::util::{credentials_cb, get_current_commit};
 
 pub fn get_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
@@ -56,7 +55,7 @@ pub fn get_revert_head<'repo>(repo: &'repo Repository) -> Result<Option<Referenc
 }
 
 pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
-  Ok(lossy!(&branch.name_bytes()?))
+  Ok(branch.name_bytes()?.to_str_lossy())
 }
 
 /// Searches local and remote branches to find one matching the given name. Returns None when no
@@ -117,7 +116,10 @@ pub fn get_current_branch_or_commit(repo: &Repository) -> Result<Option<String>>
       None => match get_current_commit(repo) {
         Err(e) => return Err(e),
 
-        Ok(commit) => commit.map(|commit| trim_hash(&commit.id())),
+        Ok(commit) => match commit {
+          Some(commit) => Some(commit.as_object().short_id()?.to_str_lossy_owned()),
+          None => None,
+        },
       },
     },
   })
@@ -138,7 +140,7 @@ pub fn get_current_branch_name(repo: &Repository) -> Result<Option<String>> {
         return Ok(None);
       }
 
-      Ok(Some(lossy!(head.shorthand_bytes()).to_string()))
+      Ok(Some(head.shorthand_bytes().to_str_lossy_owned()))
     }
     None => Ok(None),
   }

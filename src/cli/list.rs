@@ -11,8 +11,9 @@ use crate::util::branch::{
   get_worktree_branch_names,
 };
 use crate::util::display::{display_plus_minus, trim_hash};
+use crate::util::lossy::ToStrLossyOwned;
 use crate::util::term::{get_term_width, is_term};
-use crate::{App, data, lossy};
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Lists all branches. The format is similar to "git branch -vv"."#;
 
@@ -271,12 +272,10 @@ impl Args {
       row.ab_base = display_plus_minus(a, b);
     }
 
-    row.subject = lossy!(
-      branch_commit
-        .summary_bytes()
-        .context("Commit has no summary")?
-    )
-    .to_string();
+    row.subject = branch_commit
+      .summary_bytes()
+      .context("Commit has no summary")?
+      .to_str_lossy_owned();
 
     Ok(row)
   }

@@ -7,15 +7,16 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{Commit, Cred, CredentialType, ErrorCode, Oid, Repository, Signature, Tag};
 
-use crate::lossy;
 use crate::util::branch::commit_to_branch;
 use crate::util::display::{display_hash, trim_hash};
+use crate::util::lossy::ToStrLossyOwned;
 
 pub mod advice;
 pub mod branch;
 pub mod branch_meta;
 pub mod diff;
 pub mod display;
+pub mod lossy;
 pub mod term;
 
 pub fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Option<Commit<'repo>>> {
@@ -57,16 +58,16 @@ pub fn commit_to_tag<'repo>(
 /// 2. To find a tag matching the commit, yielding the short tag name
 ///
 /// If all else fails, returns the trimmed commit hash.
-pub fn resolve_commit_name(repo: &Repository, commit_id: &Oid) -> Result<String> {
-  if let Some(branch) = commit_to_branch(repo, commit_id)? {
-    return Ok(lossy!(branch.name_bytes()?).to_string());
+pub fn resolve_commit_name(repo: &Repository, commit: &Commit) -> Result<String> {
+  if let Some(branch) = commit_to_branch(repo, &commit.id())? {
+    return Ok(branch.name_bytes()?.to_str_lossy_owned());
   }
 
-  if let Some(tag) = commit_to_tag(repo, commit_id)? {
-    return Ok(lossy!(tag.name_bytes()).to_string());
+  if let Some(tag) = commit_to_tag(repo, &commit.id())? {
+    return Ok(tag.name_bytes().to_str_lossy_owned());
   }
 
-  Ok(trim_hash(commit_id))
+  Ok(commit.as_object().short_id()?.to_str_lossy_owned())
 }
 
 pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<'repo>>> {

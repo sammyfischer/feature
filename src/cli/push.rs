@@ -13,11 +13,12 @@ use git2::{
   Repository,
 };
 
-use crate::util::branch::{get_ahead_behind, get_head, soft_reset};
+use crate::util::branch::{get_ahead_behind, soft_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
+use crate::util::lossy::ToStrLossy;
 use crate::util::{credentials_cb, update_tips_cb};
-use crate::{App, data, lossy, style};
+use crate::{App, data, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
 argument, e.g. "feature push my-branch".""#;
@@ -54,6 +55,7 @@ pub struct Args {
   upstream: Option<String>,
 
   /// The branch to push. Defaults to current branch
+  #[arg(value_name = "BRANCH-ISH")]
   branch: Option<String>,
 }
 
@@ -62,13 +64,7 @@ impl Args {
     let branch = match &self.branch {
       Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
-      None => {
-        let head = get_head(&state.repo)?.ok_or(anyhow!(NO_BRANCH_MSG))?;
-        if !head.is_branch() {
-          return Err(anyhow!(NO_BRANCH_MSG));
-        }
-        BranchMeta::from_reference(head)?
-      }
+      None => BranchMeta::current(&state.repo)?.context(NO_BRANCH_MSG)?,
     };
 
     // allow pushing protected branches, but as fast-forward only
@@ -78,7 +74,7 @@ impl Args {
 
     let (upstream, remote_name) = match branch.upstream(&state.repo)? {
       Some(it) => {
-        let meta = BranchMeta::from_branch(it)?;
+        let meta = BranchMeta::from_branch(&it)?;
         let remote_name = meta
           .split_name_and_remote()?
           .1
@@ -428,7 +424,7 @@ fn get_push_callbacks<'cbs>() -> RemoteCallbacks<'cbs> {
   // this is arbitrary text sent by the server. on github/gitlab, this usually contains info on
   // how to create a pull request for newly pushed branches
   cbs.sideband_progress(|bytes| {
-    print!("{}", lossy!(bytes));
+    print!("{}", bytes.to_str_lossy());
     true
   });
 

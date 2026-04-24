@@ -21,14 +21,6 @@ mod status;
 mod sync;
 mod update;
 
-/// Slightly shorter way to get a string from bytes
-#[macro_export]
-macro_rules! lossy {
-  ($bytes:expr) => {
-    String::from_utf8_lossy($bytes)
-  };
-}
-
 /// Waits on the child process, returns result
 #[macro_export]
 macro_rules! await_child {

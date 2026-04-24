@@ -3,9 +3,10 @@
 use anyhow::{Context, Result, anyhow};
 use git2::Branch;
 
-use crate::util::branch::{get_head, get_upstream};
+use crate::util::branch::get_upstream;
 use crate::util::branch_meta::BranchMeta;
-use crate::{App, data, lossy};
+use crate::util::lossy::ToStrLossyOwned;
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
 
@@ -21,10 +22,11 @@ with the --branch option.";
 #[command(about = "Tell feature which base another branch belongs to", long_about = LONG_ABOUT)]
 pub struct Args {
   /// The name of the base branch
+  #[arg(value_name = "BRANCH-ISH")]
   base: String,
 
   /// The name of the branch whose base is being set. Defaults to current branch
-  #[arg(long)]
+  #[arg(long, value_name = "BRANCH-ISH")]
   branch: Option<String>,
 }
 
@@ -35,13 +37,7 @@ impl Args {
     let branch = match &self.branch {
       Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
-      None => {
-        let head = get_head(&state.repo)?.ok_or(anyhow!("No commits yet"))?;
-        if !head.is_branch() {
-          return Err(anyhow!(NOT_ON_BRANCH_MSG));
-        }
-        BranchMeta::from_reference(head)?
-      }
+      None => BranchMeta::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
     let base = BranchMeta::from_name_dwim(&state.repo, &self.base)?
@@ -53,7 +49,7 @@ impl Args {
         .with_context(|| format!("Failed to check if {} has an upstream", &self.base))?;
 
       match base_upstream {
-        Some(upstream) => lossy!(upstream.get().name_bytes()).to_string(),
+        Some(upstream) => upstream.get().name_bytes().to_str_lossy_owned(),
 
         // if there is no upstream, we can just use the actual base branch
         None => base.refname().to_string(),

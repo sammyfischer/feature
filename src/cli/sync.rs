@@ -25,7 +25,7 @@ pub struct Args {
   pub dry_run: bool,
 
   /// Don't prune after updating
-  #[arg(short = 'P', long, num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  #[arg(short = 'P', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_prune: Option<bool>,
 }
 

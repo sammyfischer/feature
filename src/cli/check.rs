@@ -1,9 +1,8 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use console::style;
 
 use super::push::PushCheckStatus;
 use crate::cli::push::{check_base, check_upstream};
-use crate::util::branch::get_head;
 use crate::util::branch_meta::BranchMeta;
 use crate::{App, data};
 
@@ -18,10 +17,11 @@ as the last argument.";
 #[command(about = "Checks merge-ability of a branch. May fetch remote branches", long_about = LONG_ABOUT)]
 pub struct Args {
   /// The base to use for the branch
-  #[arg(long)]
+  #[arg(long, value_name = "BRANCH-ISH")]
   pub base: Option<String>,
 
   /// The branch to check
+  #[arg(value_name = "BRANCH-ISH")]
   pub branch: Option<String>,
 }
 
@@ -30,19 +30,13 @@ impl Args {
     let branch = match &self.branch {
       Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
-      None => {
-        let head = get_head(&state.repo)?.ok_or(anyhow!("No commits yet"))?;
-        if !head.is_branch() {
-          return Err(anyhow!(NOT_ON_BRANCH_MSG));
-        }
-        BranchMeta::from_reference(head)?
-      }
+      None => BranchMeta::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
     println!("Checking {}…", style(branch.name()).cyan());
 
     if let Some(upstream) = branch.upstream(&state.repo)? {
-      let upstream = BranchMeta::from_branch(upstream)?;
+      let upstream = BranchMeta::from_branch(&upstream)?;
       println!();
 
       let status = match check_upstream(&state.repo, &branch, Some(&upstream), false)? {

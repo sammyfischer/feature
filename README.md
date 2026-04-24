@@ -64,12 +64,11 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
-- use `BranchMeta` everywhere
+- use `Object::short_id()` everywhere
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
 - show
   - handle merge commits in different ways (currently shows diff against first parent)
-- use `git2::Object::short_id()` instead of just truncating hashes to 7 chars
 - configure clean git environment in tests so user configs don't cause any failures
   - make an empty tempdir, use as `$HOME`
   - manually set `GIT_CONFIG_GLOBAL` to a tempfile or `/dev/null`
