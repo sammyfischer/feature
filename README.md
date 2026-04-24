@@ -64,6 +64,9 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
+- use `BranchMeta` everywhere
+- update is buggy and weird
+  - tests need to be way more rigorous so I can get this to work once and for all
 - show
   - handle merge commits in different ways (currently shows diff against first parent)
 - use `git2::Object::short_id()` instead of just truncating hashes to 7 chars
@@ -77,12 +80,9 @@ Here's a summary of the feature workflow:
   - the generated config file from `config create` should link to a schema corresponding to the same version of feature
   - CI should generate schema, maybe should be hosted somewhere else
   - start versioning feature
-- screenshots in readme and docs
 
 ### Features
 
-- some kind of check command
-  - fetches base/upstream and checks that a branch is up to date, but doesn't do anything after (unlike update/push)
 - undo
   - uses reflog, undoes latest change
 - stash

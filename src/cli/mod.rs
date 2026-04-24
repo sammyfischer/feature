@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use crate::App;
 
 mod base;
+mod check;
 mod commit;
 mod config_command;
 mod graph;
@@ -85,6 +86,7 @@ pub enum Command {
   Base(base::Args),
   Update(update::Args),
   Push(push::Args),
+  Check(check::Args),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(sync::Args),
@@ -108,6 +110,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Base(args) => args.run(&state),
     Command::Update(args) => args.run(&state),
     Command::Push(args) => args.run(&state),
+    Command::Check(args) => args.run(&state),
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),
     Command::Status(args) => args.run(&state),

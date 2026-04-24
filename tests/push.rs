@@ -88,8 +88,8 @@ fn fails_when_remote_changes() {
   local.feature(&["push"]).success();
 
   assert_eq!(
-    local.list_commits_on_branch("feature1"),
-    remote.list_commits_on_branch("feature1"),
+    local.list_commit_hashes("feature1"),
+    remote.list_commit_hashes("feature1"),
     "Commits should be the same after initial push"
   );
 
@@ -106,8 +106,8 @@ fn fails_when_remote_changes() {
   local.feature(&["commit", "conflicting commit"]).success();
 
   assert_ne!(
-    local.list_commits_on_branch("feature1"),
-    remote.list_commits_on_branch("feature1"),
+    local.list_commit_hashes("feature1"),
+    remote.list_commit_hashes("feature1"),
     "Commits should be different after new local changes"
   );
 
@@ -122,8 +122,8 @@ fn pushes_base_branch() {
   local.feature(&["push"]).success();
 
   assert_eq!(
-    local.list_commits_on_branch("main"),
-    remote.list_commits_on_branch("main"),
+    local.list_commit_hashes("main"),
+    remote.list_commit_hashes("main"),
     "Local and remote should have the same commits on main"
   );
 }
@@ -289,25 +289,29 @@ fn fails_when_upstream_diverges() {
   local.commit_all("A");
   local.feature(&["push"]).success();
 
-  // create but don't push changes on repo 1
+  // create the branch and push
   local.feature(&["start", "topic"]).success();
-  local.feature(&["push"]).success();
-  local.write_file(file_name, "B");
-  local.commit_all("B");
+  local.feature(&["push"]).success(); // push before changes
 
   // push new changes from repo 2
   let local2 = TestRepo::new_from(&remote, "repo2-");
   local2.git(&["switch", "topic"]).success();
-  local2.feature(&["base", "main"]).success();
-  local2.write_file(file_name, "C");
-  local2.commit_all("C");
+  local2.write_file(file_name, "X");
+  local2.commit_all("X");
   local2.feature(&["push"]).success();
+
+  // create commit in repo 1 without fetching first
+  local.write_file(file_name, "B");
+  local.commit_all("B");
 
   // branches diverged
   let cmd = local.feature(&["push"]).failure();
+  let stderr = get_stderr!(cmd);
+
   assert!(
-    get_stderr!(cmd).starts_with("Branch has diverged from its upstream"),
-    "Error should use the custom error message"
+    stderr.starts_with("Error: Branch has diverged from its upstream"),
+    "Error should use the custom error message. Instead, the message was: {}",
+    stderr
   );
 }
 
@@ -318,24 +322,30 @@ fn fails_when_base_diverges() {
   let file_name = "file.txt";
   local.write_file(file_name, "A");
   local.commit_all("A");
+  // push main to create its upstream
   local.feature(&["push"]).success();
 
-  // create but don't push changes on repo 1
+  // create the branch and push
   local.feature(&["start", "topic"]).success();
   local.feature(&["push"]).success();
-  local.write_file(file_name, "B");
-  local.commit_all("B");
 
-  // change base from repo 2
+  // push new changes from repo 2
   let local2 = TestRepo::new_from(&remote, "repo2-");
   local2.write_file(file_name, "C");
   local2.commit_all("C");
   local2.feature(&["push"]);
 
+  // create commit in repo 1 without fetching first
+  local.write_file(file_name, "B");
+  local.commit_all("B");
+
   // branches diverged
   let cmd = local.feature(&["push"]).failure();
+  let stderr = get_stderr!(cmd);
+
   assert!(
-    get_stderr!(cmd).starts_with("Branch has diverged from its base"),
-    "Error should use the custom error message"
+    stderr.starts_with("Error: Branch has diverged from its base"),
+    "Error should use the custom error message. Instead, the message was: {}",
+    stderr
   );
 }

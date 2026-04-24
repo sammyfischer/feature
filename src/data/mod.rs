@@ -1,23 +1,19 @@
 //! Interactions with persistent data
 
 use anyhow::{Context, Result};
-use git2::{Branch, Config, ErrorCode, Repository};
+use git2::{Config, ErrorCode, Repository};
 
-use crate::util::branch::name_to_branch;
+use crate::util::branch_meta::BranchMeta;
 
 /// Gets the feature-base of a branch
-pub fn get_feature_base<'repo>(
-  repo: &'repo Repository,
-  branch_name: &str,
-) -> Result<Option<Branch<'repo>>> {
+pub fn get_feature_base(repo: &Repository, branch_name: &str) -> Result<Option<BranchMeta>> {
   match repo
     .config()?
     .get_string(&format!("branch.{}.feature-base", &branch_name))
   {
-    Ok(it) => Ok(name_to_branch(
-      repo,
-      it.trim_prefix("refs/remotes/").trim_prefix("refs/heads/"),
-    )?),
+    Ok(it) => Ok(Some(
+      BranchMeta::from_refname(repo, &it).context("Failed to parse base branch name")?,
+    )),
     Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
     Err(e) => Err(e.into()),
   }

@@ -291,9 +291,7 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
     // base row
     let base = data::get_feature_base(&state.repo, &branch_name)?;
     if let Some(base) = base {
-      let base_name = lossy!(base.get().shorthand_bytes());
-
-      let (a, b) = get_ahead_behind(&state.repo, branch.get(), base.get())
+      let (a, b) = get_ahead_behind(&state.repo, branch.get(), &base.resolve(&state.repo)?)
         .context("Failed to get ahead/behind for base")?;
 
       let row = [
@@ -301,11 +299,7 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
         format!(
           "{}{} {}{}",
           style("[").dim(),
-          style(
-            &base_name
-              .trim_prefix("refs/heads/")
-              .trim_prefix("refs/remotes/")
-          ),
+          style(base.name()),
           display_plus_minus(a, b),
           style("]").dim(),
         ),

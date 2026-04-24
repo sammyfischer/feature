@@ -180,7 +180,7 @@ impl TestRepo {
   }
 
   /// Lists just the commit hashes of a particular branch
-  pub fn list_commits_on_branch(&self, branch: &str) -> String {
+  pub fn list_commit_hashes(&self, branch: &str) -> String {
     let cmd = self.git(&["log", "--pretty=format:%h", branch]);
     get_stdout!(cmd)
   }
@@ -238,7 +238,7 @@ impl TestRemote {
   }
 
   /// Lists just the commit hashes of a particular branch
-  pub fn list_commits_on_branch(&self, branch: &str) -> String {
+  pub fn list_commit_hashes(&self, branch: &str) -> String {
     let cmd = self.git(&["log", "--pretty=format:%h", branch]);
     get_stdout!(cmd)
   }

@@ -3,25 +3,24 @@ use std::fmt::Write;
 use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{
+  Branch,
   BranchType,
   ErrorClass,
   ErrorCode,
   FetchOptions,
-  ObjectType,
-  Oid,
   PushOptions,
-  Reference,
-  Remote,
   RemoteCallbacks,
   Repository,
-  ResetType,
 };
 
-use crate::util::branch::get_ahead_behind;
+use crate::util::branch::{get_ahead_behind, get_head, soft_reset};
+use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
-use crate::util::display::{display_hash, trim_hash};
-use crate::util::get_remote_callbacks;
+use crate::util::{credentials_cb, update_tips_cb};
 use crate::{App, data, lossy, style};
+
+const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
+argument, e.g. "feature push my-branch".""#;
 
 const UPSTREAM_DIVERGED_MSG: &str = r"Branch has diverged from its upstream. You must:
 
@@ -53,70 +52,103 @@ pub struct Args {
   /// The name of the upstream branch, if no upstream is already set
   #[arg(short, long)]
   upstream: Option<String>,
+
+  /// The branch to push. Defaults to current branch
+  branch: Option<String>,
 }
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let head = state.repo.find_reference("HEAD")?;
-    let branch_refname = lossy!(
-      head
-        .symbolic_target_bytes()
-        .context("Not checked out to a branch, nothing to push!")?
-    )
-    .to_string();
-    let branch_ref = state.repo.find_reference(&branch_refname)?;
-
-    // make sure it's a branch, it could be a tag
-    if !branch_ref.is_branch() {
-      return Err(anyhow!("Not checked out to a branch, nothing to push!"));
-    }
-    let branch_name = lossy!(branch_ref.shorthand_bytes()).to_string();
+    let branch = match &self.branch {
+      Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
+        .ok_or(anyhow!("Branch not found: {}", branch_name))?,
+      None => {
+        let head = get_head(&state.repo)?.ok_or(anyhow!(NO_BRANCH_MSG))?;
+        if !head.is_branch() {
+          return Err(anyhow!(NO_BRANCH_MSG));
+        }
+        BranchMeta::from_reference(head)?
+      }
+    };
 
     // allow pushing protected branches, but as fast-forward only
-    if state.config.protect.contains(&branch_name) && self.force {
+    if state.config.protect.iter().any(|it| it == branch.name()) && self.force {
       return Err(anyhow!("Cannot force push a protected branch"));
     }
 
-    let upstream_refname = match state.repo.branch_upstream_name(&branch_refname) {
-      Ok(it) => Some(lossy!(&it).to_string()),
-      Err(e) if e.code() == ErrorCode::NotFound => None,
-      Err(e) => return Err(e.into()),
-    };
-
-    let remote_name = match &upstream_refname {
-      Some(upstream_refname) => {
-        lossy!(&state.repo.branch_remote_name(upstream_refname)?).to_string()
+    let (upstream, remote_name) = match branch.upstream(&state.repo)? {
+      Some(it) => {
+        let meta = BranchMeta::from_branch(it)?;
+        let remote_name = meta
+          .split_name_and_remote()?
+          .1
+          .expect("Upstream should have a remote");
+        (Some(meta), remote_name)
       }
-      None => self
-        .remote
-        .as_ref()
-        .unwrap_or(&state.config.default_remote)
-        .clone(),
+      None => (
+        None,
+        self
+          .remote
+          .as_ref()
+          .unwrap_or(&state.config.default_remote)
+          .clone(),
+      ),
     };
-
-    let mut remote = state
-      .repo
-      .find_remote(&remote_name)
-      .with_context(|| format!("Failed to get reference to remote {}", remote_name))?;
 
     // fetches the latest upstream, checks if new changes can be resolved
-    self.check_upstream(
-      &state.repo,
-      &branch_refname,
-      upstream_refname.as_deref(),
-      &mut remote,
-    )?;
+    match check_upstream(&state.repo, &branch, upstream.as_ref(), self.force)? {
+      // do nothing, no upstream to check
+      PushCheckStatus::NoBranch => {}
+
+      // do nothing, the user wants to push
+      PushCheckStatus::Forced => {}
+
+      // do nothing, push is possible
+      PushCheckStatus::UpToDate => {}
+
+      // local is ahead, safe to push
+      PushCheckStatus::Ahead => {}
+
+      // fast-forward the branch
+      PushCheckStatus::Behind => {
+        if let Some(upstream) = upstream.as_ref() {
+          soft_reset(&state.repo, &upstream.resolve(&state.repo)?)?;
+          println!(
+            "{}",
+            style!("Fast-forwarded {} to {}", branch.name(), upstream.name()).dim()
+          );
+        }
+      }
+
+      PushCheckStatus::Diverged => return Err(anyhow!(UPSTREAM_DIVERGED_MSG)),
+    }
 
     // fetches the latest base, checks if new changes can be resolved
-    self.check_base(&state.repo, &branch_refname)?;
+    let base = data::get_feature_base(&state.repo, branch.name())?;
+    match check_base(&state.repo, &branch, base.as_ref(), self.force)? {
+      PushCheckStatus::NoBranch => {}
+      PushCheckStatus::Forced => {}
+      PushCheckStatus::UpToDate => {}
+      PushCheckStatus::Ahead => {}
+      PushCheckStatus::Behind => {
+        if let Some(base) = base {
+          soft_reset(&state.repo, &base.resolve(&state.repo)?)?;
+          println!(
+            "{}",
+            style!("Fast-forwarded {} to {}", branch.name(), base.name()).dim()
+          );
+        }
+      }
+      PushCheckStatus::Diverged => return Err(anyhow!(BASE_DIVERGED_MSG)),
+    };
 
     // get the changes that were pushed to remote to print later
-    let summary = if let Some(upstream_refname) = &upstream_refname {
+    let summary = if let Some(upstream) = upstream.as_ref() {
       // get the branch again, in case the fetch changed the reference
-      let upstream_ref = state.repo.find_reference(upstream_refname)?;
+      let upstream_ref = upstream.resolve(&state.repo)?;
       let old_tree = upstream_ref.peel_to_tree()?;
 
-      let branch_ref = state.repo.find_reference(&branch_refname)?;
+      let branch_ref = state.repo.find_reference(branch.refname())?;
       let new_tree = branch_ref.peel_to_tree()?;
 
       let mut diff = state
@@ -140,17 +172,18 @@ impl Args {
       refspec.push('+');
     }
 
-    let upstream_name = match &upstream_refname {
+    let upstream_name = match upstream.as_ref() {
       // use existing upstream (shorthand) name if available
-      Some(it) => lossy!(state.repo.find_reference(it)?.shorthand_bytes()).to_string(),
+      Some(it) => it.name().to_string(),
 
       // use arg passed by user, defaulting to the same name as the branch
       None => format!(
         "{}/{}",
         remote_name,
-        self.upstream.as_ref().unwrap_or(&branch_name)
+        self.upstream.as_deref().unwrap_or(branch.name())
       ),
     };
+
     // the destination should be as it appears on remote, which is why it starts with refs/heads/
     // instead of refs/remotes/
     //
@@ -158,12 +191,17 @@ impl Args {
     write!(
       refspec,
       "{}:refs/heads/{}",
-      &branch_refname,
+      branch.refname(),
       &upstream_name
         .split_once('/')
         .expect("Invalid format for upstream branch name")
         .1
     )?;
+
+    let mut remote = state
+      .repo
+      .find_remote(&remote_name)
+      .with_context(|| format!("Failed to get reference to remote {}", remote_name))?;
 
     remote
       .push(&[&refspec], Some(&mut opts))
@@ -176,13 +214,13 @@ impl Args {
       } else {
         style("Pushed").green()
       },
-      style(&branch_name).blue(),
+      style(branch.name()).blue(),
       style(&remote_name).magenta()
     );
 
     // set upstream if not already
-    if upstream_refname.is_none() {
-      let mut branch = state.repo.find_branch(&branch_name, BranchType::Local)?;
+    if upstream.is_none() {
+      let mut branch = Branch::wrap(branch.resolve(&state.repo)?);
       match branch.set_upstream(Some(&upstream_name)) {
         Ok(_) => Ok(()),
 
@@ -206,156 +244,170 @@ impl Args {
 
     Ok(())
   }
+}
 
-  /// Fetches the latest upstream ensures that we have all the needed changes
-  fn check_upstream(
-    &self,
-    repo: &Repository,
-    branch_refname: &str,
-    upstream_refname: Option<&str>,
-    remote: &mut Remote,
-  ) -> Result<()> {
-    if let Some(upstream_refname) = upstream_refname {
-      let upstream_ref = repo.find_reference(upstream_refname)?;
-      let upstream_name = lossy!(upstream_ref.shorthand_bytes());
-      let upstream_super_short_name = upstream_name
-        .split_once('/')
-        .expect("Invalid format for upstream branch name")
-        .1;
+pub enum PushCheckStatus {
+  /// The branch being checked against doesn't exist
+  NoBranch,
 
-      let refspec = format!(
-        "+refs/heads/{}:{}",
-        upstream_super_short_name, upstream_refname
-      );
+  /// Ahead/behind checks were not performed, but the branch exists
+  Forced,
 
-      let mut opts = FetchOptions::new();
-      opts.remote_callbacks(get_remote_callbacks());
-      remote.fetch(&[&refspec], Some(&mut opts), None)?;
+  /// Both branches point to the same commit
+  UpToDate,
 
-      println!("{}", style!("Fetched {}", upstream_name).dim());
+  /// Ahead of the branch being checked against
+  Ahead,
 
-      if !self.force {
-        // get the new reference after the fetch
-        let upstream_ref = repo.find_reference(upstream_refname)?;
+  /// Behind the branch being checked against
+  Behind,
 
-        let branch_ref = repo.find_reference(branch_refname)?;
-        let branch_name = lossy!(branch_ref.shorthand_bytes());
+  /// Branches have diverged
+  Diverged,
+}
 
-        let ab = repo.graph_ahead_behind(
-          branch_ref.peel_to_commit()?.id(),
-          upstream_ref.peel_to_commit()?.id(),
-        )?;
+/// Fetches the latest upstream ensures that we have all the needed changes
+pub fn check_upstream(
+  repo: &Repository,
+  branch: &BranchMeta,
+  upstream: Option<&BranchMeta>,
+  force: bool,
+) -> Result<PushCheckStatus> {
+  let Some(upstream) = upstream else {
+    return Ok(PushCheckStatus::NoBranch);
+  };
 
-        match ab {
-          // up to date, continue to check against base
-          (a, b) if a == 0 && b == 0 => {}
-          // local is ahead, continue with push (and check against base)
-          (a, b) if a > 0 && b == 0 => {}
+  if !upstream.is_remote() {
+    return Err(anyhow!(
+      "Upstream is not a remote branch: {}",
+      upstream.name()
+    ));
+  }
 
-          // local is behind, fast forward (soft reset)
-          (a, b) if a == 0 && b > 0 => {
-            soft_reset(repo, &upstream_ref)?;
-            println!(
-              "{}",
-              style!("Fast-forwarded {} to {}", branch_name, &upstream_name).dim()
-            );
-          }
+  let (_, remote_name) = upstream.split_name_and_remote()?;
+  let mut remote = repo.find_remote(&remote_name.unwrap_or_else(|| {
+    panic!(
+      "Remote should exist on upstream branch: {}",
+      upstream.name()
+    )
+  }))?;
 
-          // divergent histories, user must resolve
-          (a, b) if a > 0 && b > 0 => {
-            eprintln!("{}", UPSTREAM_DIVERGED_MSG);
-            return Err(anyhow!("Diverged from upstream"));
-          }
+  let refspec = format!(
+    "+refs/heads/{}:{}",
+    upstream.split_name_and_remote()?.0,
+    upstream.refname()
+  );
 
-          (a, b) => {
-            return Err(anyhow!(
-              "Unexpected ahead/behind against upstream: ahead {}, behind {}",
-              a,
-              b
-            ));
-          }
-        }
-      }
+  let mut opts = FetchOptions::new();
+  let mut cbs = RemoteCallbacks::new();
+  cbs.credentials(credentials_cb);
+  opts.remote_callbacks(cbs);
+
+  remote.fetch(&[&refspec], Some(&mut opts), None)?;
+
+  println!("{}", style!("Fetched {}", upstream.name()).dim());
+
+  if force {
+    return Ok(PushCheckStatus::Forced);
+  }
+
+  let branch_tip = branch.resolve(repo)?.peel_to_commit()?;
+  let upstream_tip = upstream.resolve(repo)?.peel_to_commit()?;
+
+  // get the new reference after the fetch
+  let ab = repo.graph_ahead_behind(branch_tip.id(), upstream_tip.id())?;
+
+  Ok(match ab {
+    // up to date, continue to check against base
+    (a, b) if a == 0 && b == 0 => PushCheckStatus::UpToDate,
+
+    // local is ahead, continue with push (and check against base)
+    (a, b) if a > 0 && b == 0 => PushCheckStatus::Ahead,
+
+    // local is behind, fast forward (soft reset)
+    (a, b) if a == 0 && b > 0 => PushCheckStatus::Behind,
+
+    // divergent histories, user must resolve
+    (a, b) if a > 0 && b > 0 => PushCheckStatus::Diverged,
+
+    (a, b) => {
+      return Err(anyhow!(
+        "Unexpected ahead/behind against upstream: ahead {}, behind {}",
+        a,
+        b
+      ));
     }
+  })
+}
 
-    Ok(())
+/// Fetches the latest base ensures that we have all the needed changes
+pub fn check_base(
+  repo: &Repository,
+  branch: &BranchMeta,
+  base: Option<&BranchMeta>,
+  force: bool,
+) -> Result<PushCheckStatus> {
+  let Some(base) = base else {
+    return Ok(PushCheckStatus::NoBranch);
+  };
+
+  if base.ty() == BranchType::Remote {
+    let (shorter_name, remote_name) = base.split_name_and_remote()?;
+    let mut remote = repo.find_remote(
+      &remote_name
+        .unwrap_or_else(|| panic!("Remote should exist on upstream branch: {}", base.name())),
+    )?;
+
+    let refspec = format!("+refs/heads/{}:{}", shorter_name, base.refname());
+
+    let mut opts = FetchOptions::new();
+    let mut cbs = RemoteCallbacks::new();
+    cbs.credentials(credentials_cb);
+    opts.remote_callbacks(cbs);
+
+    remote.fetch(&[&refspec], Some(&mut opts), None)?;
+
+    println!("{}", style!("Fetched {}", base.name()).dim());
   }
 
-  fn check_base(&self, repo: &Repository, branch_refname: &str) -> Result<()> {
-    let branch_ref = repo.find_reference(branch_refname)?;
-    let branch_name = lossy!(branch_ref.shorthand_bytes());
-
-    // if base exists
-    if let Some(base) = data::get_feature_base(repo, &branch_name)? {
-      // if it's a remote, fetch latest changes
-      let base_refname = lossy!(base.get().name_bytes());
-
-      if base_refname.starts_with("refs/remotes") {
-        let base_name = lossy!(base.get().shorthand_bytes());
-        let base_shorter_name = base_name
-          .split_once('/')
-          .expect("Invalid format for base branch name")
-          .1;
-
-        let remote_name = repo.branch_remote_name(&base_refname)?;
-        let remote_name = lossy!(&remote_name);
-
-        let mut remote = repo.find_remote(&remote_name)?;
-        let refspec = format!("+refs/heads/{}:{}", base_shorter_name, base_refname);
-
-        let mut opts = FetchOptions::new();
-        opts.remote_callbacks(get_remote_callbacks());
-        remote.fetch(&[&refspec], Some(&mut opts), None)?;
-
-        println!("{}", style!("Fetched {}", base_name).dim());
-      }
-
-      if !self.force {
-        let base_ref = repo.find_reference(&base_refname)?;
-        let base_name = lossy!(base_ref.shorthand_bytes());
-
-        let ab = get_ahead_behind(repo, &branch_ref, &base_ref)?;
-
-        match ab {
-          // already up to date, continue with push
-          (a, b) if a == 0 && b == 0 => {}
-
-          // branch is ahead, continue with push
-          (a, b) if a > 0 && b == 0 => {}
-
-          // branch is behind, need those changes
-          (a, b) if a == 0 && b > 0 => {
-            soft_reset(repo, &base_ref)?;
-            println!(
-              "{}",
-              style!("Fast-forwarded {} to {}", branch_name, &base_name).dim()
-            );
-          }
-
-          // divergent histories, user must resolve
-          (a, b) if a > 0 && b > 0 => {
-            eprintln!("{}", BASE_DIVERGED_MSG);
-            return Err(anyhow!("Diverged from base"));
-          }
-
-          (a, b) => {
-            return Err(anyhow!(
-              "Unexpected ahead/behind against upstream: ahead {}, behind {}",
-              a,
-              b
-            ));
-          }
-        }
-      }
-    };
-
-    Ok(())
+  if force {
+    return Ok(PushCheckStatus::Forced);
   }
+
+  let base_ref = base.resolve(repo)?;
+  let ab = get_ahead_behind(repo, &branch.resolve(repo)?, &base_ref)?;
+
+  Ok(match ab {
+    // already up to date, continue with push
+    (a, b) if a == 0 && b == 0 => PushCheckStatus::UpToDate,
+
+    // branch is ahead, continue with push
+    (a, b) if a > 0 && b == 0 => PushCheckStatus::Ahead,
+
+    // branch is behind, need those changes
+    (a, b) if a == 0 && b > 0 => PushCheckStatus::Behind,
+
+    // divergent histories, user must resolve
+    (a, b) if a > 0 && b > 0 => PushCheckStatus::Diverged,
+
+    (a, b) => {
+      return Err(anyhow!(
+        "Unexpected ahead/behind against upstream: ahead {}, behind {}",
+        a,
+        b
+      ));
+    }
+  })
 }
 
 /// Configures the push callbacks
 fn get_push_callbacks<'cbs>() -> RemoteCallbacks<'cbs> {
-  let mut cbs = get_remote_callbacks();
+  let mut cbs = RemoteCallbacks::new();
+
+  cbs.credentials(credentials_cb);
+
+  // called on each remote tracking branch that's updated
+  cbs.update_tips(update_tips_cb);
 
   // print error if push fails
   cbs.push_update_reference(|refname, status| {
@@ -380,47 +432,5 @@ fn get_push_callbacks<'cbs>() -> RemoteCallbacks<'cbs> {
     true
   });
 
-  // called on each remote tracking branch that's updated
-  cbs.update_tips(|refname, old_id, new_id| {
-    let zero = Oid::zero();
-    let refname = refname.trim_prefix("refs/remotes/");
-
-    if old_id == new_id {
-      return true;
-    }
-
-    if old_id == zero {
-      println!(
-        "{} {} {}",
-        style("Created").green(),
-        refname,
-        display_hash(&new_id)
-      );
-    } else if new_id == zero {
-      println!(
-        "{} {} {}",
-        style("Deleted").red(),
-        refname,
-        style(&format!("(was {})", trim_hash(&old_id))).dim()
-      );
-    } else {
-      println!(
-        "{} {}: {} -> {}",
-        style("Updated").green(),
-        refname,
-        display_hash(&old_id),
-        display_hash(&new_id)
-      );
-    }
-    true
-  });
-
   cbs
-}
-
-/// Reset current branch and HEAD to branch_ref
-fn soft_reset(repo: &Repository, branch_ref: &Reference) -> Result<()> {
-  let obj = repo.find_object(branch_ref.peel_to_commit()?.id(), Some(ObjectType::Commit))?;
-  repo.reset(&obj, ResetType::Soft, None)?;
-  Ok(())
 }

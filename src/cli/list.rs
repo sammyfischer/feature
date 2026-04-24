@@ -257,15 +257,16 @@ impl Args {
 
     let base = data::get_feature_base(repo, &branch_name)?;
     if let Some(base) = base {
-      let base_name = lossy!(&base.name_bytes()?);
-      row.base = base_name.to_string();
+      row.base = base.name().to_string();
 
-      let (a, b) = get_ahead_behind(repo, branch.get(), base.get()).with_context(|| {
-        format!(
-          "Failed to get ahead/behind between {} and {}",
-          &branch_name, &base_name
-        )
-      })?;
+      let (a, b) =
+        get_ahead_behind(repo, branch.get(), &base.resolve(repo)?).with_context(|| {
+          format!(
+            "Failed to get ahead/behind between {} and {}",
+            &branch_name,
+            base.name()
+          )
+        })?;
 
       row.ab_base = display_plus_minus(a, b);
     }

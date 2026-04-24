@@ -11,14 +11,17 @@ use git2::{
   ErrorCode,
   FetchOptions,
   FetchPrune,
+  ObjectType,
   Oid,
   Reference,
+  RemoteCallbacks,
   Repository,
+  ResetType,
 };
 
 use crate::lossy;
 use crate::util::display::trim_hash;
-use crate::util::{get_current_commit, get_remote_callbacks};
+use crate::util::{credentials_cb, get_current_commit};
 
 pub fn get_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
   match repo.head() {
@@ -190,10 +193,11 @@ pub fn fetch_all(repo: &Repository) -> Result<()> {
     let mut remote = repo
       .find_remote(remote_name)
       .unwrap_or_else(|_| panic!("Failed to get reference to remote {}", remote_name));
-    let callbacks = get_remote_callbacks();
+    let mut cbs = RemoteCallbacks::new();
+    cbs.credentials(credentials_cb);
 
     let mut opts = FetchOptions::new();
-    opts.remote_callbacks(callbacks);
+    opts.remote_callbacks(cbs);
     opts.prune(FetchPrune::On);
     opts.download_tags(AutotagOption::All);
 
@@ -214,5 +218,12 @@ pub fn fetch_all(repo: &Repository) -> Result<()> {
     }
   }
 
+  Ok(())
+}
+
+/// Reset current branch and HEAD to branch_ref
+pub fn soft_reset(repo: &Repository, branch: &Reference) -> Result<()> {
+  let obj = repo.find_object(branch.peel_to_commit()?.id(), Some(ObjectType::Commit))?;
+  repo.reset(&obj, ResetType::Soft, None)?;
   Ok(())
 }

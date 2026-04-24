@@ -4,24 +4,16 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use git2::{
-  Commit,
-  Cred,
-  CredentialType,
-  ErrorCode,
-  Oid,
-  RemoteCallbacks,
-  Repository,
-  Signature,
-  Tag,
-};
+use console::style;
+use git2::{Commit, Cred, CredentialType, ErrorCode, Oid, Repository, Signature, Tag};
 
 use crate::lossy;
 use crate::util::branch::commit_to_branch;
-use crate::util::display::trim_hash;
+use crate::util::display::{display_hash, trim_hash};
 
 pub mod advice;
 pub mod branch;
+pub mod branch_meta;
 pub mod diff;
 pub mod display;
 pub mod term;
@@ -99,43 +91,72 @@ pub fn read_commit_msg(path: &Path) -> Result<String> {
   Ok(real_lines.join("\n"))
 }
 
-/// Gets remote callbacks with configured credential handling
-/// # Lifetimes
-/// - `cbs` - the lifetime of each callback function
-pub fn get_remote_callbacks<'cbs>() -> RemoteCallbacks<'cbs> {
-  let mut callbacks = RemoteCallbacks::new();
+pub fn credentials_cb(
+  url: &str,
+  username_from_url: Option<&str>,
+  allowed_types: CredentialType,
+) -> Result<Cred, git2::Error> {
+  if allowed_types.contains(CredentialType::SSH_KEY) {
+    return Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"));
+  }
 
-  callbacks.credentials(|url, username_from_url, allowed_types| {
-    if allowed_types.contains(CredentialType::SSH_KEY) {
-      return Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"));
+  if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
+    if let Ok(cred) =
+      Cred::credential_helper(&git2::Config::open_default()?, url, username_from_url)
+    {
+      return Ok(cred);
     }
 
-    if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
-      if let Ok(cred) =
-        Cred::credential_helper(&git2::Config::open_default()?, url, username_from_url)
-      {
-        return Ok(cred);
-      }
+    // fallback to git token env var
+    let token = std::env::var("GIT_TOKEN").map_err(|_| {
+      git2::Error::from_str(
+        "Failed to find credentials. Try setting the GIT_TOKEN environment variable",
+      )
+    })?;
 
-      // fallback to git token env var
-      let token = std::env::var("GIT_TOKEN").map_err(|_| {
-        git2::Error::from_str(
-          "Failed to find credentials. Try setting the GIT_TOKEN environment variable",
-        )
-      })?;
+    return Cred::userpass_plaintext(username_from_url.unwrap_or("git"), &token);
+  }
 
-      return Cred::userpass_plaintext(username_from_url.unwrap_or("git"), &token);
-    }
+  if allowed_types.contains(CredentialType::DEFAULT) {
+    return Cred::default();
+  }
 
-    if allowed_types.contains(CredentialType::DEFAULT) {
-      return Cred::default();
-    }
+  Err(git2::Error::from_str(&format!(
+    "No supported credential type for {}",
+    url
+  )))
+}
 
-    Err(git2::Error::from_str(&format!(
-      "No supported credential type for {}",
-      url
-    )))
-  });
+pub fn update_tips_cb(name: &str, old_id: Oid, new_id: Oid) -> bool {
+  let name = name.trim_prefix("refs/remotes/");
+  let zero = Oid::zero();
 
-  callbacks
+  if old_id == new_id {
+    return true;
+  }
+
+  if old_id == zero {
+    println!(
+      "{} {} {}",
+      style("Created").green(),
+      name,
+      display_hash(&new_id)
+    );
+  } else if new_id == zero {
+    println!(
+      "{} {} {}",
+      style("Deleted").red(),
+      name,
+      style(&format!("(was {})", trim_hash(&old_id))).dim()
+    );
+  } else {
+    println!(
+      "{} {}: {} -> {}",
+      style("Updated").green(),
+      name,
+      display_hash(&old_id),
+      display_hash(&new_id)
+    );
+  }
+  true
 }

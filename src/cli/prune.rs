@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Branch, BranchType, ErrorCode, Oid, Repository};
+use git2::{Branch, BranchType, ErrorCode, Oid, Reference, Repository};
 
 use crate::util::branch::{fetch_all, get_current_branch_name};
 use crate::util::display::trim_hash;
@@ -104,15 +104,15 @@ fn safe_delete_branch(
     None => return Ok(false),
   };
 
-  let base_name = lossy!(base.name_bytes()?);
-
   // detect if branch is merged (i.e. has no commits that aren't on its base)
-  let is_merged = is_merged(&state.repo, branch, &base).with_context(|| {
-    format!(
-      "Failed to determine if {} is merged into {}",
-      branch_name, base_name
-    )
-  })?;
+  let is_merged =
+    is_merged(&state.repo, branch.get(), &base.resolve(&state.repo)?).with_context(|| {
+      format!(
+        "Failed to determine if {} is merged into {}",
+        branch_name,
+        base.name()
+      )
+    })?;
 
   if is_merged {
     let commit = branch
@@ -150,9 +150,9 @@ fn safe_delete_branch(
 /// Whether branch is merged into base. A branch is considered merged if:
 /// - it points to the same commit as its base
 /// - it's not a descendant of base (i.e. there are no new commits)
-fn is_merged(repo: &Repository, branch: &Branch, base: &Branch) -> Result<bool> {
-  let branch_commit = branch.get().peel_to_commit()?.id();
-  let base_commit = base.get().peel_to_commit()?.id();
+fn is_merged(repo: &Repository, branch: &Reference, base: &Reference) -> Result<bool> {
+  let branch_commit = branch.peel_to_commit()?.id();
+  let base_commit = base.peel_to_commit()?.id();
 
   if branch_commit == base_commit {
     return Ok(true);
