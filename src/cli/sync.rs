@@ -154,7 +154,7 @@ project with others, or the branch has branch protections on the remote).
   if current {
     // to update the current branch, we also need to update HEAD. this is just a hard reset
     let obj = repo.find_object(upstream_tip.id(), Some(ObjectType::Commit))?;
-    repo.reset(&obj, git2::ResetType::Soft, None)?;
+    repo.reset(&obj, git2::ResetType::Hard, None)?;
   } else {
     // for other branches, we just move them to the upstream commit
     branch
