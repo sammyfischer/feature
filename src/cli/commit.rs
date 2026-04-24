@@ -5,8 +5,9 @@ use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Commit, Diff, Oid, Reference, Repository};
+use git2::{Commit, Diff, Reference, Repository};
 
+use crate::App;
 use crate::config::Config;
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
@@ -25,9 +26,9 @@ use crate::util::display::{
   display_commit,
   display_hash,
 };
+use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::get_user_confirmation;
 use crate::util::{get_signature, read_commit_msg, resolve_commit_name};
-use crate::{App, lossy};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
@@ -46,8 +47,10 @@ Do you want to commit anyway?"#;
 
 struct CommitTarget<'repo> {
   commit: Commit<'repo>,
+
   /// Something user-friendly to print (ideally branch name, maybe tag or short hash)
   display_name: String,
+
   /// The ref to update. Will be None if we're not committing to a branch
   refname: Option<String>,
 }
@@ -59,12 +62,12 @@ pub struct Args {
   #[arg(long, long_help = AMEND_LONG_HELP)]
   amend: bool,
 
-  /// Where to apply the commit. Can be anything commit-ish
-  #[arg(long, value_name = "COMMIT-ISH")]
+  /// Where to apply the commit
+  #[arg(long, value_name = "REV")]
   to: Option<String>,
 
   /// Bypass precommit hooks
-  #[arg(long)]
+  #[arg(long, value_name = "BYPASS")]
   no_verify: bool,
 
   /// Words to join together as commit message
@@ -98,13 +101,13 @@ impl Args {
       Some(to) => {
         let object = state.repo.revparse_single(to)?;
         let commit = object.peel_to_commit()?;
-        let display_name = resolve_commit_name(&state.repo, &commit.id())?;
+        let display_name = resolve_commit_name(&state.repo, &commit)?;
 
         Some(match name_to_branch(&state.repo, to)? {
           Some(branch) => CommitTarget {
             commit,
             display_name,
-            refname: Some(lossy!(branch.get().name_bytes()).to_string()),
+            refname: Some(branch.get().name_bytes().to_str_lossy_owned()),
           },
           None => CommitTarget {
             commit,
@@ -117,7 +120,7 @@ impl Args {
       None => match get_head(&state.repo)? {
         Some(head) => Some(CommitTarget {
           commit: head.peel_to_commit()?,
-          display_name: lossy!(head.shorthand_bytes()).to_string(),
+          display_name: head.shorthand_bytes().to_str_lossy_owned(),
           refname: Some("HEAD".to_string()),
         }),
 
@@ -154,7 +157,7 @@ impl Args {
 
       println!(
         "{}",
-        display_amend_header(&target.commit.id(), &target.display_name)?
+        display_amend_header(&target.commit, &target.display_name)?
       );
 
       let new_commit = state.repo.find_commit(new_id)?;
@@ -325,7 +328,7 @@ impl Args {
       let _ = std::io::stdout().flush();
       eprintln!("Precommit output:");
       eprintln!();
-      eprintln!("{}", lossy!(&output.stderr));
+      eprintln!("{}", output.stderr.to_str_lossy());
       Err(anyhow!("Precommit hook failed"))
     }
   }
@@ -347,12 +350,12 @@ fn display_commit_header(target: &str) -> Result<String> {
 /// Displays the header-line for an amend
 ///
 /// Amended oldhash on branch as Author Name
-fn display_amend_header(old_id: &Oid, target: &str) -> Result<String> {
+fn display_amend_header(old_commit: &Commit, target: &str) -> Result<String> {
   use std::fmt::Write;
   let mut out = String::with_capacity(80);
 
   write!(out, "{}", style("Amended").green())?;
-  write!(out, " {}", display_hash(old_id))?;
+  write!(out, " {}", display_hash(old_commit)?)?;
   write!(out, " on {}", style(target).blue())?;
 
   Ok(out)
@@ -366,7 +369,7 @@ fn display_merge_header(repo: &Repository, merge_head: &Reference, head: &str) -
   let mut out = String::with_capacity(80);
 
   let merge_commit = merge_head.peel_to_commit()?;
-  let from = resolve_commit_name(repo, &merge_commit.id())?;
+  let from = resolve_commit_name(repo, &merge_commit)?;
 
   write!(out, "{}", style("Merged").green())?;
   write!(

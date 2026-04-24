@@ -2,16 +2,14 @@
 
 use anyhow::{Context, Result};
 use console::style;
+use git2::Branch;
 
 use crate::templater::{LongVar, ShortVar, Templater};
-use crate::util::branch::{
-  branch_to_commit,
-  get_current_branch_name,
-  get_upstream,
-  name_to_branch,
-};
+use crate::util::branch::branch_to_commit;
+use crate::util::branch_meta::BranchMeta;
 use crate::util::get_signature;
-use crate::{App, data, lossy};
+use crate::util::lossy::ToStrLossyOwned;
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Creates and switches to a new branch.
 
@@ -54,7 +52,7 @@ pub struct Args {
   pub format: Option<String>,
 
   /// Which base branch to start from
-  #[arg(long, value_name = "BRANCH")]
+  #[arg(long, value_name = "BRANCH-ISH")]
   pub from: Option<String>,
 
   /// Whether to stay on the current branch
@@ -68,23 +66,22 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let base_name = self
-      .from
-      .as_ref()
-      .unwrap_or(&get_current_branch_name(&state.repo)?.context(NOT_ON_BRANCH_MSG)?)
-      .clone();
+    let base = match &self.from {
+      Some(base_name) => BranchMeta::from_name_dwim(&state.repo, base_name)?
+        .with_context(|| format!("Branch not found: {}", base_name))?,
+      None => BranchMeta::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
+    };
 
-    let base = name_to_branch(&state.repo, &base_name)?
-      .with_context(|| format!("Branch {} does not exist", &base_name))?;
-    let branch_name = self.build_branch_name(state, &base_name)?;
+    let branch_name = self.build_branch_name(state, base.name())?;
 
     if self.dry_run {
-      display_branch_creation(&branch_name, &base_name);
+      display_branch_creation(&branch_name, base.name());
       return Ok(());
     }
 
     // find commit to create branch on
-    let start_commit = branch_to_commit(&base)?.context(EMPTY_REPO_MSG)?;
+    let start_commit =
+      branch_to_commit(&Branch::wrap(base.resolve(&state.repo)?))?.context(EMPTY_REPO_MSG)?;
 
     // create branch
     let branch = state
@@ -92,7 +89,7 @@ impl Args {
       .branch(&branch_name, &start_commit, false)
       .context("Failed to create branch")?;
 
-    display_branch_creation(&branch_name, &base_name);
+    display_branch_creation(&branch_name, base.name());
 
     // checkout branch if user didn't specify --stay
     if !self.stay {
@@ -125,13 +122,13 @@ impl Args {
     // set feature-base in config
     let feature_base_name = {
       // ideally we want the upstream of the base, e.g. refs/remotes/origin/main
-      let base_upstream = get_upstream(&base)?;
+      let base_upstream = base.upstream(&state.repo)?;
 
       match base_upstream {
-        Some(it) => lossy!(it.get().name_bytes()).to_string(),
+        Some(it) => it.get().name_bytes().to_str_lossy_owned(),
 
         // if there is no upstream, we can just use the actual base branch
-        None => lossy!(base.get().name_bytes()).to_string(),
+        None => base.refname().to_string(),
       }
     };
 
@@ -163,13 +160,11 @@ impl Args {
     let mut templater = Templater::new()
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
-        lossy!(
-          get_signature(&state.repo)
-            .expect("Failed to get default commit signature")
-            .expect("Specify a username with git config user.name <name>")
-            .name_bytes()
-        )
-        .to_string()
+        get_signature(&state.repo)
+          .expect("Failed to get default commit signature")
+          .expect("Specify a username with git config user.name <name>")
+          .name_bytes()
+          .to_str_lossy_owned()
       }))
       .long(LongVar::eager("base", base_name))
       .long(LongVar::eager("sep", sep));

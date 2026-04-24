@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use crate::App;
 
 mod base;
+mod check;
 mod commit;
 mod config_command;
 mod graph;
@@ -19,14 +20,6 @@ mod start;
 mod status;
 mod sync;
 mod update;
-
-/// Slightly shorter way to get a string from bytes
-#[macro_export]
-macro_rules! lossy {
-  ($bytes:expr) => {
-    String::from_utf8_lossy($bytes)
-  };
-}
 
 /// Waits on the child process, returns result
 #[macro_export]
@@ -85,6 +78,7 @@ pub enum Command {
   Base(base::Args),
   Update(update::Args),
   Push(push::Args),
+  Check(check::Args),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(sync::Args),
@@ -108,6 +102,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Base(args) => args.run(&state),
     Command::Update(args) => args.run(&state),
     Command::Push(args) => args.run(&state),
+    Command::Check(args) => args.run(&state),
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),
     Command::Status(args) => args.run(&state),

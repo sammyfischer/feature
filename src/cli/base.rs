@@ -1,8 +1,11 @@
 //! Base subcommand
 
 use anyhow::{Context, Result, anyhow};
+use git2::Branch;
 
-use crate::util::branch::{get_current_branch_name, get_upstream, name_to_branch};
+use crate::util::branch::get_upstream;
+use crate::util::branch_meta::BranchMeta;
+use crate::util::lossy::ToStrLossyOwned;
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
@@ -19,10 +22,11 @@ with the --branch option.";
 #[command(about = "Tell feature which base another branch belongs to", long_about = LONG_ABOUT)]
 pub struct Args {
   /// The name of the base branch
+  #[arg(value_name = "BRANCH-ISH")]
   base: String,
 
   /// The name of the branch whose base is being set. Defaults to current branch
-  #[arg(long)]
+  #[arg(long, value_name = "BRANCH-ISH")]
   branch: Option<String>,
 }
 
@@ -30,36 +34,29 @@ impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let mut config = state.repo.config()?;
 
-    let branch_name = match &self.branch {
-      Some(it) => it,
-      None => &get_current_branch_name(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
+    let branch = match &self.branch {
+      Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
+        .ok_or(anyhow!("Branch not found: {}", branch_name))?,
+      None => BranchMeta::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
-    let base = name_to_branch(&state.repo, &self.base)?
-      .with_context(|| format!("Branch {} does not exist", &self.base))?;
+    let base = BranchMeta::from_name_dwim(&state.repo, &self.base)?
+      .ok_or(anyhow!("Branch not found: {}", self.base))?;
 
     let feature_base_name = {
       // we want the upstream of the base, e.g. refs/remotes/origin/main
-      let base_upstream = get_upstream(&base)
+      let base_upstream = get_upstream(&Branch::wrap(base.resolve(&state.repo)?))
         .with_context(|| format!("Failed to check if {} has an upstream", &self.base))?;
 
       match base_upstream {
-        Some(it) => it
-          .get()
-          .name()
-          .ok_or(anyhow!("Failed to get upstream name of base branch"))?
-          .to_string(),
+        Some(upstream) => upstream.get().name_bytes().to_str_lossy_owned(),
 
         // if there is no upstream, we can just use the actual base branch
-        None => base
-          .get()
-          .name()
-          .ok_or(anyhow!("Failed to get full name of base branch"))?
-          .to_string(),
+        None => base.refname().to_string(),
       }
     };
 
-    data::set_feature_base(&mut config, branch_name, &feature_base_name)?;
+    data::set_feature_base(&mut config, branch.name(), &feature_base_name)?;
 
     Ok(())
   }

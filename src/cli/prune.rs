@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Branch, BranchType, ErrorCode, Oid, Repository};
+use git2::{Branch, BranchType, Commit, Reference, Repository};
 
 use crate::util::branch::{fetch_all, get_current_branch_name};
+use crate::util::branch_meta::BranchMeta;
 use crate::util::display::trim_hash;
-use crate::{App, await_child, data, git, lossy};
+use crate::{App, await_child, data, git};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
 • have a known base branch
@@ -68,30 +69,27 @@ fn safe_delete_branch(
   current_branch_name: Option<&str>,
   dry_run: bool,
 ) -> Result<bool> {
-  let branch_name = lossy!(branch.name_bytes()?).to_string();
-  let branch_refname = lossy!(branch.get().name_bytes()).to_string();
+  let meta = BranchMeta::from_branch(branch)?;
 
   // skip branches that have never been pushed
-  match state.repo.branch_upstream_name(&branch_refname) {
-    Ok(_) => {}
-    Err(e) if e.code() == ErrorCode::NotFound => return Ok(false),
-    Err(e) => return Err(e.into()),
-  };
+  if meta.upstream(&state.repo)?.is_none() {
+    return Ok(false);
+  }
 
   // skip protected branches
-  if state.config.protect.contains(&branch_name) {
+  if state.config.protect.iter().any(|it| it == meta.name()) {
     return Ok(false);
   }
 
   // skip current branch
-  if current_branch_name.is_some_and(|it| it == branch_name) {
+  if current_branch_name.is_some_and(|it| it == meta.name()) {
     // not necessarily an error, but the user should know that a non-protected branch was
     // skipped and may manually need to be deleted
     println!(
       "{}",
       style(format!(
         "Skipping currently checked-out branch: {}",
-        branch_name
+        meta.name()
       ))
       .dim()
     );
@@ -99,48 +97,48 @@ fn safe_delete_branch(
   }
 
   // find base branch from db, else skip
-  let base = match data::get_feature_base(&state.repo, &branch_name)? {
+  let base = match data::get_feature_base(&state.repo, meta.name())? {
     Some(base) => base,
     None => return Ok(false),
   };
 
-  let base_name = lossy!(base.name_bytes()?);
-
   // detect if branch is merged (i.e. has no commits that aren't on its base)
-  let is_merged = is_merged(&state.repo, branch, &base).with_context(|| {
-    format!(
-      "Failed to determine if {} is merged into {}",
-      branch_name, base_name
-    )
-  })?;
+  let is_merged =
+    is_merged(&state.repo, branch.get(), &base.resolve(&state.repo)?).with_context(|| {
+      format!(
+        "Failed to determine if {} is merged into {}",
+        meta.name(),
+        base.name()
+      )
+    })?;
 
   if is_merged {
     let commit = branch
       .get()
       .peel_to_commit()
-      .with_context(|| format!("Failed to get commit pointed to by {}", branch_name))?;
+      .with_context(|| format!("Failed to get commit pointed to by {}", meta.name()))?;
 
     // in dry-run mode, display output but don't delete
     if dry_run {
-      display_deletion(&branch_name, &commit.id());
+      display_deletion(meta.name(), &commit)?;
       // still return true, this would've been a deletion
       return Ok(true);
     }
 
     branch
       .delete()
-      .with_context(|| format!("Failed to delete branch {}", branch_name))?;
+      .with_context(|| format!("Failed to delete branch {}", meta.name()))?;
 
-    display_deletion(&branch_name, &commit.id());
+    display_deletion(meta.name(), &commit)?;
 
     // git2 can't remove entire config sections, but git provides a command to do so
-    let key = format!("branch.{}", &branch_name);
+    let key = format!("branch.{}", &meta.name());
     match git!("config", "--remove-section", key).spawn() {
       Ok(mut cmd) => await_child!(cmd, "Git"),
       Err(e) => Err(e.into()),
     }.with_context(|| format!(
         r#"Failed to delete branch config. Run "git config --remove-section branch.{}" to remove it.""#,
-        &branch_name
+        meta.name()
       ))?;
   }
 
@@ -150,9 +148,9 @@ fn safe_delete_branch(
 /// Whether branch is merged into base. A branch is considered merged if:
 /// - it points to the same commit as its base
 /// - it's not a descendant of base (i.e. there are no new commits)
-fn is_merged(repo: &Repository, branch: &Branch, base: &Branch) -> Result<bool> {
-  let branch_commit = branch.get().peel_to_commit()?.id();
-  let base_commit = base.get().peel_to_commit()?.id();
+fn is_merged(repo: &Repository, branch: &Reference, base: &Reference) -> Result<bool> {
+  let branch_commit = branch.peel_to_commit()?.id();
+  let base_commit = base.peel_to_commit()?.id();
 
   if branch_commit == base_commit {
     return Ok(true);
@@ -163,11 +161,12 @@ fn is_merged(repo: &Repository, branch: &Branch, base: &Branch) -> Result<bool> 
   Ok(!is_descendant)
 }
 
-fn display_deletion(branch_name: &str, commit_id: &Oid) {
+fn display_deletion(branch_name: &str, commit: &Commit) -> Result<()> {
   println!(
     "{} {} {}",
     style("Deleted").red(),
     branch_name,
-    &style(&format!("(was {})", &trim_hash(commit_id))).dim()
+    &style(&format!("(was {})", &trim_hash(commit)?)).dim()
   );
+  Ok(())
 }

@@ -6,13 +6,13 @@ use std::fmt::Display;
 use anyhow::{Context, Result, anyhow};
 use chrono::{FixedOffset, TimeZone};
 use console::style;
-use git2::{Commit, Oid, Signature, Time};
+use git2::{Commit, Signature, Time};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
 use crate::config::format::{DateStyle, HourStyle};
-use crate::lossy;
+use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 
 // Creates a [StyledObject] with format args
 #[macro_export]
@@ -22,13 +22,13 @@ macro_rules! style {
   };
 }
 
-pub fn trim_hash(id: &Oid) -> String {
-  id.to_string()[..7].to_string()
+pub fn trim_hash(commit: &Commit) -> Result<String> {
+  Ok(commit.as_object().short_id()?.to_str_lossy_owned())
 }
 
 /// Displays a trimmed hash in yellow
-pub fn display_hash(id: &Oid) -> String {
-  style(trim_hash(id)).yellow().to_string()
+pub fn display_hash(commit: &Commit) -> Result<String> {
+  Ok(style(trim_hash(commit)?).yellow().to_string())
 }
 
 /// Displays the name in cyan, email in dim (gray), and "no one" in red if there is no configured
@@ -36,8 +36,8 @@ pub fn display_hash(id: &Oid) -> String {
 pub fn display_signature(signature: Option<&Signature>) -> String {
   match signature {
     Some(it) => {
-      let name = lossy!(it.name_bytes());
-      let email = lossy!(it.email_bytes());
+      let name = it.name_bytes().to_str_lossy();
+      let email = it.email_bytes().to_str_lossy();
       format!("{} {}", style(name).cyan(), style(email).dim())
     }
     None => style("no one").red().to_string(),
@@ -108,7 +108,7 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
   let mut out = String::with_capacity(140);
 
   // hash
-  write!(out, "{}", display_hash(&commit.id()))?;
+  write!(out, "{}", display_hash(commit)?)?;
 
   // timestamp
   write!(
@@ -137,17 +137,16 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
     DisplayCommitMessageLevel::Subject => write!(
       out,
       "\n\n  {}",
-      lossy!(
-        commit
-          .summary_bytes()
-          .context("Failed to get commit subject")?
-      )
+      commit
+        .summary_bytes()
+        .context("Failed to get commit subject")?
+        .to_str_lossy()
     )?,
 
     DisplayCommitMessageLevel::Full => {
       // write each line tabbed by 2 spaces
       writeln!(out)?;
-      for line in lossy!(commit.message_bytes()).lines() {
+      for line in commit.message_bytes().to_str_lossy().lines() {
         write!(out, "\n  {}", line)?;
       }
     }
@@ -168,18 +167,17 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
 pub fn display_commit_compact(commit: &Commit) -> Result<String> {
   Ok(format!(
     "{} {} {}",
-    display_hash(&commit.id()),
+    display_hash(commit)?,
     style(&format!(
       "({}, {})",
-      lossy!(commit.author().name_bytes()),
+      commit.author().name_bytes().to_str_lossy(),
       display_time_relative(&commit.time())?
     ))
     .dim(),
-    lossy!(
-      commit
-        .summary_bytes()
-        .expect("Commit should have a summary")
-    )
+    commit
+      .summary_bytes()
+      .expect("Commit should have a summary")
+      .to_str_lossy()
   ))
 }
 

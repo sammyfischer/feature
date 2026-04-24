@@ -15,7 +15,6 @@ use crate::util::advice::{
   STATUS_ADVICE,
 };
 use crate::util::branch::{
-  branch_to_name,
   commit_to_branch,
   get_ahead_behind,
   get_current_branch_or_commit,
@@ -23,9 +22,8 @@ use crate::util::branch::{
   get_merge_head,
   get_pick_head,
   get_revert_head,
-  get_upstream,
-  name_to_branch,
 };
+use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
 use crate::util::display::{
   display_commit_compact,
@@ -34,8 +32,9 @@ use crate::util::display::{
   trim_hash,
 };
 use crate::util::get_signature;
+use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::{get_term_width, is_term};
-use crate::{App, data, lossy, opt_advice};
+use crate::{App, data, opt_advice};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -209,7 +208,7 @@ impl Args {
 /// this header takes up to 3 lines.
 fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String> {
   let mut out = String::with_capacity(80);
-  let mut branch_name = None;
+  let mut branch = None;
 
   let first_line = match head {
     // there are commits in the repo
@@ -220,9 +219,10 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
 
       // display branch name or detached head indicator
       let display_branch = if head.is_branch() {
-        let name = lossy!(head.shorthand_bytes()).to_string();
-        branch_name = Some(name.clone());
-        format!("On {}", style(&name).green())
+        let meta = BranchMeta::from_reference(head)?;
+        let display = format!("On {}", style(meta.name()).green());
+        branch = Some(meta);
+        display
       } else {
         style("Detached HEAD").red().to_string()
       };
@@ -233,11 +233,10 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
     // head points to nothing, no commits in repo
     None => {
       let head = state.repo.find_reference("HEAD")?;
-      let symbolic_ref = lossy!(
-        head
-          .symbolic_target_bytes()
-          .expect("HEAD points to nothing. Is the .git/HEAD file corrupt or missing?")
-      );
+      let symbolic_ref = head
+        .symbolic_target_bytes()
+        .expect("HEAD points to nothing. Is the .git/HEAD file corrupt or missing?")
+        .to_str_lossy();
       format!(
         "On {}, no commits yet",
         style(symbolic_ref.trim_prefix("refs/heads/")).green()
@@ -258,9 +257,9 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
 
   // upstream and base ahead/behind if we're on a branch
   if head.is_some_and(|it| it.is_branch()) {
-    let branch_name = branch_name.context("Branch name should exist when HEAD is not detached")?;
-    let branch = name_to_branch(&state.repo, &branch_name)?
-      .with_context(|| format!("Branch {} does not exist", &branch_name))?;
+    let branch = branch.expect("Should be checked out to a branch");
+    // we don't fetch, so we can use this ref multiple times
+    let branch_ref = branch.resolve(&state.repo)?;
 
     let mut rows: Vec<[String; 2]> = Vec::with_capacity(2);
     // the label is either "Upstream" or "Base", these are printed with alignment so the branch
@@ -268,10 +267,10 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
     let mut label_width = 0usize;
 
     // upstream row
-    let upstream = get_upstream(&branch)?;
+    let upstream = branch.upstream(&state.repo)?;
     if let Some(upstream) = upstream {
-      let upstream_name = branch_to_name(&upstream)?;
-      let (a, b) = get_ahead_behind(&state.repo, branch.get(), upstream.get())
+      let upstream = BranchMeta::from_branch(&upstream)?;
+      let (a, b) = get_ahead_behind(&state.repo, &branch_ref, &upstream.resolve(&state.repo)?)
         .context("Failed to get ahead/behind for upstream")?;
 
       let row = [
@@ -279,7 +278,7 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
         format!(
           "{}{} {}{}",
           style("[").dim(),
-          style(&upstream_name),
+          style(upstream.name()),
           display_plus_minus(a, b),
           style("]").dim(),
         ),
@@ -289,11 +288,9 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
     }
 
     // base row
-    let base = data::get_feature_base(&state.repo, &branch_name)?;
+    let base = data::get_feature_base(&state.repo, branch.name())?;
     if let Some(base) = base {
-      let base_name = lossy!(base.get().shorthand_bytes());
-
-      let (a, b) = get_ahead_behind(&state.repo, branch.get(), base.get())
+      let (a, b) = get_ahead_behind(&state.repo, &branch_ref, &base.resolve(&state.repo)?)
         .context("Failed to get ahead/behind for base")?;
 
       let row = [
@@ -301,11 +298,7 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
         format!(
           "{}{} {}{}",
           style("[").dim(),
-          style(
-            &base_name
-              .trim_prefix("refs/heads/")
-              .trim_prefix("refs/remotes/")
-          ),
+          style(base.name()),
           display_plus_minus(a, b),
           style("]").dim(),
         ),
@@ -361,37 +354,40 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
 
   let head_name_path = dir.join("head-name");
   let head_name = fs::read_to_string(&head_name_path).context("Failed to get branch name")?;
-  let branch = head_name.trim().trim_prefix("refs/heads/");
+  let branch_ref = repo.resolve_reference_from_short_name(head_name.trim())?;
+  let branch_name = branch_ref.shorthand_bytes().to_str_lossy();
 
   let onto_path = dir.join("onto");
   let onto = fs::read_to_string(&onto_path).context("Failed to get base commit")?;
   let onto = onto.trim();
 
-  // this must be parseable as an id
-  let base_id = Oid::from_str(onto).with_context(|| {
+  // 'onto' must be parseable as an id
+  let base_commit = repo.find_commit(Oid::from_str(onto).with_context(|| {
     format!(
       "{} should contain a valid commit hash",
       onto_path.to_string_lossy()
     )
-  })?;
+  })?)?;
 
   // try to find a matching branch, but don't error
-  let base = match commit_to_branch(repo, &base_id) {
+  let base = match commit_to_branch(repo, &base_commit.id()) {
     Ok(branch) => match branch {
       Some(branch) => match branch.name_bytes() {
-        Ok(name) => Some(lossy!(name).to_string()),
+        Ok(name) => Some(name.to_str_lossy_owned()),
         Err(_) => None,
       },
       None => None,
     },
     Err(_) => None,
-  };
+  }
+  // if all else fails, use the short hash
+  .unwrap_or(trim_hash(&base_commit)?);
 
   Ok(format!(
     "{} {} onto {} {}",
     style("Rebasing").yellow(),
-    style(&branch).blue(),
-    style(&base.unwrap_or(trim_hash(&base_id))).magenta(),
+    style(&branch_name).blue(),
+    style(&base).magenta(),
     progress
   ))
 }
@@ -412,10 +408,10 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
   // get the branch pointed to by MERGE_HEAD, else just use the hash
   let base = match commit_to_branch(repo, &merge_commit.id())? {
     Some(branch) => match branch.name_bytes() {
-      Ok(name) => lossy!(name).to_string(),
+      Ok(name) => name.to_str_lossy_owned(),
       Err(_) => "unknown".to_string(),
     },
-    None => trim_hash(&merge_commit.id()),
+    None => trim_hash(&merge_commit)?,
   };
 
   Ok(format!(
@@ -441,7 +437,7 @@ fn display_pick_header(repo: &Repository) -> Result<String> {
   Ok(format!(
     "{} {} onto {}",
     style("Picking").yellow(),
-    style(trim_hash(&pick_commit.id())).blue(),
+    style(trim_hash(&pick_commit)?).blue(),
     style(current).magenta()
   ))
 }
@@ -461,7 +457,7 @@ fn display_revert_header(repo: &Repository) -> Result<String> {
   Ok(format!(
     "{} changes from {} onto {}",
     style("Reverting").yellow(),
-    style(trim_hash(&revert_commit.id())).blue(),
+    style(trim_hash(&revert_commit)?).blue(),
     style(current).magenta()
   ))
 }
@@ -476,11 +472,12 @@ fn display_bisect_header(repo: &Repository) -> Result<String> {
     .expect("HEAD should point to a commit during an active bisect");
 
   let start_path = repo.path().join("BISECT_START");
-  let start = fs::read_to_string(&start_path)?.trim().to_string();
-  let start = match Oid::from_str(&start) {
-    Ok(it) => trim_hash(&it),
-    Err(_) => start,
-  };
+  let mut start = fs::read_to_string(&start_path)?.trim().to_string();
+
+  if let Ok(id) = Oid::from_str(&start) {
+    let commit = repo.find_commit(id)?;
+    start = trim_hash(&commit)?;
+  }
 
   Ok(format!(
     "{} on {} {}",

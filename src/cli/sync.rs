@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Branch, BranchType, Diff, ObjectType, Oid, Repository, Status, StatusOptions};
+use git2::{Branch, BranchType, Commit, Diff, ObjectType, Repository, Status, StatusOptions};
 
 use crate::App;
 use crate::cli::prune::prune_branches;
@@ -25,7 +25,7 @@ pub struct Args {
   pub dry_run: bool,
 
   /// Don't prune after updating
-  #[arg(short = 'P', long, num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  #[arg(short = 'P', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_prune: Option<bool>,
 }
 
@@ -147,14 +147,14 @@ project with others, or the branch has branch protections on the remote).
   diff.find_similar(None)?;
 
   if dry_run {
-    display_update(branch_name, &diff, &branch_tip.id())?;
+    display_update(branch_name, &diff, &branch_tip)?;
     return Ok(());
   }
 
   if current {
     // to update the current branch, we also need to update HEAD. this is just a hard reset
     let obj = repo.find_object(upstream_tip.id(), Some(ObjectType::Commit))?;
-    repo.reset(&obj, git2::ResetType::Hard, None)?;
+    repo.reset(&obj, git2::ResetType::Soft, None)?;
   } else {
     // for other branches, we just move them to the upstream commit
     branch
@@ -162,7 +162,7 @@ project with others, or the branch has branch protections on the remote).
       .set_target(upstream_tip.id(), "feature sync fast-forward")?;
   }
 
-  display_update(branch_name, &diff, &branch_tip.id())?;
+  display_update(branch_name, &diff, &branch_tip)?;
   Ok(())
 }
 
@@ -197,12 +197,12 @@ fn has_local_changes(repo: &Repository) -> Result<bool> {
   Ok(false)
 }
 
-fn display_update(branch_name: &str, diff: &Diff, old_id: &Oid) -> Result<()> {
+fn display_update(branch_name: &str, diff: &Diff, old_commit: &Commit) -> Result<()> {
   println!(
     "{} {} {} | {}",
     style("Updated").green(),
     branch_name,
-    style(format!("(was {})", trim_hash(old_id))).dim(),
+    style(format!("(was {})", trim_hash(old_commit)?)).dim(),
     DiffSummary::new(diff)?.display_header()
   );
   Ok(())
