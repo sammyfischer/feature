@@ -64,7 +64,6 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
-- use `Object::short_id()` everywhere
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
 - show

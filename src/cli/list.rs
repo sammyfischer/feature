@@ -241,7 +241,7 @@ impl Args {
     let branch_commit =
       branch_to_commit(branch)?.ok_or(anyhow!("Branch does not point to a commit"))?;
 
-    row.hash = trim_hash(&branch_commit.id()).to_string();
+    row.hash = trim_hash(&branch_commit)?;
 
     if let Some(upstream) = get_upstream(branch)? {
       let upstream_name = branch_to_name(&upstream)?;

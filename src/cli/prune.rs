@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Branch, BranchType, Oid, Reference, Repository};
+use git2::{Branch, BranchType, Commit, Reference, Repository};
 
 use crate::util::branch::{fetch_all, get_current_branch_name};
 use crate::util::branch_meta::BranchMeta;
@@ -120,7 +120,7 @@ fn safe_delete_branch(
 
     // in dry-run mode, display output but don't delete
     if dry_run {
-      display_deletion(meta.name(), &commit.id());
+      display_deletion(meta.name(), &commit)?;
       // still return true, this would've been a deletion
       return Ok(true);
     }
@@ -129,7 +129,7 @@ fn safe_delete_branch(
       .delete()
       .with_context(|| format!("Failed to delete branch {}", meta.name()))?;
 
-    display_deletion(meta.name(), &commit.id());
+    display_deletion(meta.name(), &commit)?;
 
     // git2 can't remove entire config sections, but git provides a command to do so
     let key = format!("branch.{}", &meta.name());
@@ -161,11 +161,12 @@ fn is_merged(repo: &Repository, branch: &Reference, base: &Reference) -> Result<
   Ok(!is_descendant)
 }
 
-fn display_deletion(branch_name: &str, commit_id: &Oid) {
+fn display_deletion(branch_name: &str, commit: &Commit) -> Result<()> {
   println!(
     "{} {} {}",
     style("Deleted").red(),
     branch_name,
-    &style(&format!("(was {})", &trim_hash(commit_id))).dim()
+    &style(&format!("(was {})", &trim_hash(commit)?)).dim()
   );
+  Ok(())
 }

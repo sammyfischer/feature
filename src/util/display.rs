@@ -6,13 +6,13 @@ use std::fmt::Display;
 use anyhow::{Context, Result, anyhow};
 use chrono::{FixedOffset, TimeZone};
 use console::style;
-use git2::{Commit, Oid, Signature, Time};
+use git2::{Commit, Signature, Time};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
 use crate::config::format::{DateStyle, HourStyle};
-use crate::util::lossy::ToStrLossy;
+use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 
 // Creates a [StyledObject] with format args
 #[macro_export]
@@ -22,13 +22,13 @@ macro_rules! style {
   };
 }
 
-pub fn trim_hash(id: &Oid) -> String {
-  id.to_string()[..7].to_string()
+pub fn trim_hash(commit: &Commit) -> Result<String> {
+  Ok(commit.as_object().short_id()?.to_str_lossy_owned())
 }
 
 /// Displays a trimmed hash in yellow
-pub fn display_hash(id: &Oid) -> String {
-  style(trim_hash(id)).yellow().to_string()
+pub fn display_hash(commit: &Commit) -> Result<String> {
+  Ok(style(trim_hash(commit)?).yellow().to_string())
 }
 
 /// Displays the name in cyan, email in dim (gray), and "no one" in red if there is no configured
@@ -108,7 +108,7 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
   let mut out = String::with_capacity(140);
 
   // hash
-  write!(out, "{}", display_hash(&commit.id()))?;
+  write!(out, "{}", display_hash(commit)?)?;
 
   // timestamp
   write!(
@@ -167,7 +167,7 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
 pub fn display_commit_compact(commit: &Commit) -> Result<String> {
   Ok(format!(
     "{} {} {}",
-    display_hash(&commit.id()),
+    display_hash(commit)?,
     style(&format!(
       "({}, {})",
       commit.author().name_bytes().to_str_lossy(),

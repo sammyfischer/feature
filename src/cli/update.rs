@@ -116,7 +116,8 @@ impl Args {
   /// Runs the given rebase until it finishes or encounters a conflict
   fn rebase(&self, repo: &Repository, rebase: &mut Rebase) -> Result<()> {
     while let Some(op) = rebase.next() {
-      let id = op.context("Failed to get next rebase operation")?.id();
+      let old_id = op.context("Failed to get next rebase operation")?.id();
+      let old_commit = repo.find_commit(old_id)?;
 
       let index = repo
         .index()
@@ -154,11 +155,13 @@ impl Args {
         .commit(None, &signature, None)
         .context(COMMIT_FAILED_MSG)?;
 
+      let new_commit = repo.find_commit(new_id)?;
+
       println!(
         "{} commit {} as {}",
         style("Applied").green(),
-        style(trim_hash(&id)).blue(),
-        style(trim_hash(&new_id)).magenta()
+        style(trim_hash(&old_commit)?).blue(),
+        style(trim_hash(&new_commit)?).magenta()
       );
     }
 

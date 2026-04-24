@@ -67,7 +67,7 @@ pub fn resolve_commit_name(repo: &Repository, commit: &Commit) -> Result<String>
     return Ok(tag.name_bytes().to_str_lossy_owned());
   }
 
-  Ok(commit.as_object().short_id()?.to_str_lossy_owned())
+  trim_hash(commit)
 }
 
 pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<'repo>>> {
@@ -128,36 +128,61 @@ pub fn credentials_cb(
   )))
 }
 
-pub fn update_tips_cb(name: &str, old_id: Oid, new_id: Oid) -> bool {
-  let name = name.trim_prefix("refs/remotes/");
-  let zero = Oid::zero();
+pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool {
+  |name: &str, old_id: Oid, new_id: Oid| -> bool {
+    if old_id == new_id {
+      return true;
+    }
 
-  if old_id == new_id {
-    return true;
-  }
+    let name = name.trim_prefix("refs/remotes/");
+    let zero = Oid::zero();
 
-  if old_id == zero {
-    println!(
-      "{} {} {}",
-      style("Created").green(),
-      name,
-      display_hash(&new_id)
-    );
-  } else if new_id == zero {
-    println!(
-      "{} {} {}",
-      style("Deleted").red(),
-      name,
-      style(&format!("(was {})", trim_hash(&old_id))).dim()
-    );
-  } else {
-    println!(
-      "{} {}: {} -> {}",
-      style("Updated").green(),
-      name,
-      display_hash(&old_id),
-      display_hash(&new_id)
-    );
+    if old_id == zero {
+      let Ok(new_commit) = repo.find_commit(new_id) else {
+        return false;
+      };
+      let Ok(hash) = display_hash(&new_commit) else {
+        return false;
+      };
+
+      println!("{} {} {}", style("Created").green(), name, hash);
+    } else if new_id == zero {
+      let Ok(old_commit) = repo.find_commit(old_id) else {
+        return false;
+      };
+      let Ok(hash) = trim_hash(&old_commit) else {
+        return false;
+      };
+
+      println!(
+        "{} {} {}",
+        style("Deleted").red(),
+        name,
+        style(&format!("(was {})", hash)).dim()
+      );
+    } else {
+      let Ok(new_commit) = repo.find_commit(new_id) else {
+        return false;
+      };
+      let Ok(new_hash) = display_hash(&new_commit) else {
+        return false;
+      };
+
+      let Ok(old_commit) = repo.find_commit(old_id) else {
+        return false;
+      };
+      let Ok(old_hash) = display_hash(&old_commit) else {
+        return false;
+      };
+
+      println!(
+        "{} {}: {} -> {}",
+        style("Updated").green(),
+        name,
+        old_hash,
+        new_hash
+      );
+    }
+    true
   }
-  true
 }

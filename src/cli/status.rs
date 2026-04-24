@@ -25,7 +25,12 @@ use crate::util::branch::{
 };
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
-use crate::util::display::{display_commit_compact, display_plus_minus, display_signature};
+use crate::util::display::{
+  display_commit_compact,
+  display_plus_minus,
+  display_signature,
+  trim_hash,
+};
 use crate::util::get_signature;
 use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::{get_term_width, is_term};
@@ -356,17 +361,16 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   let onto = fs::read_to_string(&onto_path).context("Failed to get base commit")?;
   let onto = onto.trim();
 
-  // this must be parseable as an id
-  let base_id = Oid::from_str(onto).with_context(|| {
+  // 'onto' must be parseable as an id
+  let base_commit = repo.find_commit(Oid::from_str(onto).with_context(|| {
     format!(
       "{} should contain a valid commit hash",
       onto_path.to_string_lossy()
     )
-  })?;
-  let base_commit = repo.find_commit(base_id)?;
+  })?)?;
 
   // try to find a matching branch, but don't error
-  let base = match commit_to_branch(repo, &base_id) {
+  let base = match commit_to_branch(repo, &base_commit.id()) {
     Ok(branch) => match branch {
       Some(branch) => match branch.name_bytes() {
         Ok(name) => Some(name.to_str_lossy_owned()),
@@ -377,7 +381,7 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
     Err(_) => None,
   }
   // if all else fails, use the short hash
-  .unwrap_or(base_commit.as_object().short_id()?.to_str_lossy_owned());
+  .unwrap_or(trim_hash(&base_commit)?);
 
   Ok(format!(
     "{} {} onto {} {}",
@@ -407,7 +411,7 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
       Ok(name) => name.to_str_lossy_owned(),
       Err(_) => "unknown".to_string(),
     },
-    None => merge_commit.as_object().short_id()?.to_str_lossy_owned(),
+    None => trim_hash(&merge_commit)?,
   };
 
   Ok(format!(
@@ -433,7 +437,7 @@ fn display_pick_header(repo: &Repository) -> Result<String> {
   Ok(format!(
     "{} {} onto {}",
     style("Picking").yellow(),
-    style(pick_commit.as_object().short_id()?.to_str_lossy()).blue(),
+    style(trim_hash(&pick_commit)?).blue(),
     style(current).magenta()
   ))
 }
@@ -453,7 +457,7 @@ fn display_revert_header(repo: &Repository) -> Result<String> {
   Ok(format!(
     "{} changes from {} onto {}",
     style("Reverting").yellow(),
-    style(revert_commit.as_object().short_id()?.to_str_lossy()).blue(),
+    style(trim_hash(&revert_commit)?).blue(),
     style(current).magenta()
   ))
 }
@@ -472,7 +476,7 @@ fn display_bisect_header(repo: &Repository) -> Result<String> {
 
   if let Ok(id) = Oid::from_str(&start) {
     let commit = repo.find_commit(id)?;
-    start = commit.as_object().short_id()?.to_str_lossy_owned();
+    start = trim_hash(&commit)?;
   }
 
   Ok(format!(

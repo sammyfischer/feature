@@ -19,6 +19,7 @@ use git2::{
   ResetType,
 };
 
+use crate::util::display::trim_hash;
 use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 use crate::util::{credentials_cb, get_current_commit};
 
@@ -117,7 +118,7 @@ pub fn get_current_branch_or_commit(repo: &Repository) -> Result<Option<String>>
         Err(e) => return Err(e),
 
         Ok(commit) => match commit {
-          Some(commit) => Some(commit.as_object().short_id()?.to_str_lossy_owned()),
+          Some(commit) => Some(trim_hash(&commit)?),
           None => None,
         },
       },

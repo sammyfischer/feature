@@ -17,7 +17,7 @@ use crate::util::branch::{get_ahead_behind, soft_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
 use crate::util::lossy::ToStrLossy;
-use crate::util::{credentials_cb, update_tips_cb};
+use crate::util::{credentials_cb, get_update_tips_cb};
 use crate::{App, data, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
@@ -160,7 +160,7 @@ impl Args {
 
     // prepare actual push
     let mut opts = PushOptions::new();
-    opts.remote_callbacks(get_push_callbacks());
+    opts.remote_callbacks(get_push_callbacks(&state.repo));
 
     // build the refspec
     let mut refspec = String::with_capacity(40);
@@ -397,13 +397,13 @@ pub fn check_base(
 }
 
 /// Configures the push callbacks
-fn get_push_callbacks<'cbs>() -> RemoteCallbacks<'cbs> {
+fn get_push_callbacks<'cbs>(repo: &'cbs Repository) -> RemoteCallbacks<'cbs> {
   let mut cbs = RemoteCallbacks::new();
 
   cbs.credentials(credentials_cb);
 
   // called on each remote tracking branch that's updated
-  cbs.update_tips(update_tips_cb);
+  cbs.update_tips(get_update_tips_cb(repo));
 
   // print error if push fails
   cbs.push_update_reference(|refname, status| {

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Branch, BranchType, Diff, ObjectType, Oid, Repository, Status, StatusOptions};
+use git2::{Branch, BranchType, Commit, Diff, ObjectType, Repository, Status, StatusOptions};
 
 use crate::App;
 use crate::cli::prune::prune_branches;
@@ -147,7 +147,7 @@ project with others, or the branch has branch protections on the remote).
   diff.find_similar(None)?;
 
   if dry_run {
-    display_update(branch_name, &diff, &branch_tip.id())?;
+    display_update(branch_name, &diff, &branch_tip)?;
     return Ok(());
   }
 
@@ -162,7 +162,7 @@ project with others, or the branch has branch protections on the remote).
       .set_target(upstream_tip.id(), "feature sync fast-forward")?;
   }
 
-  display_update(branch_name, &diff, &branch_tip.id())?;
+  display_update(branch_name, &diff, &branch_tip)?;
   Ok(())
 }
 
@@ -197,12 +197,12 @@ fn has_local_changes(repo: &Repository) -> Result<bool> {
   Ok(false)
 }
 
-fn display_update(branch_name: &str, diff: &Diff, old_id: &Oid) -> Result<()> {
+fn display_update(branch_name: &str, diff: &Diff, old_commit: &Commit) -> Result<()> {
   println!(
     "{} {} {} | {}",
     style("Updated").green(),
     branch_name,
-    style(format!("(was {})", trim_hash(old_id))).dim(),
+    style(format!("(was {})", trim_hash(old_commit)?)).dim(),
     DiffSummary::new(diff)?.display_header()
   );
   Ok(())
