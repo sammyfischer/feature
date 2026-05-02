@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Branch, BranchType, Commit, Reference, Repository};
+use git2::{Branch, BranchType, Commit, ErrorCode, Reference, Repository};
 
 use crate::util::branch::{fetch_all, get_current_branch_name};
 use crate::util::branch_meta::BranchMeta;
@@ -72,8 +72,10 @@ fn safe_delete_branch(
   let meta = BranchMeta::from_branch(branch)?;
 
   // skip branches that have never been pushed
-  if meta.upstream(&state.repo)?.is_none() {
-    return Ok(false);
+  match state.repo.branch_upstream_remote(meta.refname()) {
+    Ok(_) => {}
+    Err(e) if e.code() == ErrorCode::NotFound => return Ok(false),
+    Err(_) => {}
   }
 
   // skip protected branches
