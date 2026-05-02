@@ -32,7 +32,11 @@ lint:
   cargo clippy
 
 # compliance checks
-check: fmt lint test
+check:
+   just fmt
+   just lint
+   cargo check
+   just test
 
 install:
   cargo install --path .
@@ -42,6 +46,6 @@ uninstall:
 
 # sets up the project (installs pre-commit hook)
 init:
-  #!/bin/bash
+  #!/usr/bin/env bash
   cp pre-commit.sh .git/hooks/pre-commit
   chmod 775 .git/hooks/pre-commit

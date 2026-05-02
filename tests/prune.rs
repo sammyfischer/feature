@@ -118,3 +118,42 @@ fn dry_run_doesnt_delete() {
       .success();
   }
 }
+
+/// Prunes branches that were merged and deleted from remote
+#[test]
+fn prunes_merged_deleted_branches() {
+  let local = TestRepo::new();
+
+  // let remote be a non-bare repo, since merging in a bare repo is hard
+  let remote = TestRepo::new();
+  // check out to a different branch so pushes succeed
+  remote.git(&["switch", "-c", "hidden-branch"]).success();
+
+  local
+    .git(&["remote", "add", "origin", remote.path().to_str().unwrap()])
+    .success();
+
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  local.feature(&["start", "topic"]).success();
+  local.write_file("b.txt", "B");
+  local.commit_all("B");
+  local.git(&["push", "-u", "origin", "topic"]).success();
+
+  // merge from remote, delete topic
+  remote.git(&["switch", "main"]).success();
+  remote
+    .git(&["merge", "topic", "-m", "Merge branch 'topic' into main"])
+    .success();
+  remote.git(&["branch", "-d", "topic"]).success();
+
+  local.git(&["switch", "main"]).success();
+  local.feature(&["prune"]).success();
+
+  let cmd = local.git(&["branch"]).success();
+  let stdout = get_stdout!(cmd);
+  println!("{}", stdout);
+
+  assert!(!stdout.contains("topic"), "topic should be deleted");
+}
