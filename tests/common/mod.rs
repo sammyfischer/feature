@@ -2,7 +2,7 @@
 
 use std::fs::{self};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
 use assert_cmd::assert::Assert;
@@ -38,42 +38,48 @@ macro_rules! path_str {
 }
 
 pub struct TestRepo {
-  pub dir: TempDir,
+  dir: PathBuf,
+  home: TempDir,
 }
 
 pub struct TestRemote {
-  pub dir: TempDir,
+  dir: PathBuf,
+  home: TempDir,
 }
 
 impl TestRepo {
   pub fn new() -> Self {
-    let dir = TempDir::with_prefix("repo-").unwrap();
-    let this = Self { dir };
+    let home = TempDir::with_prefix("home-").unwrap();
+    fs::write(home.path().join(".gitconfig"), include_str!("gitconfig")).unwrap();
 
-    this
-      .git(&["init", "-b", "main", path_str!(this.path())])
-      .success();
+    let repo = home.path().join("repo");
+    fs::create_dir(&repo).unwrap();
 
+    let this = Self { dir: repo, home };
+    this.git(&["init", path_str!(this.path())]).success();
     this.git(&["config", "user.name", "test"]).success();
     this
       .git(&["config", "user.email", "test@test.net"])
       .success();
-
     this
   }
 
   /// Clones an existing repository
-  pub fn new_from(repo: &TestRemote, prefix: &str) -> Self {
-    let dir = TempDir::with_prefix(prefix).unwrap();
-    let this = Self { dir };
+  pub fn new_from(remote: &TestRemote, name: &str) -> Self {
+    let home = TempDir::with_prefix("home-").unwrap();
+    fs::write(home.path().join(".gitconfig"), include_str!("gitconfig")).unwrap();
 
-    this.git(&["clone", path_str!(repo.path()), "."]).success();
+    let repo = home.path().join(name);
+    fs::create_dir(&repo).unwrap();
 
+    let this = Self { dir: repo, home };
+    this
+      .git(&["clone", path_str!(remote.path()), "."])
+      .success();
     this.git(&["config", "user.name", "test"]).success();
     this
       .git(&["config", "user.email", "test@test.net"])
       .success();
-
     this
   }
 
@@ -83,25 +89,24 @@ impl TestRepo {
     let remote = TestRemote::new();
 
     local
-      .git(&[
-        "remote",
-        "add",
-        "origin",
-        remote.path().to_str().expect("Dir path should exist"),
-      ])
+      .git(&["remote", "add", "origin", remote.path().to_str().unwrap()])
       .success();
 
     (local, remote)
   }
 
   pub fn new_bare() -> Self {
-    let dir = TempDir::with_prefix("bare-repo-").unwrap();
-    let this = Self { dir };
+    let home = TempDir::with_prefix("home-").unwrap();
+    fs::write(home.path().join(".gitconfig"), include_str!("gitconfig")).unwrap();
+
+    let repo = home.path().join("bare-repo");
+    fs::create_dir(&repo).unwrap();
+
+    let this = Self { dir: repo, home };
 
     this
       .git(&["init", "--bare", path_str!(this.path())])
       .success();
-
     this.git(&["config", "user.name", "test"]).success();
     this
       .git(&["config", "user.email", "test@test.net"])
@@ -114,6 +119,7 @@ impl TestRepo {
   pub fn feature(&self, args: &[&str]) -> Assert {
     cargo_bin_cmd!()
       .current_dir(self.path())
+      .env("HOME", self.home.path().to_str().unwrap())
       .args(args)
       .assert()
   }
@@ -121,17 +127,19 @@ impl TestRepo {
   pub fn git(&self, args: &[&str]) -> Assert {
     Command::new("git")
       .current_dir(self.path())
+      .env("HOME", self.home.path().to_str().unwrap())
+      .env("GIT_CONFIG_NOSYSTEM", "1")
       .args(args)
       .assert()
   }
 
   pub fn path(&self) -> &Path {
-    self.dir.path()
+    &self.dir
   }
 
   /// Writes a file at the top level of the repo
   pub fn write_file(&self, file_name: &str, contents: &str) {
-    fs::write(self.path().join(file_name), contents).expect("File should be written to");
+    fs::write(self.path().join(file_name), contents).unwrap();
   }
 
   /// Appends to a file at the top level of the repo
@@ -139,10 +147,8 @@ impl TestRepo {
     let mut file = fs::OpenOptions::new()
       .append(true)
       .open(self.path().join(file_name))
-      .expect("File should've been opened for appending");
-    file
-      .write_all(contents.as_bytes())
-      .expect("Contents should have been appended to file");
+      .unwrap();
+    file.write_all(contents.as_bytes()).unwrap();
   }
 
   /// Stages all changes and commits with the given message
@@ -207,13 +213,25 @@ impl TestRepo {
 
 impl TestRemote {
   pub fn new() -> Self {
-    let dir = TempDir::with_prefix("remote-").unwrap();
-    let this = Self { dir };
+    let home = TempDir::with_prefix("home-").unwrap();
+    fs::write(home.path().join(".gitconfig"), include_str!("gitconfig")).unwrap();
+
+    let repo = home.path().join("remote");
+    fs::create_dir(&repo).unwrap();
+
+    let this = Self { dir: repo, home };
 
     Command::new("git")
-      .current_dir(this.dir.path())
-      .args(["init", "--bare", path_str!(this.path())])
+      .current_dir(&this.dir)
+      .env("HOME", this.home.path().to_str().unwrap())
+      .env("GIT_CONFIG_NOSYSTEM", "1")
+      .args(["init", "--bare", path_str!(&this.path())])
       .assert()
+      .success();
+
+    this.git(&["config", "user.name", "test"]).success();
+    this
+      .git(&["config", "user.email", "test@test.net"])
       .success();
 
     this
@@ -223,13 +241,15 @@ impl TestRemote {
   pub fn git(&self, args: &[&str]) -> Assert {
     Command::new("git")
       .current_dir(self.path())
+      .env("HOME", self.home.path().to_str().unwrap())
+      .env("GIT_CONFIG_NOSYSTEM", "1")
       .args(["--git-dir", path_str!(self.path())])
       .args(args)
       .assert()
   }
 
   pub fn path(&self) -> &Path {
-    self.dir.path()
+    &self.dir
   }
 
   pub fn list_branches(&self) -> String {

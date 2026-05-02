@@ -66,12 +66,13 @@ Here's a summary of the feature workflow:
 
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
+- split config into cosmetic and semantic
+  - cosmetic config can go in git config
+  - semantic config (default remote, protected branches) can stay in feature config, but there doesn't need to be a global one
 - show
   - handle merge commits in different ways (currently shows diff against first parent)
-- configure clean git environment in tests so user configs don't cause any failures
-  - make an empty tempdir, use as `$HOME`
-  - manually set `GIT_CONFIG_GLOBAL` to a tempfile or `/dev/null`
-  - use `GIT_CONFIG_NOSYSTEM`
+- improve test environment
+  - make one home dir in each test, create all repos and dirs inside it
 - run git gc every now and then
   - maybe in write commands like sync
 - config schema
