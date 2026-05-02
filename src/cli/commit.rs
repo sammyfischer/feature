@@ -4,6 +4,7 @@ use std::io::Write;
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
+use clap::ValueHint;
 use console::style;
 use git2::{Commit, Diff, Reference, Repository};
 
@@ -48,14 +49,18 @@ struct CommitTarget<'repo> {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Commit staged changes")]
+#[command(
+  about = "Commit staged changes",
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Whether to amend the previous commit
   #[arg(long, long_help = AMEND_LONG_HELP)]
   amend: bool,
 
   /// Where to apply the commit
-  #[arg(long, value_name = "REV")]
+  #[arg(long, value_name = "REV", value_hint = ValueHint::Other)]
   to: Option<String>,
 
   /// Bypass precommit hooks
@@ -63,7 +68,7 @@ pub struct Args {
   no_verify: bool,
 
   /// Words to join together as commit message
-  #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+  #[arg(trailing_var_arg = true, allow_hyphen_values = true, value_hint = ValueHint::Other)]
   words: Vec<String>,
 }
 

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use clap::ValueHint;
 use console::style;
 
 use super::push::PushCheckStatus;
@@ -14,14 +15,19 @@ const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a
 as the last argument.";
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Checks merge-ability of a branch. May fetch remote branches", long_about = LONG_ABOUT)]
+#[command(
+  about = "Checks merge-ability of a branch. May fetch remote branches",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// The base to use for the branch
-  #[arg(long, value_name = "BRANCH-ISH")]
+  #[arg(long, value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
   pub base: Option<String>,
 
   /// The branch to check
-  #[arg(value_name = "BRANCH-ISH")]
+  #[arg(value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
   pub branch: Option<String>,
 }
 

@@ -253,7 +253,7 @@ fn pushes_in_bare_repo() {
       .args([
         "--git-dir",
         path_str!(repo.path()),
-        "--worktree",
+        "--work-tree",
         path_str!(wt.path()),
       ])
       .args(args)

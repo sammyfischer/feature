@@ -18,7 +18,12 @@ any deleted branches were redundant (being an ancestor of the base means the
 base contains the branch's commit history already).";
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Deletes merged feature branches", long_about = LONG_ABOUT)]
+#[command(
+  about = "Deletes merged feature branches",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Display output but don't delete any branches. Will still fetch all remotes.
   #[arg(long)]

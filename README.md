@@ -64,6 +64,10 @@ Here's a summary of the feature workflow:
 
 ### Housekeeping
 
+- completions
+  - read `--git-dir` and `--work-tree` to generate completions for the correct repo
+  - add support for `--flag=value` syntax
+  - complete all static values (flag names, subcmd names, enum values, true/false)
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
 - split config into cosmetic and semantic
@@ -75,13 +79,19 @@ Here's a summary of the feature workflow:
   - make one home dir in each test, create all repos and dirs inside it
 - run git gc every now and then
   - maybe in write commands like sync
-- config schema
-  - the generated config file from `config create` should link to a schema corresponding to the same version of feature
-  - CI should generate schema, maybe should be hosted somewhere else
-  - start versioning feature
 
 ### Features
 
+- abbreviations
+  - most commands should accept the shortest possible prefix to uniquely identify its target
+  - branch targets, e.g. `feature update <base>`, `feature start --from <base>`
+    - search refs/heads/* only
+    - `feature list` should bold the unique prefix of each branch
+  - make `feature commit --to` only accpet branches
+  - upon ambiguity, print candidates and tell the user to run the command again
+  - `feature show` takes a revision, currently uses `revparse_single`, not sure if this can accept 2 char hash prefixes
+- start: arbitary variable substitutions
+  - map keys to values in config, use those keys in branch name template replacement
 - undo
   - uses reflog, undoes latest change
 - stash
@@ -93,8 +103,8 @@ Here's a summary of the feature workflow:
   - status
   - list
 - mod (submodule commands)
-  - sync/prune all modules
-  - create a single branch in all modules for features whose work will span across them
+  - `ft mod sync` - run sync in all modules
+  - `ft mod start` - start a branch with the same name in each module
 - worktree
   - open an interactive menu to pick a branch and create a worktree from it
   - or use specified branch in command line

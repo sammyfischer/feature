@@ -23,6 +23,9 @@ test target="":
 schema:
   just run config schema > feature-config.schema.json
 
+comp shell="bash": install
+  feature completions {{ shell }} > completions.sh
+
 # format with dprint
 fmt:
   dprint fmt --diff

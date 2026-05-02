@@ -18,7 +18,12 @@ The currently checked-out branch cannot be updated if there are changes in the
 working directory. If so, only the current branch will be skipped.";
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Updates branches with their remotes and prunes redundant branches", long_about = LONG_ABOUT)]
+#[command(
+  about = "Updates branches with their remotes and prunes redundant branches",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Display output but don't modify any branches. Will still fetch all remotes.
   #[arg(long)]

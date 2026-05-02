@@ -1,6 +1,7 @@
 //! Start subcommand
 
 use anyhow::{Context, Result};
+use clap::ValueHint;
 use console::style;
 use git2::Branch;
 
@@ -37,22 +38,27 @@ const EMPTY_REPO_MSG: &str =
   r"Cannot call start on an empty repository. Create at least one commit first.";
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Starts a new feature branch", long_about = LONG_ABOUT)]
+#[command(
+  about = "Starts a new feature branch",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Display the branch name, after joining args and performing template replacements
   #[arg(long)]
   pub dry_run: bool,
 
   /// The separator to use when joining words
-  #[arg(long)]
+  #[arg(long, value_hint = ValueHint::Other)]
   pub sep: Option<String>,
 
   /// Format specifier for branch name
-  #[arg(long, visible_alias = "fmt", long_help = FORMAT_HELP_MSG)]
+  #[arg(long, visible_alias = "fmt", long_help = FORMAT_HELP_MSG, value_hint = ValueHint::Other)]
   pub format: Option<String>,
 
   /// Which base branch to start from
-  #[arg(long, value_name = "BRANCH-ISH")]
+  #[arg(long, value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
   pub from: Option<String>,
 
   /// Whether to stay on the current branch
@@ -60,7 +66,7 @@ pub struct Args {
   pub stay: bool,
 
   /// Words to join together as branch name
-  #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+  #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true, value_hint = ValueHint::Other)]
   pub words: Vec<String>,
 }
 

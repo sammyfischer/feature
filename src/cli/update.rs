@@ -2,6 +2,7 @@ use std::fmt::Write;
 use std::fs;
 
 use anyhow::{Context, Result, anyhow};
+use clap::ValueHint;
 use console::style;
 use git2::{ErrorCode, FetchOptions, Oid, Rebase, RemoteCallbacks, Repository};
 
@@ -29,7 +30,11 @@ const COMMIT_FAILED_MSG: &str = r#"Failed to apply commit. You can:
 • Abort the rebase with "git rebase --abort""#;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Updates this branch with its base", long_about = LONG_ABOUT)]
+#[command(
+  about = "Updates this branch with its base",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true)]
 pub struct Args {
   /// Output which base branch will be used, but don't perform the rebase
   #[arg(long)]
@@ -44,7 +49,7 @@ pub struct Args {
   abort: bool,
 
   /// The name of the base branch to use.
-  #[arg(value_name = "BRANCH-ISH")]
+  #[arg(value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
   base: Option<String>,
 }
 

@@ -27,7 +27,9 @@ use crate::{App, data, opt_advice};
 #[derive(clap::Args, Clone, Debug)]
 #[command(
   visible_alias = "st",
-  about = "View current status (current branch, author info, changes)"
+  about = "View current status (current branch, author info, changes)",
+  disable_help_flag = true,
+  disable_help_subcommand = true
 )]
 pub struct Args {
   /// Hides untracked files from output

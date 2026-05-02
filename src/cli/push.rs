@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 use anyhow::{Context, Result, anyhow};
+use clap::ValueHint;
 use console::style;
 use git2::{
   Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, PushOptions, RemoteCallbacks, Repository,
@@ -33,22 +34,26 @@ const BASE_DIVERGED_MSG: &str = r"Branch has diverged from its base. You must:
    update or git rebase.";
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Pushes a branch to remote, setting upstream automatically")]
+#[command(
+  about = "Pushes a branch to remote, setting upstream automatically",
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Force push
   #[arg(short, long)]
   force: bool,
 
   /// Which remote to push to, if no upstream is already set
-  #[arg(short, long)]
+  #[arg(short, long, value_hint = ValueHint::Other)]
   remote: Option<String>,
 
   /// The name of the upstream branch, if no upstream is already set
-  #[arg(short, long)]
+  #[arg(short, long, value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
   upstream: Option<String>,
 
   /// The branch to push. Defaults to current branch
-  #[arg(value_name = "BRANCH-ISH")]
+  #[arg(value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
   branch: Option<String>,
 }
 
@@ -211,7 +216,10 @@ impl Args {
     if upstream.is_none() {
       let mut branch = Branch::wrap(branch.resolve(&state.repo)?);
       match branch.set_upstream(Some(&upstream_name)) {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+          print!("{}", style(format!(" (tracking {})", &upstream_name)).dim());
+          Ok(())
+        }
 
         // this error is returned in bare repos where an upstream (e.g. origin/main) cannot be
         // created. in this case, the git config for the branch is still properly set, e.g.
@@ -221,8 +229,6 @@ impl Args {
         // any other error is a real error
         Err(e) => Err(anyhow!(e).context("Failed to set upstream")),
       }?;
-
-      print!("{}", style(format!(" (tracking {})", &upstream_name)).dim());
     }
 
     println!();
