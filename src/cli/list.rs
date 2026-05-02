@@ -3,11 +3,7 @@ use console::{Alignment, measure_text_width, pad_str, style, truncate_str};
 use git2::{Branch, Repository};
 
 use crate::util::branch::{
-  branch_to_commit,
-  branch_to_name,
-  get_ahead_behind,
-  get_current_branch_name,
-  get_upstream,
+  branch_to_commit, branch_to_name, get_ahead_behind, get_current_branch_name, get_upstream,
   get_worktree_branch_names,
 };
 use crate::util::display::{display_plus_minus, trim_hash};

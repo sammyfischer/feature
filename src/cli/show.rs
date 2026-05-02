@@ -54,10 +54,13 @@ impl Args {
     writeln!(
       buf,
       "{}",
-      display_commit(&commit, &DisplayCommitOptions {
-        message: self.message.unwrap_or(state.config.show.message),
-        time: From::from(&state.config)
-      })?
+      display_commit(
+        &commit,
+        &DisplayCommitOptions {
+          message: self.message.unwrap_or(state.config.show.message),
+          time: From::from(&state.config)
+        }
+      )?
     )?;
 
     let parent = match commit.parent(0) {

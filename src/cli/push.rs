@@ -3,14 +3,7 @@ use std::fmt::Write;
 use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{
-  Branch,
-  BranchType,
-  ErrorClass,
-  ErrorCode,
-  FetchOptions,
-  PushOptions,
-  RemoteCallbacks,
-  Repository,
+  Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, PushOptions, RemoteCallbacks, Repository,
 };
 
 use crate::util::branch::{get_ahead_behind, soft_reset};

@@ -7,33 +7,21 @@ use console::{measure_text_width, pad_str, style, truncate_str};
 use git2::{DiffOptions, Oid, Reference, Repository};
 
 use crate::util::advice::{
-  BISECT_ADVICE,
-  MERGE_CONFLICT_ADVICE,
-  PICK_CONFLICT_ADVICE,
-  REBASE_CONFLICT_ADVICE,
-  REVERT_CONFLICT_ADVICE,
-  STATUS_ADVICE,
+  BISECT_ADVICE, MERGE_CONFLICT_ADVICE, PICK_CONFLICT_ADVICE, REBASE_CONFLICT_ADVICE,
+  REVERT_CONFLICT_ADVICE, STATUS_ADVICE,
 };
 use crate::util::branch::{
-  commit_to_branch,
-  get_ahead_behind,
-  get_current_branch_or_commit,
-  get_head,
-  get_merge_head,
-  get_pick_head,
-  get_revert_head,
+  commit_to_branch, get_ahead_behind, get_current_branch_or_commit, get_head, get_merge_head,
+  get_pick_head, get_revert_head,
 };
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
 use crate::util::display::{
-  display_commit_compact,
-  display_plus_minus,
-  display_signature,
-  trim_hash,
+  display_commit_compact, display_plus_minus, display_signature, trim_hash,
 };
-use crate::util::get_signature;
 use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::{get_term_width, is_term};
+use crate::util::{TrimPrefix, get_signature};
 use crate::{App, data, opt_advice};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -239,7 +227,7 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
         .to_str_lossy();
       format!(
         "On {}, no commits yet",
-        style(symbolic_ref.trim_prefix("refs/heads/")).green()
+        style(symbolic_ref.trim_prefix_opt("refs/heads/")).green()
       )
     }
   };

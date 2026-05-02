@@ -1,5 +1,3 @@
-#![feature(trim_prefix_suffix)]
-
 use anyhow::{Context, Result, anyhow};
 use clap::{CommandFactory, FromArgMatches};
 use git2::Repository;

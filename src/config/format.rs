@@ -59,10 +59,14 @@ pub enum DateStyle {
 
 impl Display for DateStyle {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", match self {
-      Self::Textual => "textual",
-      Self::Numeric => "numeric",
-    })
+    write!(
+      f,
+      "{}",
+      match self {
+        Self::Textual => "textual",
+        Self::Numeric => "numeric",
+      }
+    )
   }
 }
 
@@ -77,9 +81,13 @@ pub enum HourStyle {
 
 impl Display for HourStyle {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", match self {
-      HourStyle::Twelve => "12",
-      HourStyle::TwentyFour => "24",
-    })
+    write!(
+      f,
+      "{}",
+      match self {
+        HourStyle::Twelve => "12",
+        HourStyle::TwentyFour => "24",
+      }
+    )
   }
 }

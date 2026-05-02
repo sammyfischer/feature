@@ -11,20 +11,12 @@ use crate::App;
 use crate::config::Config;
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
-  get_current_branch_or_commit,
-  get_head,
-  get_merge_head,
-  get_pick_head,
-  get_revert_head,
+  get_current_branch_or_commit, get_head, get_merge_head, get_pick_head, get_revert_head,
   name_to_branch,
 };
 use crate::util::diff::DiffSummary;
 use crate::util::display::{
-  DisplayCommitMessageLevel,
-  DisplayCommitOptions,
-  DisplayTimeOptions,
-  display_commit,
-  display_hash,
+  DisplayCommitMessageLevel, DisplayCommitOptions, DisplayTimeOptions, display_commit, display_hash,
 };
 use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::get_user_confirmation;
@@ -398,24 +390,31 @@ fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &Config) -> 
   write!(
     out,
     "{}",
-    display_commit(commit, &DisplayCommitOptions {
-      time: DisplayTimeOptions {
-        // relative is not useful, commit just occured
-        relative: false,
-        date: config.format.date,
-        hour: config.format.hour,
-        timezone: config.format.timezone
-      },
-      // want the user to see the entire message just for reference
-      message: DisplayCommitMessageLevel::Full
-    })?
+    display_commit(
+      commit,
+      &DisplayCommitOptions {
+        time: DisplayTimeOptions {
+          // relative is not useful, commit just occured
+          relative: false,
+          date: config.format.date,
+          hour: config.format.hour,
+          timezone: config.format.timezone
+        },
+        // want the user to see the entire message just for reference
+        message: DisplayCommitMessageLevel::Full
+      }
+    )?
   )?;
 
   let summary = DiffSummary::new(diff);
 
-  write!(out, "\n\n{}", match summary {
-    Ok(it) => it.to_string(),
-    Err(_) => style("Failed to get commit changes").red().to_string(),
-  })?;
+  write!(
+    out,
+    "\n\n{}",
+    match summary {
+      Ok(it) => it.to_string(),
+      Err(_) => style("Failed to get commit changes").red().to_string(),
+    }
+  )?;
   Ok(out)
 }
