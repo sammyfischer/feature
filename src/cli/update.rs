@@ -5,6 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{ErrorCode, FetchOptions, Oid, Rebase, RemoteCallbacks, Repository};
 
+use crate::util::TrimPrefix;
 use crate::util::advice::{NO_SIGNATURE_MSG, REBASE_CONFLICT_ADVICE};
 use crate::util::branch::get_head;
 use crate::util::branch_meta::BranchMeta;
@@ -283,7 +284,12 @@ fn display_success(
   let mut out = String::with_capacity(100);
 
   let branch_name = match rebase.orig_head_name() {
-    Some(name) => style(name.trim_prefix("refs/remotes/").trim_prefix("refs/heads/")).blue(),
+    Some(name) => style(
+      name
+        .trim_prefix_opt("refs/remotes/")
+        .trim_prefix_opt("refs/heads/"),
+    )
+    .blue(),
     None => style("unknown").red(),
   };
 

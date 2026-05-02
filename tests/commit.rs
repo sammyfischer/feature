@@ -5,7 +5,7 @@ mod common;
 fn add_file(repo: &TestRepo) {
   let file_name = "file.txt";
   repo.write_file(file_name, "hello world");
-  repo.git(&["add", &file_name]).success();
+  repo.git(&["add", file_name]).success();
 }
 
 /// Feature should be able to commit to an empty repository

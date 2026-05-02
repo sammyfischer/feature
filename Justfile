@@ -29,7 +29,7 @@ fmt:
 
 # lint with clippy
 lint:
-  cargo clippy
+  cargo clippy --all-targets --all-features -- -D warnings
 
 # compliance checks
 check:

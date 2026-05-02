@@ -134,7 +134,7 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
       return true;
     }
 
-    let name = name.trim_prefix("refs/remotes/");
+    let name = name.trim_prefix_opt("refs/remotes/");
     let zero = Oid::zero();
 
     if old_id == zero {
@@ -184,5 +184,16 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
       );
     }
     true
+  }
+}
+
+/// A simplified implementation of trim_prefix that doesn't use unstable library features. Uses a different name to avoid name collisions.
+pub trait TrimPrefix {
+  fn trim_prefix_opt(&self, prefix: &str) -> &str;
+}
+
+impl TrimPrefix for str {
+  fn trim_prefix_opt(&self, prefix: &str) -> &str {
+    self.strip_prefix(prefix).unwrap_or(self)
   }
 }

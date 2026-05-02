@@ -4,19 +4,8 @@ use std::borrow::Cow;
 
 use anyhow::{Context, Result, anyhow};
 use git2::{
-  AutotagOption,
-  Branch,
-  BranchType,
-  Commit,
-  ErrorCode,
-  FetchOptions,
-  FetchPrune,
-  ObjectType,
-  Oid,
-  Reference,
-  RemoteCallbacks,
-  Repository,
-  ResetType,
+  AutotagOption, Branch, BranchType, Commit, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid,
+  Reference, RemoteCallbacks, Repository, ResetType,
 };
 
 use crate::util::display::trim_hash;

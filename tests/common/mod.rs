@@ -141,7 +141,7 @@ impl TestRepo {
       .open(self.path().join(file_name))
       .expect("File should've been opened for appending");
     file
-      .write(contents.as_bytes())
+      .write_all(contents.as_bytes())
       .expect("Contents should have been appended to file");
   }
 
@@ -155,7 +155,7 @@ impl TestRepo {
   pub fn init_commit(&self) {
     let file_name = "file.txt";
     self.write_file(file_name, "A");
-    self.git(&["add", &file_name]).success();
+    self.git(&["add", file_name]).success();
     self.git(&["commit", "-m", "A"]).success();
   }
 
