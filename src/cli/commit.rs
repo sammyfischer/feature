@@ -60,7 +60,7 @@ pub struct Args {
   amend: bool,
 
   /// Where to apply the commit
-  #[arg(long, value_name = "REV", value_hint = ValueHint::Other)]
+  #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]
   to: Option<String>,
 
   /// Bypass precommit hooks

@@ -49,7 +49,7 @@ pub struct Args {
   abort: bool,
 
   /// The name of the base branch to use.
-  #[arg(value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
+  #[arg(value_name = "BRANCH", value_hint = ValueHint::Other)]
   base: Option<String>,
 }
 

@@ -68,6 +68,7 @@ Here's a summary of the feature workflow:
   - read `--git-dir` and `--work-tree` to generate completions for the correct repo
   - add support for `--flag=value` syntax
   - complete all static values (flag names, subcmd names, enum values, true/false)
+  - custom zsh completions, maybe fish too
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
 - split config into cosmetic and semantic

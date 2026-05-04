@@ -54,7 +54,11 @@ macro_rules! git {
 }
 
 #[derive(Debug, Parser)]
-#[command(disable_help_flag = true, disable_help_subcommand = true)]
+#[command(
+  long_version = env!("CARGO_PKG_VERSION"),
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Path to a project-level config file to use
   #[arg(long, value_hint = ValueHint::FilePath)]

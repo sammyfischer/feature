@@ -23,11 +23,11 @@ as the last argument.";
 )]
 pub struct Args {
   /// The base to use for the branch
-  #[arg(long, value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
+  #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]
   pub base: Option<String>,
 
   /// The branch to check
-  #[arg(value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
+  #[arg(value_name = "BRANCH", value_hint = ValueHint::Other)]
   pub branch: Option<String>,
 }
 

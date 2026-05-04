@@ -49,11 +49,11 @@ pub struct Args {
   remote: Option<String>,
 
   /// The name of the upstream branch, if no upstream is already set
-  #[arg(short, long, value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
+  #[arg(short, long, value_name = "BRANCH", value_hint = ValueHint::Other)]
   upstream: Option<String>,
 
   /// The branch to push. Defaults to current branch
-  #[arg(value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
+  #[arg(value_name = "BRANCH", value_hint = ValueHint::Other)]
   branch: Option<String>,
 }
 

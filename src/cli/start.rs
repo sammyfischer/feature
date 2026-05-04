@@ -58,11 +58,11 @@ pub struct Args {
   pub format: Option<String>,
 
   /// Which base branch to start from
-  #[arg(long, value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
+  #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]
   pub from: Option<String>,
 
   /// Whether to stay on the current branch
-  #[arg(long)]
+  #[arg(short, long)]
   pub stay: bool,
 
   /// Words to join together as branch name

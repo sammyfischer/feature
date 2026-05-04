@@ -43,7 +43,7 @@ pub struct Args {
   pub paging: Option<PageWhen>,
 
   /// The git revision string, e.g. HEAD^2, commit hash, branch name. See "man gitrevisions".
-  #[arg(value_name = "REV", value_hint = ValueHint::Other)]
+  #[arg(value_name = "REVISION", value_hint = ValueHint::Other)]
   pub revision: Option<String>,
 }
 

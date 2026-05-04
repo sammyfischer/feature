@@ -28,11 +28,11 @@ with the --branch option.";
 )]
 pub struct Args {
   /// The name of the base branch
-  #[arg(value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
+  #[arg(value_name = "BRANCH", value_hint = ValueHint::Other)]
   base: String,
 
   /// The name of the branch whose base is being set. Defaults to current branch
-  #[arg(long, value_name = "BRANCH-ISH", value_hint = ValueHint::Other)]
+  #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]
   branch: Option<String>,
 }
 

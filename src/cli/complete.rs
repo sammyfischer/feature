@@ -1,5 +1,4 @@
 use anyhow::Result;
-use clap::ValueHint;
 use git2::{BranchType, Repository};
 
 use crate::App;
@@ -14,7 +13,6 @@ pub struct Args {
   pub comp_type: CompletionType,
 
   /// The value being completed
-  #[arg(value_hint = ValueHint::Other)]
   pub value: String,
 }
 
@@ -114,7 +112,11 @@ impl Args {
 }
 
 fn print_matches(matches: Vec<String>) {
-  for name in &matches {
-    println!("{}", name);
+  for (i, name) in matches.iter().enumerate() {
+    if i == 0 {
+      print!("{}", name);
+    } else {
+      print!(" {}", name);
+    }
   }
 }
