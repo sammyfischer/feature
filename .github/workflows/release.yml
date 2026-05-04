@@ -22,9 +22,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Add target
-        run: rustup target add ${{ matrix.target }}
-
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
@@ -81,6 +78,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
