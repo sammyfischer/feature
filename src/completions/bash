@@ -1,0 +1,379 @@
+# Generates completions for a branch name
+#
+# Params
+# $0 - (required) the prefix to match
+#
+# Returns
+# Prints a space-separated list of matching branches
+_feature_compgen_branches() {
+  local word="$1"
+  printf "%s" "$(feature complete --type branch "$word")"
+}
+
+# Generates completions for a remote name
+#
+# Params
+# $0 - (required) the prefix to match
+#
+# Returns
+# Prints a space-separated list of matching remotes
+_feature_compgen_remotes() {
+  local word="$1"
+  printf "%s" "$(feature complete --type remotes "$word")"
+}
+
+# Generates completions for a revision name
+#
+# Params
+# $0 - (required) the prefix to match
+#
+# Returns
+# Prints a space-separated list of matching revisions
+_feature_compgen_revisions() {
+  local word="$1"
+  printf "%s" "$(feature complete --type rev "$word")"
+}
+
+# Convenience function to reply with a list of files
+_feature_reply_files() {
+  local word="${COMP_WORDS[COMP_CWORD]}"
+  COMPREPLY=( $(IFS='\n' compgen -f "$word") )
+  compopt -o filenames
+}
+
+_feature_reply_dirs() {
+  local word="${COMP_WORDS[COMP_CWORD]}"
+  COMPREPLY=( $(IFS='\n' compgen -f "$word") )
+  compopt -o dirnames
+}
+
+_feature() {
+  local bin="$1"
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local prev="$3"
+  local cmd=""
+
+  # find subcommand
+  local word
+  for word in "${COMP_WORDS[@]:0:COMP_CWORD}"; do
+    # match last seen command and current word
+    case "$cmd,$word" in
+      ",$bin")
+        cmd="feature"
+        ;;
+
+      feature,base)
+        cmd="base"
+        ;;
+
+      feature,check)
+        cmd="check"
+        ;;
+
+      feature,commit)
+        cmd="commit"
+        ;;
+
+      feature,completions)
+        cmd="completions"
+        ;;
+
+      feature,graph)
+        cmd="graph"
+        ;;
+
+      feature,list | feature,ls)
+        cmd="list"
+        ;;
+
+      feature,log)
+        cmd="log"
+        ;;
+
+      feature,prune)
+        cmd="prune"
+        ;;
+
+      feature,push)
+        cmd="push"
+        ;;
+
+      feature,show)
+        cmd="show"
+        ;;
+
+      feature,start)
+        cmd="start"
+        ;;
+
+      feature,status | feature,st)
+        cmd="status"
+        ;;
+
+      feature,sync)
+        cmd="sync"
+        ;;
+
+      feature,update)
+        cmd="update"
+        ;;
+
+      feature,config)
+        cmd="config"
+        ;;
+
+      config,create)
+        cmd="config_create"
+        ;;
+
+      config,get)
+        cmd="config_get"
+        ;;
+
+      config,schema)
+        cmd="config_schema"
+        ;;
+
+      *)
+        ;;
+    esac
+  done
+
+  # generate completions depending on the cmd found
+  case "$cmd" in
+    feature)
+      local opts="--help -V --version --config --git-dir --work-tree --wt base check commit \
+        completions config graph list ls log prune push show start status st \
+        sync update"
+
+      case "$prev" in
+        --config)
+          _feature_reply_files
+          ;;
+
+        --git-dir | --work-tree | --wt)
+          _feature_reply_dirs
+          ;;
+
+        *)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+      esac
+      ;;
+
+    base)
+      local opts="--help --branch"
+      case "$prev" in
+        --branch)
+          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          ;;
+        *)
+          case "$cur" in
+            -*)
+              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+              ;;
+            *)
+              COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          esac
+      esac
+      ;;
+
+    check)
+      local opts="--help --base"
+      case "$prev" in
+        --base)
+          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          ;;
+        *)
+          case "$cur" in
+            -*)
+              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+              ;;
+            *)
+              COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          esac
+      esac
+      ;;
+
+    commit)
+      local opts="--help --amend --no-verify --to"
+      case "$prev" in
+        --to)
+          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          ;;
+        *)
+          case "$cur" in
+            "" | -*)
+              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+              ;;
+            *)
+              COMPREPLY=()
+              ;;
+          esac
+          ;;
+      esac
+      ;;
+
+    completions)
+      local opts="--help bash elvish fish powershell zsh"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur"))
+      ;;
+
+    config)
+      local opts="--help --which -g create get schema"
+      case "$prev" in
+        --which)
+          COMPREPLY=( $(compgen -W "project local user global" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+      esac
+      ;;
+
+    config_create | config_schema)
+      local opts="--help"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur"))
+      ;;
+
+    config_get)
+      local opts="--help"
+      local keys="default_remote protect sync.prune status.show_untracked \
+        list.hash list.upstream list.base show.message show.summary \
+        show.patch show.paging format.branch_sep format.branch format.log \
+        format.graph format.hour format.date format.timezone format.relative \
+        advice.status advice.rebase advice.merge advice.cherry_pick \
+        advice.revert advice.bisect"
+      case "$cur" in
+        -*)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur"))
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "$keys" -- "$cur"))
+          ;;
+      esac
+      ;;
+
+    graph | log)
+      local opts="--help --format --fmt"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      ;;
+
+    list)
+      local opts="--help -H --no-hash -U --no-upstream -B --no-base"
+
+      case "$cur" in
+        -H=* | --no-hash=* | -U=* | --no-upstream=* | -B=* | --no-base=*)
+          IFS='=' read -r prev cur <<< "$cur"
+          COMPREPLY=( $(compgen -p "$prev=" -W "true false" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      esac
+      ;;
+
+    prune)
+      local opts="--help --dry-run"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      ;;
+
+    push)
+      local opts="--help -f --force -r --remote -u --upstream"
+      case "$prev" in
+        -r | --remote)
+          COMPREPLY=( $(_feature_compgen_remotes "$cur") )
+          ;;
+        -u | --upstream)
+          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          ;;
+        *)
+          case "$cur" in
+            -*)
+              COMPREPLY=( $(compgen -W "$opts", -- "$cur") )
+              ;;
+            *)
+              COMPREPLY=( $(_feature_compgen_branches "$cur") )
+              ;;
+          esac
+          ;;
+      esac
+      ;;
+
+    show)
+      local opts="--help -S --no-summary -P --no-patch -m --message --paging"
+      case "$prev" in
+        -m | --message)
+          COMPREPLY=( $(compgen -W "none subject full" -- "$cur") )
+          ;;
+        --paging)
+          COMPREPLY=( $(compgen -W "auto always never" -- "$cur") )
+          ;;
+        *)
+          case "$cur" in
+            -S=* | --no-summary=* | -P=* | --no-patch=*)
+              IFS='=' read -r prev cur <<< "$cur"
+              COMPREPLY=( $(compgen -p "$prev=" -W "true false" -- "$cur") )
+              ;;
+            -*)
+              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+              ;;
+            *)
+              COMPREPLY=( $(_feature_compgen_revisions "$cur") )
+              ;;
+          esac
+          ;;
+      esac
+      ;;
+
+    start)
+      local opts="--help --dry-run --sep --format --fmt --from -s --stay"
+      case "$prev" in
+        --from)
+          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          ;;
+        *)
+          case "$cur" in
+            "" | -*)
+              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+              ;;
+            *)
+              COMPREPLY=()
+              ;;
+          esac
+          ;;
+      esac
+      ;;
+
+    status)
+      local opts="--help -u --hide-untracked"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      ;;
+
+    sync)
+      local opts="--help --dry-run -P --no-prune"
+      case "$cur" in
+        -P=* | --no-prune=*)
+          IFS='=' read -r prev cur <<< "$cur"
+          COMPREPLY=( $(compgen -p "$prev=" -W "true false" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+      esac
+      ;;
+
+    update)
+      local opts="--help --dry-run -c --continue -a --abort"
+      case "$cur" in
+        -*)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          ;;
+      esac
+      ;;
+  esac
+}
+
+complete -F _feature -o nosort -o bashdefault -o default feature

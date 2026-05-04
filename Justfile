@@ -21,7 +21,14 @@ test target="":
   fi
 
 schema:
-  just run config schema > feature-config.schema.json
+  just run config schema > resources/config.schema.json
+
+comp:
+  just run completions bash > resources/completions.bash
+  just run completions elvish > resources/completions.elvish
+  just run completions fish > resources/completions.fish
+  just run completions powershell > resources/completions.pwsh
+  just run completions zsh > resources/completions.zsh
 
 # format with dprint
 fmt:
@@ -33,10 +40,13 @@ lint:
 
 # compliance checks
 check:
-   just fmt
-   just lint
-   cargo check
-   just test
+  just fmt
+  just lint
+  cargo check
+  just test
+
+# check for compliance, generate up-to-date resources
+release: check schema
 
 install:
   cargo install --path .

@@ -1,7 +1,7 @@
 //! Config subcommand
 
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Subcommand, ValueHint};
 use schemars::schema_for;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +16,11 @@ macro_rules! toml_stringify {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Interact with feature config")]
+#[command(
+  about = "Interact with feature config",
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Which config file to use
   #[arg(long, default_value = "project", conflicts_with = "global")]
@@ -56,38 +60,11 @@ pub enum WhichConfig {
 }
 
 #[derive(clap::Args, Clone, Debug)]
+#[command(disable_help_flag = true, disable_help_subcommand = true)]
 pub struct GetArgs {
   /// The names of the keys to get
-  #[arg(trailing_var_arg = true)]
+  #[arg(trailing_var_arg = true, value_hint = ValueHint::Other)]
   pub keys: Vec<String>,
-}
-
-const SET_LONG_ABOUT: &str = r"Each config key is specified as a flag, allowing you to set multiple at once.
-Tip: use `append` and `remove` to modify arrays.";
-
-#[derive(clap::Args, Clone, Debug)]
-#[command(long_about = SET_LONG_ABOUT)]
-pub struct SetArgs {
-  /// Use dots to access nested keys, e.g. format.branch
-  pub key: String,
-  pub value: String,
-}
-
-#[derive(clap::Args, Clone, Debug)]
-pub struct UnsetArgs {
-  /// List of keys to unset
-  #[arg(trailing_var_arg = true)]
-  pub keys: Vec<String>,
-}
-
-#[derive(clap::Args, Clone, Debug)]
-pub struct ArrayArgs {
-  /// The key of the array
-  pub key: String,
-
-  /// The values to modify (append or remove)
-  #[arg(trailing_var_arg = true)]
-  pub values: Vec<String>,
 }
 
 impl Args {

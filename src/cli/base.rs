@@ -1,6 +1,7 @@
 //! Base subcommand
 
 use anyhow::{Context, Result, anyhow};
+use clap::ValueHint;
 use git2::Branch;
 
 use crate::util::branch::get_upstream;
@@ -19,14 +20,19 @@ const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a
 with the --branch option.";
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Tell feature which base another branch belongs to", long_about = LONG_ABOUT)]
+#[command(
+  about = "Tell feature which base another branch belongs to",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// The name of the base branch
-  #[arg(value_name = "BRANCH-ISH")]
+  #[arg(value_name = "BRANCH", value_hint = ValueHint::Other)]
   base: String,
 
   /// The name of the branch whose base is being set. Defaults to current branch
-  #[arg(long, value_name = "BRANCH-ISH")]
+  #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]
   branch: Option<String>,
 }
 

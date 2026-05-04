@@ -36,15 +36,17 @@ fn uses_specified_dir_and_worktree() {
   let somewhere = TempDir::with_prefix("other-dir-").unwrap();
   let file_name = "file.txt";
 
+  let dir_wt_args = [
+    "--git-dir",
+    path_str!(repo.path()),
+    "--work-tree",
+    path_str!(wt.path()),
+  ];
+
   let git = |args: &[&str]| {
     Command::new("git")
       .current_dir(somewhere.path())
-      .args([
-        "--git-dir",
-        path_str!(repo.path()),
-        "--work-tree",
-        path_str!(wt.path()),
-      ])
+      .args(dir_wt_args)
       .args(args)
       .assert()
   };
@@ -52,12 +54,7 @@ fn uses_specified_dir_and_worktree() {
   let feature = |args: &[&str]| {
     cargo_bin_cmd!()
       .current_dir(somewhere.path())
-      .args([
-        "--git-dir",
-        path_str!(repo.path()),
-        "--worktree",
-        path_str!(wt.path()),
-      ])
+      .args(dir_wt_args)
       .args(args)
       .assert()
   };
@@ -76,12 +73,13 @@ fn uses_specified_dir_and_worktree() {
 #[test]
 fn worktree_requires_git_dir() {
   let repo = TestRepo::new();
-  let cmd = repo.feature(&["--worktree", "anywhere", "st"]).failure();
+  let cmd = repo.feature(&["--work-tree", "anywhere", "st"]).failure();
+
   assert!(
     get_stderr!(cmd).trim().starts_with(
       r"error: the following required arguments were not provided:
   --git-dir <GIT_DIR>"
     ),
-    "stderr contains the wrong error message"
+    "Should print the correct error message"
   );
 }

@@ -26,7 +26,7 @@ impl App {
       None => config::load(),
     }?;
 
-    let repo = match (&args.git_dir, &args.worktree) {
+    let repo = match (&args.git_dir, &args.work_tree) {
       // neither, do an automatic search
       (None, None) => Repository::open_from_env()?,
 

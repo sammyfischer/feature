@@ -24,8 +24,6 @@ pub mod show;
 pub mod status;
 pub mod sync;
 
-const SCHEMA_URL: &str = "https://raw.githubusercontent.com/sammyfischer/feature/refs/heads/main/feature-config.schema.json";
-
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct Config {
@@ -119,6 +117,16 @@ pub fn load_with_path(project: &Path) -> Result<Config> {
   Ok(config)
 }
 
+/// Generates the url of the schema file matching the version of this crate
+#[inline]
+fn get_schema_url() -> String {
+  format!(
+    "{}/raw/refs/tags/v{}/resources/config.schema.json",
+    env!("CARGO_PKG_REPOSITORY"),
+    env!("CARGO_PKG_VERSION")
+  )
+}
+
 pub mod project {
   use std::fs::File;
   use std::io::Write;
@@ -126,7 +134,7 @@ pub mod project {
 
   use anyhow::Result;
 
-  use crate::config::{Config, SCHEMA_URL};
+  use crate::config::{Config, get_schema_url};
 
   pub fn path() -> PathBuf {
     PathBuf::from("feature.toml")
@@ -139,7 +147,7 @@ pub mod project {
     let toml_raw = toml::to_string_pretty(&config)?;
 
     let mut file = File::create(&path)?;
-    file.write_all(format!("\"$schema\" = \"{}\"\n\n", SCHEMA_URL).as_bytes())?;
+    file.write_all(format!("\"$schema\" = \"{}\"\n\n", get_schema_url()).as_bytes())?;
     file.write_all(toml_raw.as_bytes())?;
     println!("Created default config file at {}", &path.to_string_lossy());
     Ok(())
@@ -153,7 +161,7 @@ pub mod user {
 
   use anyhow::{Result, anyhow};
 
-  use crate::config::{Config, SCHEMA_URL};
+  use crate::config::{Config, get_schema_url};
 
   /// Returns the config file located in the platform's standard config directory
   /// # Errors
@@ -193,7 +201,7 @@ pub mod user {
     let toml_raw = toml::to_string_pretty(&config)?;
 
     let mut file = File::create(&path)?;
-    file.write_all(format!("\"$schema\" = \"{}\"\n\n", SCHEMA_URL).as_bytes())?;
+    file.write_all(format!("\"$schema\" = \"{}\"\n\n", get_schema_url()).as_bytes())?;
     file.write_all(toml_raw.as_bytes())?;
     println!("Created default config file at {}", &path.to_string_lossy());
     Ok(())

@@ -2,6 +2,7 @@ use std::io::IsTerminal;
 use std::str::Lines;
 
 use anyhow::{Context, Result};
+use clap::ValueHint;
 use console::{style, truncate_str};
 
 use crate::util::lossy::ToStrLossy;
@@ -24,10 +25,15 @@ See the PRETTY FORMATS section of git log --help for more information on how to
 customize this."#;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "View a graph of commits", long_about = LONG_ABOUT)]
+#[command(
+  about = "View a graph of commits",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// The format passed to git log
-  #[arg(long, visible_alias = "fmt", long_help = FORMAT_LONG_HELP)]
+  #[arg(long, visible_alias = "fmt", long_help = FORMAT_LONG_HELP, value_hint = ValueHint::Other)]
   format: Option<String>,
 }
 

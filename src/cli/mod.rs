@@ -2,13 +2,15 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueHint};
 
 use crate::App;
 
 mod base;
 mod check;
 mod commit;
+mod complete;
+mod completions;
 mod config_command;
 mod graph;
 mod list;
@@ -52,19 +54,23 @@ macro_rules! git {
 }
 
 #[derive(Debug, Parser)]
+#[command(
+  long_version = env!("CARGO_PKG_VERSION"),
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Path to a project-level config file to use
-  #[arg(long)]
+  #[arg(long, value_hint = ValueHint::FilePath)]
   pub config: Option<PathBuf>,
 
   /// Path to a git directory to use
-  #[arg(long)]
+  #[arg(long, value_hint = ValueHint::DirPath)]
   pub git_dir: Option<PathBuf>,
 
-  /// Path to a git worktree to use. "work-tree" is an invisible alias in case anyone is used to
-  /// git's option with the same spelling
-  #[arg(long, visible_alias = "wt", alias = "work-tree", requires = "git_dir")]
-  pub worktree: Option<PathBuf>,
+  /// Path to a git worktree to use
+  #[arg(long, visible_alias = "wt", requires = "git_dir", value_hint = ValueHint::DirPath)]
+  pub work_tree: Option<PathBuf>,
 
   #[command(subcommand)]
   pub command: Command,
@@ -93,6 +99,8 @@ pub enum Command {
 
   // ==== META / FEATURE COMMANDS ====
   Config(config_command::Args),
+  Completions(completions::Args),
+  Complete(complete::Args),
 }
 
 pub fn run(state: App) -> anyhow::Result<()> {
@@ -111,5 +119,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Graph(args) => args.run(&state),
     Command::Show(args) => args.run(&state),
     Command::Config(args) => args.run(&state.config),
+    Command::Completions(args) => args.run(),
+    Command::Complete(args) => args.run(&state),
   }
 }

@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use clap::ValueHint;
 use git2::ErrorCode;
 
 use crate::App;
@@ -18,7 +19,12 @@ Use "-S=false" to force the summary to appear.
 Use "-S" to force the summary to be hidden."#;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Show info about a commit", long_about = LONG_ABOUT)]
+#[command(
+  about = "Show info about a commit",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Hide the diff summary
   #[arg(short = 'S', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
@@ -37,7 +43,7 @@ pub struct Args {
   pub paging: Option<PageWhen>,
 
   /// The git revision string, e.g. HEAD^2, commit hash, branch name. See "man gitrevisions".
-  #[arg(value_name = "REV")]
+  #[arg(value_name = "REVISION", value_hint = ValueHint::Other)]
   pub revision: Option<String>,
 }
 
