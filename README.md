@@ -83,16 +83,9 @@ Here's a summary of the feature workflow:
 
 ### Features
 
-- abbreviations
-  - most commands should accept the shortest possible prefix to uniquely identify its target
-  - branch targets, e.g. `feature update <base>`, `feature start --from <base>`
-    - search refs/heads/* only
-    - `feature list` should bold the unique prefix of each branch
-  - make `feature commit --to` only accpet branches
-  - upon ambiguity, print candidates and tell the user to run the command again
-  - `feature show` takes a revision, currently uses `revparse_single`, not sure if this can accept 2 char hash prefixes
-- start: arbitary variable substitutions
-  - map keys to values in config, use those keys in branch name template replacement
+- start: better user substitution
+  - using git user.name isn't very good since it often has capitalization and spaces
+  - needs a dedicated config variable, "feature.user" in git config
 - undo
   - uses reflog, undoes latest change
 - stash
@@ -106,13 +99,9 @@ Here's a summary of the feature workflow:
 - mod (submodule commands)
   - `ft mod sync` - run sync in all modules
   - `ft mod start` - start a branch with the same name in each module
+  - each module can have its own feature config
 - worktree
   - open an interactive menu to pick a branch and create a worktree from it
   - or use specified branch in command line
-- diff
-  - basic options: --all (default), --staged, --unstaged
-  - one arg: diff arg to workdir
-  - two args: diff arg 1 to arg 2
-  - summary mode, prints like status output (print patch by default)
 - reflog
   - view reflog for a branch, select one to restore to that state
