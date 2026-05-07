@@ -4,8 +4,8 @@ use std::borrow::Cow;
 
 use anyhow::{Context, Result, anyhow};
 use git2::{
-  AutotagOption, Branch, BranchType, Commit, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid,
-  Reference, RemoteCallbacks, Repository, ResetType,
+  AutotagOption, Branch, Commit, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid, Reference,
+  RemoteCallbacks, Repository, ResetType,
 };
 
 use crate::util::display::trim_hash;
@@ -46,22 +46,6 @@ pub fn get_revert_head<'repo>(repo: &'repo Repository) -> Result<Option<Referenc
 
 pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
   Ok(branch.name_bytes()?.to_str_lossy())
-}
-
-/// Searches local and remote branches to find one matching the given name. Returns None when no
-/// matching branch is found.
-pub fn name_to_branch<'repo>(repo: &'repo Repository, name: &str) -> Result<Option<Branch<'repo>>> {
-  match repo.find_branch(name, BranchType::Local) {
-    Ok(branch) => Ok(Some(branch)),
-
-    Err(e) if e.code() == ErrorCode::NotFound => match repo.find_branch(name, BranchType::Remote) {
-      Ok(branch) => Ok(Some(branch)),
-
-      Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-      Err(e) => Err(anyhow!(e)),
-    },
-    Err(e) => Err(anyhow!(e)),
-  }
 }
 
 pub fn branch_to_commit<'repo>(branch: &Branch<'repo>) -> Result<Option<Commit<'repo>>> {

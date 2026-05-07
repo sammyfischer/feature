@@ -2,10 +2,13 @@
 
 ## Housekeeping
 
+- push non-current branch
+  - currently some of the code assumes pushes occur on current branch, but the cli supports specifying any branch
+- support remaining commit hooks
 - completions
+  - known bug: `--no-upstream=...` doesn't autocomplete boolean values (this is true for all bool flags that require '=')
   - read `--git-dir` and `--work-tree` to generate completions for the correct repo
   - add support for `--flag=value` syntax
-  - complete all static values (flag names, subcmd names, enum values, true/false)
   - custom zsh completions, maybe fish too
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
@@ -21,6 +24,8 @@
 
 ## Features
 
+- release / version tags
+  - maybe a single command to create and push a tag
 - start: better user substitution
   - using git user.name isn't very good since it often has capitalization and spaces
   - needs a dedicated config variable, "feature.user" in git config

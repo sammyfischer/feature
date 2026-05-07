@@ -8,7 +8,7 @@ macro_rules! opt_advice {
 }
 
 /// Error message when a signature is required
-pub const NO_SIGNATURE_MSG: &str = r"Failed to get default signature. You must set them with:
+pub const NO_SIGNATURE_MSG: &str = r"Failed to get default signature. You must set it with:
 
 git config user.name <name>
 git config user.email <email>";

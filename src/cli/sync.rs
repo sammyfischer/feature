@@ -1,11 +1,12 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use console::style;
-use git2::{Branch, BranchType, Commit, Diff, ObjectType, Repository, Status, StatusOptions};
+use git2::{Branch, BranchType, Commit, Diff, ObjectType, Repository};
 
 use crate::App;
 use crate::cli::prune::prune_branches;
-use crate::util::branch::{branch_to_name, fetch_all, get_current_branch_name, get_upstream};
-use crate::util::diff::DiffSummary;
+use crate::util::branch::{fetch_all, get_current_branch_name};
+use crate::util::branch_meta::BranchMeta;
+use crate::util::diff::{DiffSummary, has_workdir_changes};
 use crate::util::display::trim_hash;
 
 const LONG_ABOUT: &str = r"Updates all branches with their remotes (if they have one), then prunes merged
@@ -45,35 +46,29 @@ impl Args {
       );
     }
 
-    let current_branch =
-      get_current_branch_name(&state.repo).context("Failed to get current branch")?;
+    let current_branch = get_current_branch_name(&state.repo)?;
     let branches = state.repo.branches(Some(BranchType::Local))?;
 
     for (mut branch, _) in branches.flatten() {
-      let branch_name = branch_to_name(&branch)?.to_string();
-      let is_current = current_branch.as_ref().is_some_and(|it| *it == branch_name);
+      let branch_meta = BranchMeta::from_branch(&branch)?;
+      let is_current = current_branch
+        .as_ref()
+        .is_some_and(|it| *it == branch_meta.name());
 
-      let upstream = get_upstream(&branch)?;
+      let upstream = branch_meta.upstream(&state.repo)?;
       let Some(upstream) = upstream else {
         // no upstream, nothing to update
         continue;
       };
-      let upstream_name = branch_to_name(&upstream)?;
+      let upstream_meta = BranchMeta::from_branch(&upstream)?;
 
       if is_current {
         // check for local changes
-        if has_local_changes(&state.repo)? {
-          eprintln!(
-            r"Cannot update {} with uncommitted changes. You resolve this by:
-
-1. Stashing the changes
-  git stash push -m <message>
-  feature sync or git pull
-
-2. Discarding the changes
-  git reset --hard <upstream_name>
-",
-            branch_name
+        if has_workdir_changes(&state.repo)? {
+          println!(
+            "{} {} due to local changes",
+            style("Skipping").yellow(),
+            branch_meta.name()
           );
           continue;
         }
@@ -82,13 +77,18 @@ impl Args {
       if let Err(e) = fast_forward(
         &state.repo,
         &mut branch,
-        &branch_name,
+        &branch_meta,
         &upstream,
-        &upstream_name,
+        &upstream_meta,
         is_current,
         self.dry_run,
       ) {
-        eprintln!("Failed to update: {}", e);
+        println!(
+          "{} to update {}: {}",
+          style("Failed").red(),
+          branch_meta.name(),
+          e
+        );
         continue;
       }
     }
@@ -107,9 +107,9 @@ impl Args {
 fn fast_forward(
   repo: &Repository,
   branch: &mut Branch,
-  branch_name: &str,
+  branch_meta: &BranchMeta,
   upstream: &Branch,
-  upstream_name: &str,
+  upstream_meta: &BranchMeta,
   current: bool,
   dry_run: bool,
 ) -> Result<()> {
@@ -125,22 +125,9 @@ fn fast_forward(
 
   if !can_ff {
     return Err(anyhow!(
-      r"{0} cannot be fast-forwarded. You can resolve this by:
-
-1. Forcing the branches to match:
-  git checkout {0}
-  git reset --hard {1}
-
-2. Manually merging or rebasing:
-  git checkout {0}
-  git merge/rebase {1}
-
-Option (1) is recommended for base branches that are supposed to reflect the
-remote copy rather than be modified directly (e.g. if you're working on a
-project with others, or the branch has branch protections on the remote).
-",
-      branch_name,
-      upstream_name
+      "{} and {} have diverged",
+      branch_meta.name(),
+      upstream_meta.name()
     ));
   }
 
@@ -152,7 +139,7 @@ project with others, or the branch has branch protections on the remote).
   diff.find_similar(None)?;
 
   if dry_run {
-    display_update(branch_name, &diff, &branch_tip)?;
+    display_update(branch_meta.name(), &diff, &branch_tip)?;
     return Ok(());
   }
 
@@ -162,44 +149,14 @@ project with others, or the branch has branch protections on the remote).
     repo.reset(&obj, git2::ResetType::Hard, None)?;
   } else {
     // for other branches, we just move them to the upstream commit
-    branch
-      .get_mut()
-      .set_target(upstream_tip.id(), "feature sync fast-forward")?;
+    branch.get_mut().set_target(
+      upstream_tip.id(),
+      &format!("feature sync: fast-forward to {}", upstream_meta.refname()),
+    )?;
   }
 
-  display_update(branch_name, &diff, &branch_tip)?;
+  display_update(branch_meta.name(), &diff, &branch_tip)?;
   Ok(())
-}
-
-/// Whether there are any uncommitted changes
-fn has_local_changes(repo: &Repository) -> Result<bool> {
-  let mut opts = StatusOptions::new();
-  opts.include_untracked(false);
-
-  let statuses = repo
-    .statuses(Some(&mut opts))
-    .expect("Failed to get repository statuses");
-
-  for entry in &statuses {
-    let status = entry.status();
-
-    if status.intersects(
-      Status::INDEX_NEW
-        | Status::INDEX_MODIFIED
-        | Status::INDEX_DELETED
-        | Status::INDEX_RENAMED
-        | Status::INDEX_TYPECHANGE
-        | Status::WT_MODIFIED
-        | Status::WT_DELETED
-        | Status::WT_RENAMED
-        | Status::WT_TYPECHANGE,
-    ) {
-      // return true immediately if any of the above changes are found
-      return Ok(true);
-    }
-  }
-
-  Ok(false)
 }
 
 fn display_update(branch_name: &str, diff: &Diff, old_commit: &Commit) -> Result<()> {
