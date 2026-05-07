@@ -7,7 +7,7 @@ use git2::{
   Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, PushOptions, RemoteCallbacks, Repository,
 };
 
-use crate::util::branch::{get_ahead_behind, soft_reset};
+use crate::util::branch::{get_ahead_behind, hard_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
 use crate::util::lossy::ToStrLossy;
@@ -21,7 +21,6 @@ const UPSTREAM_DIVERGED_MSG: &str = r"Branch has diverged from its upstream. You
 
 1. Resolve the differences, for example:
    • git pull [--merge | --rebase]
-   • git cherry-pick (each new commit on upstream)
 2. Push again. You'll most likely need to force push if you've done any
    cherry-picks or rebases.";
 
@@ -106,7 +105,7 @@ impl Args {
       // fast-forward the branch
       PushCheckStatus::Behind => {
         if let Some(upstream) = upstream.as_ref() {
-          soft_reset(&state.repo, &upstream.resolve(&state.repo)?)?;
+          hard_reset(&state.repo, &upstream.resolve(&state.repo)?)?;
           println!(
             "{}",
             style!("Fast-forwarded {} to {}", branch.name(), upstream.name()).dim()
@@ -126,7 +125,7 @@ impl Args {
       PushCheckStatus::Ahead => {}
       PushCheckStatus::Behind => {
         if let Some(base) = base {
-          soft_reset(&state.repo, &base.resolve(&state.repo)?)?;
+          hard_reset(&state.repo, &base.resolve(&state.repo)?)?;
           println!(
             "{}",
             style!("Fast-forwarded {} to {}", branch.name(), base.name()).dim()
