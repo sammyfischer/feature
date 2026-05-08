@@ -4,7 +4,12 @@
 
 - push non-current branch
   - currently some of the code assumes pushes occur on current branch, but the cli supports specifying any branch
-- support remaining commit hooks
+- support remaining commit hooks. order:
+  - prepare-commit-msg (processing on msg, before editor is invoked)
+  - commit-msg (post-processing on msg, after editor)
+  - pre-commit
+  - post-commit
+  - post-rewrite (after amend/rebase only)
 - completions
   - known bug: `--no-upstream=...` doesn't autocomplete boolean values (this is true for all bool flags that require '=')
   - read `--git-dir` and `--work-tree` to generate completions for the correct repo

@@ -8,13 +8,13 @@ use std::process::Command;
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::{strip_ansi_codes, style};
-use git2::{Commit, Diff, ErrorCode, Reference, Repository};
+use git2::{Commit, Diff, DiffOptions, ErrorCode, Reference, Repository, Tree};
 
 use crate::App;
 use crate::config::Config;
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
-  get_current_branch_or_commit, get_head, get_merge_head, get_pick_head, get_revert_head,
+  get_current_branch_name, get_head, get_merge_head, get_pick_head, get_revert_head,
 };
 use crate::util::diff::{DiffSummary, has_index_changes};
 use crate::util::display::{
@@ -123,18 +123,13 @@ impl Args {
       },
     };
 
-    // all the info needed for amend
     if self.amend {
       return self.amend(state, target);
     }
 
-    let signature = get_signature(&state.repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
-    let mut index = state.repo.index()?;
-    let index_tree_id = index.write_tree()?;
-    let index_tree = state.repo.find_tree(index_tree_id)?;
-
     let commit_type = get_commit_type(&state.repo);
 
+    // get starter msg
     let mut msg = {
       let cli_msg = self.words.join(" ");
 
@@ -154,35 +149,33 @@ impl Args {
       }
     }
 
+    self.pre_commit(&state.repo)?;
+
+    let (tree, diff) = self.get_changes(
+      &state.repo,
+      match &target {
+        Some(target) => Some(&target.commit),
+        None => None,
+      },
+    )?;
+    let sig = get_signature(&state.repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
+
+    // get final msg
     if self.edit {
       msg = self.invoke_editor(
         &state.repo,
-        &build_msg_template(&state.repo, msg.as_bytes(), target.as_ref())?,
+        &build_msg_template(
+          msg.as_bytes(),
+          target.as_ref().map(|it| it.display_name.as_str()),
+          &diff,
+        )?,
       )?;
     } else if msg.trim().is_empty() {
       return Err(anyhow!("Must specify a commit message!"));
     }
 
-    let old_tree = match &target {
-      Some(it) => Some(it.commit.tree()?),
-      None => None,
-    };
-
-    let mut parent_commits: Vec<&Commit> =
-      target.as_ref().map(|it| &it.commit).into_iter().collect();
-
-    // if MERGE_HEAD exists, make sure to add it as a parent
-    let merge_head = get_merge_head(&state.repo)?;
-    let merge_commit_list: Vec<Commit> = match merge_head.as_ref() {
-      Some(it) => it.peel_to_commit().into_iter().collect(),
-      None => Vec::new(),
-    };
-
-    for merge_commit in &merge_commit_list {
-      parent_commits.push(merge_commit);
-    }
-
-    self.pre_commit(&state.repo)?;
+    let parents = self.get_parents(&state.repo, target.as_ref().map(|it| it.commit.clone()))?;
+    let parents: Vec<&Commit<'_>> = parents.iter().collect();
 
     let new_id = state
       .repo
@@ -192,39 +185,33 @@ impl Args {
           // empty repo, just update head
           None => Some("HEAD"),
         },
-        &signature,
-        &signature,
+        &sig,
+        &sig,
         &msg,
-        &index_tree,
-        &parent_commits,
+        &tree,
+        &parents,
       )
       .context("Failed to commit")?;
 
+    let merge_head = get_merge_head(&state.repo)?;
     if let Some(merge_head) = &merge_head {
       println!(
         "{}",
         display_merge_header(
           &state.repo,
           merge_head,
-          &get_current_branch_or_commit(&state.repo)?
-            .expect("There should be a current commit after merging")
+          target.as_ref().map(|it| it.display_name.as_str())
         )?
       );
     } else {
-      let target_name = match target {
-        Some(target) => target.display_name,
-        None => get_current_branch_or_commit(&state.repo)?
-          .expect("There should be a current commit after committing"),
+      let target_name = match &target {
+        Some(target) => Some(target.display_name.clone()),
+        None => get_current_branch_name(&state.repo)?,
       };
-      println!("{}", display_commit_header(&target_name)?);
+      println!("{}", display_commit_header(target_name.as_deref())?);
     };
 
     let new_commit = state.repo.find_commit(new_id)?;
-    let mut diff =
-      state
-        .repo
-        .diff_tree_to_tree(old_tree.as_ref(), Some(&new_commit.tree()?), None)?;
-    diff.find_similar(None)?;
 
     println!(
       "{}",
@@ -242,15 +229,18 @@ impl Args {
 
   fn amend(&self, state: &App, target: Option<CommitTarget>) -> Result<()> {
     let target = target.ok_or(anyhow!("No current commit to amend"))?;
+    self.pre_commit(&state.repo)?;
 
-    let signature = state.repo.signature().context(NO_SIGNATURE_MSG)?;
+    let (tree, diff) = self.get_changes(&state.repo, Some(&target.commit))?;
+    let sig = state.repo.signature().context(NO_SIGNATURE_MSG)?;
+
+    // get commit msg
     let cli_msg = self.words.join(" ");
-
     let msg = if self.edit {
       let old_msg = target.commit.message_bytes();
       Some(self.invoke_editor(
         &state.repo,
-        &build_msg_template(&state.repo, old_msg, Some(&target))?,
+        &build_msg_template(old_msg, Some(&target.display_name), &diff)?,
       )?)
     } else if !cli_msg.is_empty() {
       Some(cli_msg)
@@ -258,23 +248,13 @@ impl Args {
       None // use existing msg
     };
 
-    self.pre_commit(&state.repo)?;
-
-    let mut index = state.repo.index()?;
-    let tree_id = index.write_tree()?;
-    let tree = state.repo.find_tree(tree_id)?;
-
     // amend the commit
     let new_id = target
       .commit
       .amend(
         target.refname.as_deref(),
-        if self.reset_author {
-          Some(&signature)
-        } else {
-          None
-        },
-        Some(&signature),
+        if self.reset_author { Some(&sig) } else { None },
+        Some(&sig),
         None,
         msg.as_deref(),
         Some(&tree),
@@ -287,18 +267,87 @@ impl Args {
     );
 
     let new_commit = state.repo.find_commit(new_id)?;
-    let mut diff = state.repo.diff_tree_to_tree(
-      Some(&target.commit.tree()?),
-      Some(&new_commit.tree()?),
-      None,
-    )?;
-    diff.find_similar(None)?;
-
     println!(
       "{}",
       display_commit_details(&new_commit, &diff, &state.config)?
     );
     Ok(())
+  }
+
+  /// Computes the changes to commit.
+  ///
+  /// # Returns
+  /// A tuple containing the tree to apply and a diff of the changes
+  fn get_changes<'repo>(
+    &self,
+    repo: &'repo Repository,
+    target: Option<&Commit>,
+  ) -> Result<(Tree<'repo>, Diff<'repo>)> {
+    // compute changes to commit
+    let head = get_head(repo)?;
+    let base_tree = match head {
+      Some(head) => Some(head.peel_to_tree()?),
+      None => None,
+    };
+    let target_tree = match target {
+      Some(target) => Some(target.tree()?),
+      None => None,
+    };
+
+    let mut index = repo.index()?;
+    let index_tree = {
+      let id = index.write_tree()?;
+      repo.find_tree(id)?
+    };
+
+    let mut opts = DiffOptions::new();
+    opts.context_lines(0); // context lines will cause conflicts most of the time
+    let mut changes =
+      repo.diff_tree_to_tree(base_tree.as_ref(), Some(&index_tree), Some(&mut opts))?;
+
+    changes.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+      print!("{}", line.content().to_str_lossy());
+      true
+    })?;
+
+    let Some(target_tree) = target_tree else {
+      changes.find_similar(None)?;
+      return Ok((index_tree, changes));
+    };
+
+    let mut index = match repo.apply_to_tree(&target_tree, &changes, None) {
+      Ok(index) => Ok(index),
+      Err(e) if e.code() == ErrorCode::ApplyFail => Err(anyhow!(
+        "The staged changes cannot be committed because they would result in a conflict.\
+        Check with \"git diff --cached{}\", and adjust staged changes accordingly.",
+        match &self.to {
+          Some(to) => format!(" {}", to),
+          None => "".to_string(),
+        }
+      )),
+      Err(e) => Err(e.into()),
+    }?;
+    let id = index.write_tree_to(repo)?;
+
+    changes.find_similar(None)?;
+    Ok((repo.find_tree(id)?, changes))
+  }
+
+  /// Gets the parents of the new commit
+  fn get_parents<'repo>(
+    &self,
+    repo: &'repo Repository,
+    target: Option<Commit<'repo>>,
+  ) -> Result<Vec<Commit<'repo>>> {
+    let mut parents: Vec<Commit> = target.into_iter().collect();
+
+    // if MERGE_HEAD exists, make sure to add it as a parent
+    if let Some(merge_head) = get_merge_head(repo)? {
+      let merge_commit = merge_head.peel_to_commit()?;
+      parents.push(merge_commit);
+    }
+
+    Ok(parents)
   }
 
   fn pre_commit(&self, repo: &Repository) -> Result<()> {
@@ -462,33 +511,22 @@ fn get_initial_msg(repo: &Repository, commit_type: &CommitType) -> Result<String
 ///
 /// # Params
 /// - `initial` - the pre-filled commit message (should usually end with a newline)
-/// - `target` - a user-friendly name for where the commit is being applied
+/// - `to` - a user-friendly name for where the commit is being applied. None when there are no commits in the repo
 /// - `diff` - the changes in the commit
 ///
 /// # Returns
 /// The text that should populate COMMIT_EDITMSG
-fn build_msg_template(
-  repo: &Repository,
-  initial: &[u8],
-  target: Option<&CommitTarget>,
-) -> Result<Vec<u8>> {
+fn build_msg_template(initial: &[u8], to: Option<&str>, diff: &Diff) -> Result<Vec<u8>> {
   let mut out: Vec<u8> = Vec::with_capacity(1000);
   out.extend_from_slice(initial);
 
-  if let Some(target) = target {
-    out.extend_from_slice(format!("\n# Committing on {}", target.display_name).as_bytes());
+  if let Some(to) = to {
+    out.extend_from_slice(format!("\n# Committing on {}", to).as_bytes());
   } else {
     out.extend_from_slice(b"\n# Initial commit");
   }
 
-  let tree = match target {
-    Some(target) => Some(target.commit.tree()?),
-    None => None,
-  };
-
-  let mut diff = repo.diff_tree_to_index(tree.as_ref(), None, None)?;
-  diff.find_similar(None)?;
-  let summary = DiffSummary::new(&diff)?;
+  let summary = DiffSummary::new(diff)?;
   let summary = summary.to_string();
 
   for line in summary.lines() {
@@ -501,86 +539,69 @@ fn build_msg_template(
 /// Displays the header-line for a regular commit
 ///
 /// Committed hash to branch as Author Name
-fn display_commit_header(target: &str) -> Result<String> {
-  use std::fmt::Write;
-  let mut out = String::with_capacity(80);
-
-  write!(out, "{}", style("Committed").green())?;
-  write!(out, " to {}", style(target).blue())?;
-
-  Ok(out)
+fn display_commit_header(target: Option<&str>) -> Result<String> {
+  Ok(format!(
+    "{} to {}",
+    style("Committed").green(),
+    match target {
+      Some(it) => style(it).blue(),
+      None => style("unknown").red(),
+    }
+  ))
 }
 
 /// Displays the header-line for an amend
 ///
 /// `Amended <old hash> on <branch> as <Author Name>`
 fn display_amend_header(old_commit: &Commit, target: &str) -> Result<String> {
-  use std::fmt::Write;
-  let mut out = String::with_capacity(80);
-
-  write!(out, "{}", style("Amended").green())?;
-  write!(out, " {}", display_hash(old_commit)?)?;
-  write!(out, " on {}", style(target).blue())?;
-
-  Ok(out)
+  Ok(format!(
+    "{} {} on {}",
+    style("Amended").green(),
+    display_hash(old_commit)?,
+    style(target).blue()
+  ))
 }
 
 /// Displays the header line for a merge commit
 ///
 /// `Merged <base> into <branch>: <hash> as <Author Name>`
-fn display_merge_header(repo: &Repository, merge_head: &Reference, head: &str) -> Result<String> {
-  use std::fmt::Write;
-  let mut out = String::with_capacity(80);
-
+fn display_merge_header(
+  repo: &Repository,
+  merge_head: &Reference,
+  head: Option<&str>,
+) -> Result<String> {
   let merge_commit = merge_head.peel_to_commit()?;
-  let from = resolve_commit_name(repo, &merge_commit)?;
+  let from = style(resolve_commit_name(repo, &merge_commit)?).blue();
 
-  write!(out, "{}", style("Merged").green())?;
-  write!(
-    out,
-    " {} into {}",
-    style(from).blue(),
-    style(head).magenta()
-  )?;
+  let to = match head {
+    Some(it) => style(it).magenta().to_string(),
+    None => get_current_branch_name(repo)?
+      .map(|it| style(it).magenta().to_string())
+      .unwrap_or(style("unknown").red().to_string()),
+  };
 
-  Ok(out)
+  Ok(format!("{} {} into {}", style("Merged").green(), from, to))
 }
 
 /// Displays the remaining commit details in the same format as `feature show`, with two exceptions:
 /// 1. The time is always absolute
 /// 2. It always displays the entire commit message
 fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &Config) -> Result<String> {
-  use std::fmt::Write;
-  let mut out = String::with_capacity(200);
-
-  write!(
-    out,
-    "{}",
-    display_commit(
-      commit,
-      &DisplayCommitOptions {
-        time: DisplayTimeOptions {
-          // relative is not useful, commit just occured
-          relative: false,
-          date: config.format.date,
-          hour: config.format.hour,
-          timezone: config.format.timezone
-        },
-        // want the user to see the entire message just for reference
-        message: DisplayCommitMessageLevel::Full
-      }
-    )?
+  let commit_output = display_commit(
+    commit,
+    &DisplayCommitOptions {
+      time: DisplayTimeOptions {
+        // relative is not useful, commit just occured
+        relative: false,
+        date: config.format.date,
+        hour: config.format.hour,
+        timezone: config.format.timezone,
+      },
+      // want the user to see the entire message just for reference
+      message: DisplayCommitMessageLevel::Full,
+    },
   )?;
 
-  let summary = DiffSummary::new(diff);
-
-  write!(
-    out,
-    "\n\n{}",
-    match summary {
-      Ok(it) => it.to_string(),
-      Err(_) => style("Failed to get commit changes").red().to_string(),
-    }
-  )?;
-  Ok(out)
+  let summary = DiffSummary::new(diff)?;
+  Ok(format!("{}\n\n{}", commit_output, summary))
 }
