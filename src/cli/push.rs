@@ -7,7 +7,7 @@ use git2::{
   Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, PushOptions, RemoteCallbacks, Repository,
 };
 
-use crate::util::branch::{get_ahead_behind, hard_reset};
+use crate::util::branch::get_ahead_behind;
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
 use crate::util::lossy::ToStrLossy;
@@ -90,29 +90,28 @@ impl Args {
 
     // fetches the latest upstream, checks if new changes can be resolved
     match check_upstream(&state.repo, &branch, upstream.as_ref(), self.force)? {
-      // do nothing, no upstream to check
+      // continue, no upstream to check
       PushCheckStatus::NoBranch => {}
 
-      // do nothing, the user wants to push
+      // push no matter what
       PushCheckStatus::Forced => {}
 
-      // do nothing, push is possible
-      PushCheckStatus::UpToDate => {}
-
-      // local is ahead, safe to push
-      PushCheckStatus::Ahead => {}
-
-      // fast-forward the branch
-      PushCheckStatus::Behind => {
-        if let Some(upstream) = upstream.as_ref() {
-          hard_reset(&state.repo, &upstream.resolve(&state.repo)?)?;
-          println!(
-            "{}",
-            style!("Fast-forwarded {} to {}", branch.name(), upstream.name()).dim()
-          );
-        }
+      // nothing to push
+      PushCheckStatus::UpToDate => {
+        println!("Already up to date, nothing to push");
+        return Ok(());
       }
 
+      // safe to push
+      PushCheckStatus::Ahead => {}
+
+      // nothing to push
+      PushCheckStatus::Behind => {
+        println!("Branch is behind remote, nothing new to push");
+        return Ok(());
+      }
+
+      // unsafe to push
       PushCheckStatus::Diverged => return Err(anyhow!(UPSTREAM_DIVERGED_MSG)),
     }
 
@@ -123,15 +122,7 @@ impl Args {
       PushCheckStatus::Forced => {}
       PushCheckStatus::UpToDate => {}
       PushCheckStatus::Ahead => {}
-      PushCheckStatus::Behind => {
-        if let Some(base) = base {
-          hard_reset(&state.repo, &base.resolve(&state.repo)?)?;
-          println!(
-            "{}",
-            style!("Fast-forwarded {} to {}", branch.name(), base.name()).dim()
-          );
-        }
-      }
+      PushCheckStatus::Behind => {}
       PushCheckStatus::Diverged => return Err(anyhow!(BASE_DIVERGED_MSG)),
     };
 
@@ -368,8 +359,7 @@ pub fn check_base(
     return Ok(PushCheckStatus::Forced);
   }
 
-  let base_ref = base.resolve(repo)?;
-  let ab = get_ahead_behind(repo, &branch.resolve(repo)?, &base_ref)?;
+  let ab = get_ahead_behind(repo, &branch.resolve(repo)?, &base.resolve(repo)?)?;
 
   Ok(match ab {
     // already up to date, continue with push

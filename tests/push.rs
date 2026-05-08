@@ -17,9 +17,8 @@ fn create_upstream_and_feature_branch() -> (TestRepo, TestRemote) {
 
   // create new branch and commit
   local.feature(&["start", "feature1"]).success();
-  local.write_file("feature1.txt", "feature 1");
-  local.git(&["add", "."]).success();
-  local.feature(&["commit", "impl", "feature1"]).success();
+  local.write_file("feature1.txt", "B");
+  local.commit_all("B");
 
   (local, remote)
 }
@@ -59,6 +58,32 @@ fn creates_upstream() {
 
   let text = local.list_branches_and_upstreams();
   assert!(text.contains("refs/heads/feature1 refs/remotes/origin/feature1"));
+}
+
+/// Should push the specified branch rather than current, if it exists
+#[test]
+fn pushes_different_branch() {
+  let (local, _remote) = create_upstream_and_feature_branch();
+
+  // keep some local changes in the workdir
+  local.write_file("file.txt", "C");
+
+  // create new branch from main, don't switch to it
+  local
+    .feature(&["start", "--stay", "--from", "main", "feature2"])
+    .success();
+
+  local.feature(&["push", "feature2"]).success();
+
+  let text = local.list_branches_and_upstreams();
+  assert!(text.contains("refs/heads/feature2 refs/remotes/origin/feature2"));
+
+  // make sure local changes weren't lost
+  assert_eq!(
+    fs::read_to_string(local.path().join("file.txt")).unwrap(),
+    "C",
+    "Workdir should not be modified"
+  );
 }
 
 /// Force pushing should always overwrite the remote branch

@@ -197,7 +197,7 @@ pub fn fetch_all(repo: &Repository) -> Result<()> {
   Ok(())
 }
 
-/// Reset current branch and HEAD to branch_ref
+/// Reset current branch and HEAD to `branch`
 pub fn hard_reset(repo: &Repository, branch: &Reference) -> Result<()> {
   let obj = repo.find_object(branch.peel_to_commit()?.id(), Some(ObjectType::Commit))?;
   repo.reset(&obj, ResetType::Hard, None)?;

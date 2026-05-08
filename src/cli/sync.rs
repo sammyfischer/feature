@@ -1,10 +1,10 @@
 use anyhow::{Result, anyhow};
 use console::style;
-use git2::{Branch, BranchType, Commit, Diff, ObjectType, Repository};
+use git2::{Branch, BranchType, Commit, Diff, Repository};
 
 use crate::App;
 use crate::cli::prune::prune_branches;
-use crate::util::branch::{fetch_all, get_current_branch_name};
+use crate::util::branch::{fetch_all, get_current_branch_name, hard_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::{DiffSummary, has_workdir_changes};
 use crate::util::display::trim_hash;
@@ -145,8 +145,7 @@ fn fast_forward(
 
   if current {
     // to update the current branch, we also need to update HEAD. this is just a hard reset
-    let obj = repo.find_object(upstream_tip.id(), Some(ObjectType::Commit))?;
-    repo.reset(&obj, git2::ResetType::Hard, None)?;
+    hard_reset(repo, upstream.get())?;
   } else {
     // for other branches, we just move them to the upstream commit
     branch.get_mut().set_target(
