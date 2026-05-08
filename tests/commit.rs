@@ -167,22 +167,50 @@ fn merge_commit_uses_merge_msg() {
 fn commits_to_target_branch() {
   let repo = TestRepo::new();
   let file_name = "file.txt";
-  repo.write_file(file_name, "A");
+  // commit A to main
+  repo.write_file(file_name, "A\n");
   repo.commit_all("A");
 
+  // commit B to topic
   repo.feature(&["start", "topic"]).success();
-  repo.write_file(file_name, "B");
-  repo.git(&["add", "."]).success();
-  repo.feature(&["commit", "--to", "main", "B"]).success();
+  repo.write_file(file_name, "B\n");
+  repo.commit_all("B");
 
+  // commit X to topic2 from topic
+  repo
+    .feature(&["start", "--stay", "--from", "main", "topic2"])
+    .success();
+  repo.append_file(file_name, "X\n");
+  repo.git(&["add", file_name]).success();
+  repo.feature(&["commit", "--to", "topic2", "X"]).success();
+
+  // commits ended up in the right place
   assert_eq!(
-    repo.list_commit_subjects("main").trim(),
-    "B\nA",
-    "Commit B should have gone to main"
+    repo.list_commit_subjects("topic2"),
+    "X\nA",
+    "Commit X should have gone to topic2"
   );
+  assert!(
+    !repo.list_commit_subjects("topic").starts_with("X"),
+    "Commit X should not have gone to topic"
+  );
+
+  // commits contain correct changes
+  let cmd = repo
+    .git(&["show", &format!("topic2:{}", file_name)])
+    .success();
   assert_eq!(
-    repo.list_commit_subjects("topic").trim(),
-    "A",
-    "Commit B should not have gone to topic"
+    get_stdout!(cmd).trim(),
+    "A\nX",
+    "topic2 contains the wrong changes"
+  );
+
+  let cmd = repo
+    .git(&["show", &format!("topic:{}", file_name)])
+    .success();
+  assert_eq!(
+    get_stdout!(cmd).trim(),
+    "B",
+    "topic contains the wrong changes"
   );
 }

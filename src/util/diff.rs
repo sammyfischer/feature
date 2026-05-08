@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Delta, Diff, DiffLineType};
+use git2::{Delta, Diff, DiffLineType, Repository, Status, StatusOptions};
 use which::which;
 
 use crate::util::display::display_plus_minus;
@@ -331,4 +331,56 @@ pub fn get_formatted_diff(diff: &Diff) -> Result<Vec<u8>> {
     // just return the bytes
     Ok(bytes)
   }
+}
+
+/// Whether there are any staged or unstaged changes
+pub fn has_workdir_changes(repo: &Repository) -> Result<bool> {
+  let mut opts = StatusOptions::new();
+  opts.include_untracked(false);
+  let statuses = repo.statuses(Some(&mut opts))?;
+  let mut has_changes = false;
+
+  let flags = Status::INDEX_NEW
+    | Status::INDEX_MODIFIED
+    | Status::INDEX_DELETED
+    | Status::INDEX_RENAMED
+    | Status::INDEX_TYPECHANGE
+    | Status::WT_MODIFIED
+    | Status::WT_DELETED
+    | Status::WT_RENAMED
+    | Status::WT_TYPECHANGE;
+
+  for entry in statuses.iter() {
+    let st = entry.status();
+    if st.intersects(flags) {
+      has_changes = true;
+      break;
+    }
+  }
+
+  Ok(has_changes)
+}
+
+/// Whether there are any staged changes
+pub fn has_index_changes(repo: &Repository) -> Result<bool> {
+  let mut opts = StatusOptions::new();
+  opts.include_untracked(false);
+  let statuses = repo.statuses(Some(&mut opts))?;
+  let mut has_changes = false;
+
+  let flags = Status::INDEX_NEW
+    | Status::INDEX_MODIFIED
+    | Status::INDEX_DELETED
+    | Status::INDEX_RENAMED
+    | Status::INDEX_TYPECHANGE;
+
+  for entry in statuses.iter() {
+    let st = entry.status();
+    if st.intersects(flags) {
+      has_changes = true;
+      break;
+    }
+  }
+
+  Ok(has_changes)
 }
