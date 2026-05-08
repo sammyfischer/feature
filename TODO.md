@@ -2,8 +2,6 @@
 
 ## Housekeeping
 
-- push non-current branch
-  - currently some of the code assumes pushes occur on current branch, but the cli supports specifying any branch
 - support remaining commit hooks. order:
   - prepare-commit-msg (processing on msg, before editor is invoked)
   - commit-msg (post-processing on msg, after editor)
