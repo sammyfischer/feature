@@ -78,6 +78,10 @@ _feature() {
         cmd="completions"
         ;;
 
+      feature,end)
+        cmd="end"
+        ;;
+
       feature,graph)
         cmd="graph"
         ;;
@@ -250,6 +254,25 @@ _feature() {
           ;;
         *)
           COMPREPLY=( $(compgen -W "$keys" -- "$cur"))
+          ;;
+      esac
+      ;;
+
+    end)
+      local opts="--help -r --remote -f --force --base"
+      case "$prev" in
+        --base)
+          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          ;;
+        *)
+          case "$cur" in
+            "" | -*)
+              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+              ;;
+            *)
+              COMPREPLY=()
+              ;;
+          esac
           ;;
       esac
       ;;

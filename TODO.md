@@ -27,6 +27,9 @@
 
 ## Features
 
+- auto merge/rebase
+  - when branches have diverged, preventing a push, check if a merge/rebase would result in conflicts, then do it automatically
+  - use default git push config to determine whether to merge or rebase
 - release / version tags
   - maybe a single command to create and push a tag
 - start: better user substitution

@@ -69,6 +69,7 @@ This is similar to `git rebase` except that:
 
 ```bash
 feature push
+feature push -r origin -u my-feature-branch feature-branch
 ```
 
 Pushes this branch to remote.
@@ -76,18 +77,45 @@ Pushes this branch to remote.
 This is similar to `git push` except that:
 
 - you never need to specify the upstream with `-u`
-  - if it's your first push, it will push to the default remote with the same name
+  - if it's your first push, it will push a branch with the same name to the default remote
   - on subsequent pushes, it uses the existing upstream name
 - it performs checks against the upstream and base, if they exist
   - these checks ensure that new commits are reflected in the branch before you push
   - feature automatically fetches the upstream and base to ensure the latest commits are being checked
-  - if an automatic fast-forward can be done safely, then it does that and continues with the push
-  - if the branches have diverged, stops and asks the user to bring in the changes manually
+  - if the branches have diverged, feature stops and asks the user to bring in the changes manually
   - `--force` skips these checks
 
 ![First-time push terminal outupt](../screenshots/push.png)
 
 ![Subsequent push terminal outupt](../screenshots/push2.png)
+
+## Check
+
+```bash
+feature check
+feature check feature-branch --base main
+```
+
+Performs the same checks that `feature push` does without ever attempting to perform a push. This is useful if you just want to make sure a branch is up-to-date with its upstream and base.
+
+This command will fetch the latest upstream (if it exists) and base (if it's a remote branch).
+
+## End
+
+```bash
+feature end
+feature end feature-branch
+```
+
+Ends a feature branch. If no branch is specified, uses the current branch.
+
+"Ending" the branch means that feature will delete the branch if all changes are merged into main. Optionally, it can delete the branch's remote counterpart. It won't delete the branch if it's not merged into main, unless `--force` is used.
+
+This is similar to `git branch -d` except:
+
+- you can run it on the current branch
+- it fetches the latest base branch before checking if it's merged
+- it can delete the branch from remote
 
 ## Sync
 

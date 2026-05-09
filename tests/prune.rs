@@ -157,3 +157,54 @@ fn prunes_merged_deleted_branches() {
 
   assert!(!stdout.contains("topic"), "topic should be deleted");
 }
+
+/// Should prune branches that have been squashed and merged from remote
+#[test]
+fn prunes_with_squash_workflow() {
+  let file_name = "file.txt";
+  let local = TestRepo::new();
+  let remote = TestRepo::new();
+  local
+    .git(&["remote", "add", "origin", remote.path().to_str().unwrap()])
+    .success();
+  remote.git(&["switch", "-c", "hidden-branch"]).success();
+
+  // commit A to main
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // commit B1 and B2 to feature
+  local.feature(&["start", "topic"]).success();
+  for msg in ["B1", "B2"] {
+    local.write_file(file_name, msg);
+    local.commit_all(msg);
+  }
+  local.git(&["push", "-u", "origin", "topic"]).success();
+
+  // squash and merge from remote like github
+  remote.git(&["switch", "main"]).success();
+  remote.git(&["merge", "--squash", "topic"]).success();
+  remote.git(&["commit", "-m", "B"]).success();
+  remote.git(&["branch", "-D", "topic"]).success();
+
+  // update main branches locally
+  local.git(&["switch", "main"]).success();
+  local.git(&["pull"]).success();
+
+  // ensure we have the squash commit
+  assert_eq!(
+    local.list_commit_subjects("main").trim(),
+    "B\nA",
+    "main should have the squash commit"
+  );
+
+  // ensure prune deletes topic
+  local.feature(&["prune"]).success();
+  assert!(
+    !local
+      .list_branches_and_upstreams()
+      .trim()
+      .contains("refs/heads/topic"),
+    "topic should have been pruned"
+  );
+}

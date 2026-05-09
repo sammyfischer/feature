@@ -10,8 +10,7 @@ use git2::{
 use crate::util::branch::get_ahead_behind;
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
-use crate::util::lossy::ToStrLossy;
-use crate::util::{credentials_cb, get_update_tips_cb};
+use crate::util::{credentials_cb, get_push_callbacks};
 use crate::{App, data, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
@@ -382,39 +381,4 @@ pub fn check_base(
       ));
     }
   })
-}
-
-/// Configures the push callbacks
-fn get_push_callbacks<'cbs>(repo: &'cbs Repository) -> RemoteCallbacks<'cbs> {
-  let mut cbs = RemoteCallbacks::new();
-
-  cbs.credentials(credentials_cb);
-
-  // called on each remote tracking branch that's updated
-  cbs.update_tips(get_update_tips_cb(repo));
-
-  // print error if push fails
-  cbs.push_update_reference(|refname, status| {
-    // a status of Some means push was rejected
-    if let Some(msg) = status {
-      eprintln!(
-        "{} to {} {}: {}",
-        style("Push").red(),
-        refname,
-        style("failed").red(),
-        msg
-      );
-      return Err(git2::Error::from_str(msg));
-    }
-    Ok(())
-  });
-
-  // this is arbitrary text sent by the server. on github/gitlab, this usually contains info on
-  // how to create a pull request for newly pushed branches
-  cbs.sideband_progress(|bytes| {
-    print!("{}", bytes.to_str_lossy());
-    true
-  });
-
-  cbs
 }
