@@ -6,7 +6,7 @@ use console::style;
 use git2::Branch;
 
 use crate::templater::{LongVar, ShortVar, Templater};
-use crate::util::branch::branch_to_commit;
+use crate::util::branch::{branch_to_commit, switch};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::get_signature;
 use crate::util::lossy::ToStrLossyOwned;
@@ -81,6 +81,10 @@ impl Args {
     let branch_name = self.build_branch_name(state, base.name())?;
 
     if self.dry_run {
+      println!(
+        "{}",
+        style("Running in dry-run mode, no branch will be created").dim()
+      );
       display_branch_creation(&branch_name, base.name());
       return Ok(());
     }
@@ -97,32 +101,10 @@ impl Args {
 
     display_branch_creation(&branch_name, base.name());
 
-    // checkout branch if user didn't specify --stay
+    // switch to branch if user didn't specify --stay
     if !self.stay {
-      // get tree to checkout
-      let tree = branch
-        .get()
-        .peel_to_tree()
-        .context("Failed to get branch as tree to checkout")?;
-
-      // checkout branch
-      state
-        .repo
-        .checkout_tree(tree.as_object(), None)
-        .context("Failed to switch to branch")?;
-
-      // update HEAD
-      state
-        .repo
-        .set_head(&format!("refs/heads/{}", branch_name))
-        .with_context(|| {
-          format!(
-            "Failed to update HEAD to new branch {0}. Run: \
-          \
-          `git switch {0}`",
-            branch_name
-          )
-        })?;
+      let meta = BranchMeta::from_branch(&branch)?;
+      switch(&state.repo, &meta)?;
     }
 
     // set feature-base in config

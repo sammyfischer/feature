@@ -2,11 +2,14 @@
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{Commit, Cred, CredentialType, ErrorCode, Oid, Repository, Signature, Tag};
+use git2::{
+  Commit, Cred, CredentialType, ErrorCode, Oid, RemoteCallbacks, Repository, Signature, Tag,
+};
 
 use crate::util::branch::commit_to_branch;
 use crate::util::display::{display_hash, trim_hash};
-use crate::util::lossy::ToStrLossyOwned;
+use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
+use crate::{await_child, git};
 
 pub mod advice;
 pub mod branch;
@@ -168,6 +171,56 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
     }
     true
   }
+}
+
+/// Configures push callbacks
+pub fn get_push_callbacks<'cbs>(repo: &'cbs Repository) -> RemoteCallbacks<'cbs> {
+  let mut cbs = RemoteCallbacks::new();
+
+  cbs.credentials(credentials_cb);
+
+  // called on each remote tracking branch that's updated
+  cbs.update_tips(get_update_tips_cb(repo));
+
+  // print error if push fails
+  cbs.push_update_reference(|refname, status| {
+    // a status of Some means push was rejected
+    if let Some(msg) = status {
+      eprintln!(
+        "{} to {} {}: {}",
+        style("Push").red(),
+        refname,
+        style("failed").red(),
+        msg
+      );
+      return Err(git2::Error::from_str(msg));
+    }
+    Ok(())
+  });
+
+  // this is arbitrary text sent by the server. on github/gitlab, this usually contains info on
+  // how to create a pull request for newly pushed branches
+  cbs.sideband_progress(|bytes| {
+    print!("{}", bytes.to_str_lossy());
+    true
+  });
+
+  cbs
+}
+
+/// Deletes an entire section from git config
+pub fn delete_config_section(key: &str) -> Result<()> {
+  match git!("config", "--remove-section", &key).spawn() {
+    Ok(mut cmd) => await_child!(cmd, "Git"),
+    Err(e) => Err(e.into()),
+  }
+  .with_context(|| {
+    format!(
+      "Failed to delete branch config. Run \"git config --remove-section {}\" to remove it.",
+      key
+    )
+  })?;
+  Ok(())
 }
 
 /// A simplified implementation of trim_prefix that doesn't use unstable library features. Uses a different name to avoid name collisions.

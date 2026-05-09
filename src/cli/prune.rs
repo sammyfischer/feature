@@ -1,16 +1,18 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Branch, BranchType, Commit, ErrorCode, Reference, Repository};
+use git2::{Branch, BranchType, Commit, ErrorCode};
 
-use crate::util::branch::{fetch_all, get_current_branch_name};
+use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
 use crate::util::branch_meta::BranchMeta;
+use crate::util::delete_config_section;
 use crate::util::display::trim_hash;
-use crate::{App, await_child, data, git};
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
 • have a known base branch
 • are an ancestor of their base branch
-• aren't a base or protected branch
+• have been pushed to a remote
+• aren't a protected branch
 • aren't the current branch
 
 These checks should prevent most accidental deletions, and at least ensure that
@@ -59,10 +61,10 @@ pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
 }
 
 /// Deletes a branch if:
-/// - it's not a base branch
 /// - it's not a protected branch
 /// - it's not the current branch
 /// - it's changes are merged into its base
+/// - it was pushed to a remote before
 ///
 /// # Returns
 /// Whether the delete operation occured. `false` means the delete didn't occur because the branch
@@ -80,7 +82,7 @@ fn safe_delete_branch(
   match state.repo.branch_upstream_remote(meta.refname()) {
     Ok(_) => {}
     Err(e) if e.code() == ErrorCode::NotFound => return Ok(false),
-    Err(_) => {}
+    Err(e) => return Err(e.into()),
   }
 
   // skip protected branches
@@ -140,32 +142,10 @@ fn safe_delete_branch(
 
     // git2 can't remove entire config sections, but git provides a command to do so
     let key = format!("branch.{}", &meta.name());
-    match git!("config", "--remove-section", key).spawn() {
-      Ok(mut cmd) => await_child!(cmd, "Git"),
-      Err(e) => Err(e.into()),
-    }.with_context(|| format!(
-        r#"Failed to delete branch config. Run "git config --remove-section branch.{}" to remove it.""#,
-        meta.name()
-      ))?;
+    delete_config_section(&key)?;
   }
 
   Ok(true)
-}
-
-/// Whether branch is merged into base. A branch is considered merged if:
-/// - it points to the same commit as its base
-/// - it's not a descendant of base (i.e. there are no new commits)
-fn is_merged(repo: &Repository, branch: &Reference, base: &Reference) -> Result<bool> {
-  let branch_commit = branch.peel_to_commit()?.id();
-  let base_commit = base.peel_to_commit()?.id();
-
-  if branch_commit == base_commit {
-    return Ok(true);
-  }
-
-  // whether branch is a descendant of base. if it is, then there are newer unmerged commits
-  let is_descendant = repo.graph_descendant_of(branch_commit, base_commit)?;
-  Ok(!is_descendant)
 }
 
 fn display_deletion(branch_name: &str, commit: &Commit) -> Result<()> {

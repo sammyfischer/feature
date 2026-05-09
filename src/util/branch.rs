@@ -4,10 +4,11 @@ use std::borrow::Cow;
 
 use anyhow::{Context, Result, anyhow};
 use git2::{
-  AutotagOption, Branch, Commit, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid, Reference,
-  RemoteCallbacks, Repository, ResetType,
+  AutotagOption, Branch, BranchType, Commit, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid,
+  Reference, RemoteCallbacks, Repository, ResetType,
 };
 
+use crate::util::branch_meta::BranchMeta;
 use crate::util::display::trim_hash;
 use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
 use crate::util::{credentials_cb, get_current_commit};
@@ -120,6 +121,23 @@ pub fn get_current_branch_name(repo: &Repository) -> Result<Option<String>> {
   }
 }
 
+/// Finds the local copy of an upstream tracking branch
+pub fn find_local_of_upstream<'repo>(
+  repo: &'repo Repository,
+  upstream: &BranchMeta,
+) -> Result<Option<Branch<'repo>>> {
+  for (branch, _) in repo.branches(Some(BranchType::Local))?.flatten() {
+    let Some(branch_upstream) = get_upstream(&branch)? else {
+      continue;
+    };
+    if upstream.refname().as_bytes() == branch_upstream.get().name_bytes() {
+      return Ok(Some(branch));
+    }
+  }
+
+  Ok(None)
+}
+
 pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
   let mut names = Vec::new();
 
@@ -197,9 +215,60 @@ pub fn fetch_all(repo: &Repository) -> Result<()> {
   Ok(())
 }
 
+/// Fetch a single branch. `branch` must be a remote branch.
+pub fn fetch_upstream_branch(repo: &Repository, branch: &BranchMeta) -> Result<()> {
+  assert!(
+    branch.ty() == BranchType::Remote,
+    "Cannot fetch {}: not a remote branch",
+    branch.refname()
+  );
+
+  let (shortname, remote_name) = branch.split_name_and_remote()?;
+  let mut remote = repo.find_remote(
+    &remote_name
+      .unwrap_or_else(|| panic!("Remote should exist on upstream branch: {}", branch.name())),
+  )?;
+
+  let refspec = format!("+refs/heads/{}:{}", shortname, branch.refname());
+
+  let mut opts = FetchOptions::new();
+  let mut cbs = RemoteCallbacks::new();
+  cbs.credentials(credentials_cb);
+  opts.remote_callbacks(cbs);
+
+  remote.fetch(&[&refspec], Some(&mut opts), None)?;
+  Ok(())
+}
+
 /// Reset current branch and HEAD to `branch`
 pub fn hard_reset(repo: &Repository, branch: &Reference) -> Result<()> {
   let obj = repo.find_object(branch.peel_to_commit()?.id(), Some(ObjectType::Commit))?;
   repo.reset(&obj, ResetType::Hard, None)?;
   Ok(())
+}
+
+/// Switch to the given branch (checks out the branch and updates HEAD)
+pub fn switch(repo: &Repository, branch: &BranchMeta) -> Result<()> {
+  let reference = branch.resolve(repo)?;
+  let tree = reference.peel_to_tree()?;
+  let obj = tree.as_object();
+  repo.checkout_tree(obj, None)?;
+  repo.set_head(branch.refname())?;
+  Ok(())
+}
+
+/// Whether branch is merged into base. A branch is considered merged if:
+/// - it points to the same commit as its base
+/// - it's not a descendant of base (i.e. there are no new commits)
+pub fn is_merged(repo: &Repository, branch: &Reference, base: &Reference) -> Result<bool> {
+  let branch_commit = branch.peel_to_commit()?.id();
+  let base_commit = base.peel_to_commit()?.id();
+
+  if branch_commit == base_commit {
+    return Ok(true);
+  }
+
+  // whether branch is a descendant of base. if it is, then there are newer unmerged commits
+  let is_descendant = repo.graph_descendant_of(branch_commit, base_commit)?;
+  Ok(!is_descendant)
 }

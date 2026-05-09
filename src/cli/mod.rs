@@ -12,6 +12,7 @@ mod commit;
 mod complete;
 mod completions;
 mod config_command;
+mod end;
 mod graph;
 mod list;
 mod log;
@@ -85,6 +86,7 @@ pub enum Command {
   Update(update::Args),
   Push(push::Args),
   Check(check::Args),
+  End(end::Args),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(sync::Args),
@@ -111,6 +113,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Update(args) => args.run(&state),
     Command::Push(args) => args.run(&state),
     Command::Check(args) => args.run(&state),
+    Command::End(args) => args.run(&state),
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),
     Command::Status(args) => args.run(&state),

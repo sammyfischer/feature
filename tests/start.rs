@@ -170,7 +170,7 @@ branch = "%(user)%(sep)%(base)%(sep)%s"
 
   assert_eq!(
     get_stdout!(cmd).trim(),
-    "Created test/new-branch (from main)"
+    "Running in dry-run mode, no branch will be created\nCreated test/new-branch (from main)"
   );
 
   // with config file options
@@ -181,7 +181,7 @@ branch = "%(user)%(sep)%(base)%(sep)%s"
     .success();
   assert_eq!(
     get_stdout!(cmd).trim(),
-    "Created test_main_new_branch (from main)"
+    "Running in dry-run mode, no branch will be created\nCreated test_main_new_branch (from main)"
   );
 }
 
