@@ -116,7 +116,7 @@ impl Args {
       "{} {} {}",
       style("Deleted").red(),
       branch.name(),
-      style!("(was {})", trim_hash(&branch_tip)?)
+      style!("(was {})", trim_hash(&branch_tip)?).dim()
     );
 
     // delete branch's config
@@ -154,7 +154,7 @@ fn delete_upstream(repo: &Repository, branch: &BranchMeta) -> Result<()> {
       "{} {} {}",
       style("Deleted").red(),
       upstream_meta.name(),
-      style!("(was {})", trim_hash(&tip)?)
+      style!("(was {})", trim_hash(&tip)?).dim()
     );
   }
 
