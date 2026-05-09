@@ -30,8 +30,8 @@ branch, delete it normally with "git branch -d <BRANCH>"."#;
 )]
 pub struct Args {
   /// Also delete the remote reference
-  #[arg(short, long)]
-  pub remote: bool,
+  #[arg(short, long, value_name = "DELETE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub remote: Option<bool>,
 
   /// Delete branch without checking if it's merged
   #[arg(short, long)]
@@ -102,7 +102,7 @@ impl Args {
     }
 
     // begin actual deletions
-    if self.remote
+    if self.remote.unwrap_or(state.config.end.remote)
       && let Err(e) = delete_upstream(&state.repo, &branch)
     {
       eprintln!("Failed to delete upstream: {}", e);

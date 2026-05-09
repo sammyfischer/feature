@@ -175,6 +175,33 @@ fn deletes_from_remote() {
   )
 }
 
+/// End should use the config value end.remote in absence of a cli option
+#[test]
+fn deletes_from_remote_using_config() {
+  let (local, remote) = TestRepo::new_with_remote();
+  local.write_file("feature.toml", "[end]\nremote = true");
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  local.feature(&["start", "topic"]).success();
+  local.git(&["push", "-u", "origin", "topic"]).success();
+
+  local.feature(&["end"]).success();
+
+  assert_eq!(
+    remote.list_branches().trim(),
+    "refs/heads/main",
+    "topic should be deleted from remote"
+  );
+
+  assert!(
+    !local
+      .list_branches_and_upstreams()
+      .contains("refs/remotes/origin/topic"),
+    "origin/topic should be deleted from local"
+  )
+}
+
 /// End should delete the branch's config in git config
 #[test]
 fn deletes_branch_config() {

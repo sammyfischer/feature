@@ -122,6 +122,8 @@ impl Args {
         "default_remote" => config.default_remote.clone(),
         "protect" => toml_stringify!(config.protect.clone()),
 
+        "end.prune" => toml_stringify!(config.end.remote),
+
         "sync.prune" => toml_stringify!(config.sync.prune),
 
         "status.show_untracked" => toml_stringify!(config.status.show_untracked),

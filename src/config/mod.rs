@@ -11,6 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::config::advice::AdviceConfig;
+use crate::config::end::EndConfig;
 use crate::config::format::FormatConfig;
 use crate::config::list::ListConfig;
 use crate::config::show::ShowConfig;
@@ -18,6 +19,7 @@ use crate::config::status::StatusConfig;
 use crate::config::sync::SyncConfig;
 
 pub mod advice;
+pub mod end;
 pub mod format;
 pub mod list;
 pub mod show;
@@ -32,6 +34,9 @@ pub struct Config {
 
   /// List of branches to protect from force-pushes/deletion
   pub protect: Vec<String>,
+
+  /// Options for the end command
+  pub end: EndConfig,
 
   /// Options for the sync command
   pub sync: SyncConfig,
@@ -57,6 +62,7 @@ impl Default for Config {
     Self {
       default_remote: "origin".into(),
       protect: vec!["main".into()],
+      end: Default::default(),
       sync: Default::default(),
       status: Default::default(),
       list: Default::default(),
