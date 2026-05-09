@@ -305,11 +305,6 @@ impl Args {
     let mut changes =
       repo.diff_tree_to_tree(base_tree.as_ref(), Some(&index_tree), Some(&mut opts))?;
 
-    changes.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-      print!("{}", line.content().to_str_lossy());
-      true
-    })?;
-
     let Some(target_tree) = target_tree else {
       changes.find_similar(None)?;
       return Ok((index_tree, changes));
