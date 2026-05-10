@@ -7,7 +7,7 @@ use crate::util::branch::{
 };
 use crate::util::branch_meta::BranchMeta;
 use crate::util::display::trim_hash;
-use crate::util::lossy::ToStrLossy;
+use crate::util::string::ToStrLossy;
 use crate::util::{delete_config_section, get_push_callbacks};
 use crate::{App, data, style};
 

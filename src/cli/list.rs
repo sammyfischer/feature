@@ -1,13 +1,12 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use console::{Alignment, measure_text_width, pad_str, style, truncate_str};
 use git2::{Branch, Repository};
 
 use crate::util::branch::{
-  branch_to_commit, branch_to_name, get_ahead_behind, get_current_branch_name, get_upstream,
-  get_worktree_branch_names,
+  get_ahead_behind, get_current_branch_name, get_upstream, get_worktree_branch_names,
 };
 use crate::util::display::{display_plus_minus, trim_hash};
-use crate::util::lossy::ToStrLossyOwned;
+use crate::util::string::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::{get_term_width, is_term};
 use crate::{App, data};
 
@@ -237,16 +236,14 @@ impl Args {
 
   fn build_branch_line(&self, repo: &Repository, branch: &Branch) -> Result<Row> {
     let mut row = Row::new();
-    let branch_name = branch_to_name(branch)?;
+    let branch_name = branch.name_bytes()?.to_str_lossy();
     row.branch = branch_name.to_string();
 
-    let branch_commit =
-      branch_to_commit(branch)?.ok_or(anyhow!("Branch does not point to a commit"))?;
-
+    let branch_commit = branch.get().peel_to_commit()?;
     row.hash = trim_hash(&branch_commit)?;
 
     if let Some(upstream) = get_upstream(branch)? {
-      let upstream_name = branch_to_name(&upstream)?;
+      let upstream_name = upstream.name_bytes()?.to_str_lossy();
       let (a, b) = get_ahead_behind(repo, branch.get(), upstream.get()).with_context(|| {
         format!(
           "Failed to get ahead/behind between {} and {}",

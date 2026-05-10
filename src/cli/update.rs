@@ -4,15 +4,15 @@ use std::fs;
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{ErrorCode, FetchOptions, Oid, Rebase, RemoteCallbacks, Repository};
+use git2::{ErrorCode, Oid, Rebase, Repository};
 
-use crate::util::TrimPrefix;
 use crate::util::advice::{NO_SIGNATURE_MSG, REBASE_CONFLICT_ADVICE};
-use crate::util::branch::get_head;
+use crate::util::branch::{fetch_upstream_branch, get_head};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
 use crate::util::display::trim_hash;
-use crate::util::{credentials_cb, get_current_commit, resolve_commit_name};
+use crate::util::string::TrimPrefix;
+use crate::util::{get_current_commit, resolve_commit_name};
 use crate::{App, data, style};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
@@ -84,25 +84,7 @@ impl Args {
 
     // if base is a remote, fetch the latest
     if base.is_remote() {
-      let (shorter_name, remote_name) = base.split_name_and_remote()?;
-      let mut remote =
-        state
-          .repo
-          .find_remote(&remote_name.unwrap_or_else(|| {
-            panic!("Remote should exist on upstream branch: {}", base.name())
-          }))?;
-
-      let mut opts = FetchOptions::new();
-      let mut cbs = RemoteCallbacks::new();
-      cbs.credentials(credentials_cb);
-      opts.remote_callbacks(cbs);
-
-      remote.fetch(
-        &[&format!("+refs/heads/{}:{}", shorter_name, base.refname())],
-        Some(&mut opts),
-        None,
-      )?;
-
+      fetch_upstream_branch(&state.repo, &base)?;
       println!("{}", style!("Fetched {}", base.name()).dim());
     }
 

@@ -4,15 +4,19 @@ A cli that enhances git.
 
 ## Install
 
-### Stable
+### Stable / Supported Platforms
 
 1. Download the artifact for your platform from the releases page.
 2. Extract the binary and place it somewhere it can be found in your PATH.
 3. To get shell completions, run `feature completions <shell>`. More instructions can be found [in the docs](./docs/completions.md).
 
-### Development
+### Development / Unsupported Platforms
 
 Clone the repo and run `cargo install --path .` from the projects root. If you have just, run `just install`.
+
+## Contributing
+
+Read the files in `./contributing` to understand procedures and conventions used for this project.
 
 ## Docs
 

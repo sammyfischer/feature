@@ -20,7 +20,7 @@ use crate::util::diff::{DiffSummary, has_index_changes};
 use crate::util::display::{
   DisplayCommitMessageLevel, DisplayCommitOptions, DisplayTimeOptions, display_commit, display_hash,
 };
-use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
+use crate::util::string::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::get_user_confirmation;
 use crate::util::{get_signature, resolve_commit_name};
 

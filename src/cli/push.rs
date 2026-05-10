@@ -3,14 +3,12 @@ use std::fmt::Write;
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{
-  Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, PushOptions, RemoteCallbacks, Repository,
-};
+use git2::{Branch, BranchType, ErrorClass, ErrorCode, PushOptions, Repository};
 
-use crate::util::branch::get_ahead_behind;
+use crate::util::branch::{fetch_upstream_branch, get_ahead_behind};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
-use crate::util::{credentials_cb, get_push_callbacks};
+use crate::util::get_push_callbacks;
 use crate::{App, data, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
@@ -264,31 +262,11 @@ pub fn check_upstream(
   if !upstream.is_remote() {
     return Err(anyhow!(
       "Upstream is not a remote branch: {}",
-      upstream.name()
+      upstream.refname()
     ));
   }
 
-  let (_, remote_name) = upstream.split_name_and_remote()?;
-  let mut remote = repo.find_remote(&remote_name.unwrap_or_else(|| {
-    panic!(
-      "Remote should exist on upstream branch: {}",
-      upstream.name()
-    )
-  }))?;
-
-  let refspec = format!(
-    "+refs/heads/{}:{}",
-    upstream.split_name_and_remote()?.0,
-    upstream.refname()
-  );
-
-  let mut opts = FetchOptions::new();
-  let mut cbs = RemoteCallbacks::new();
-  cbs.credentials(credentials_cb);
-  opts.remote_callbacks(cbs);
-
-  remote.fetch(&[&refspec], Some(&mut opts), None)?;
-
+  fetch_upstream_branch(repo, upstream)?;
   println!("{}", style!("Fetched {}", upstream.name()).dim());
 
   if force {
@@ -336,21 +314,7 @@ pub fn check_base(
   };
 
   if base.ty() == BranchType::Remote {
-    let (shorter_name, remote_name) = base.split_name_and_remote()?;
-    let mut remote = repo.find_remote(
-      &remote_name
-        .unwrap_or_else(|| panic!("Remote should exist on upstream branch: {}", base.name())),
-    )?;
-
-    let refspec = format!("+refs/heads/{}:{}", shorter_name, base.refname());
-
-    let mut opts = FetchOptions::new();
-    let mut cbs = RemoteCallbacks::new();
-    cbs.credentials(credentials_cb);
-    opts.remote_callbacks(cbs);
-
-    remote.fetch(&[&refspec], Some(&mut opts), None)?;
-
+    fetch_upstream_branch(repo, base)?;
     println!("{}", style!("Fetched {}", base.name()).dim());
   }
 

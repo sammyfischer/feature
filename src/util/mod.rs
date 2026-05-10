@@ -6,9 +6,9 @@ use git2::{
   Commit, Cred, CredentialType, ErrorCode, Oid, RemoteCallbacks, Repository, Signature, Tag,
 };
 
-use crate::util::branch::commit_to_branch;
+use crate::util::branch::find_branch_at_commit;
 use crate::util::display::{display_hash, trim_hash};
-use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
+use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::{await_child, git};
 
 pub mod advice;
@@ -16,7 +16,7 @@ pub mod branch;
 pub mod branch_meta;
 pub mod diff;
 pub mod display;
-pub mod lossy;
+pub mod string;
 pub mod term;
 
 pub fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Option<Commit<'repo>>> {
@@ -33,7 +33,8 @@ pub fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Option<Commi
   Ok(Some(commit))
 }
 
-pub fn commit_to_tag<'repo>(
+/// Finds a tag that points to the given commit
+pub fn find_tag_at_commit<'repo>(
   repo: &'repo Repository,
   commit_id: &'repo Oid,
 ) -> Result<Option<Tag<'repo>>> {
@@ -56,14 +57,13 @@ pub fn commit_to_tag<'repo>(
 ///
 /// 1. To find a branch matching the commit, yielding the short branch name
 /// 2. To find a tag matching the commit, yielding the short tag name
-///
-/// If all else fails, returns the trimmed commit hash.
+/// 3. Getting the abbreviated commit hash
 pub fn resolve_commit_name(repo: &Repository, commit: &Commit) -> Result<String> {
-  if let Some(branch) = commit_to_branch(repo, &commit.id())? {
+  if let Some(branch) = find_branch_at_commit(repo, &commit.id())? {
     return Ok(branch.name_bytes()?.to_str_lossy_owned());
   }
 
-  if let Some(tag) = commit_to_tag(repo, &commit.id())? {
+  if let Some(tag) = find_tag_at_commit(repo, &commit.id())? {
     return Ok(tag.name_bytes().to_str_lossy_owned());
   }
 
@@ -78,6 +78,7 @@ pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<
   }
 }
 
+/// The callback used in fetches/pushes to handle authentication
 pub fn credentials_cb(
   url: &str,
   username_from_url: Option<&str>,
@@ -114,6 +115,7 @@ pub fn credentials_cb(
   )))
 }
 
+/// Gets the callback used in pushes when a reference is updated
 pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool {
   |name: &str, old_id: Oid, new_id: Oid| -> bool {
     if old_id == new_id {
@@ -123,57 +125,50 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
     let name = name.trim_prefix_opt("refs/remotes/");
     let zero = Oid::zero();
 
-    if old_id == zero {
-      let Ok(new_commit) = repo.find_commit(new_id) else {
-        return false;
-      };
-      let Ok(hash) = display_hash(&new_commit) else {
-        return false;
-      };
+    match (old_id, new_id) {
+      (old, new) if old == zero && new != zero => {
+        if let Ok(new_commit) = repo.find_commit(new_id)
+          && let Ok(hash) = display_hash(&new_commit)
+        {
+          println!("{} {} {}", style("Created").green(), name, hash);
+        };
+      }
 
-      println!("{} {} {}", style("Created").green(), name, hash);
-    } else if new_id == zero {
-      let Ok(old_commit) = repo.find_commit(old_id) else {
-        return false;
-      };
-      let Ok(hash) = trim_hash(&old_commit) else {
-        return false;
-      };
+      (old, new) if new == zero && old != zero => {
+        if let Ok(old_commit) = repo.find_commit(old_id)
+          && let Ok(hash) = trim_hash(&old_commit)
+        {
+          println!(
+            "{} {} {}",
+            style("Deleted").red(),
+            name,
+            style(&format!("(was {})", hash)).dim()
+          );
+        };
+      }
 
-      println!(
-        "{} {} {}",
-        style("Deleted").red(),
-        name,
-        style(&format!("(was {})", hash)).dim()
-      );
-    } else {
-      let Ok(new_commit) = repo.find_commit(new_id) else {
-        return false;
-      };
-      let Ok(new_hash) = display_hash(&new_commit) else {
-        return false;
-      };
-
-      let Ok(old_commit) = repo.find_commit(old_id) else {
-        return false;
-      };
-      let Ok(old_hash) = display_hash(&old_commit) else {
-        return false;
-      };
-
-      println!(
-        "{} {}: {} -> {}",
-        style("Updated").green(),
-        name,
-        old_hash,
-        new_hash
-      );
+      (old, new) => {
+        if let Ok(new_commit) = repo.find_commit(new)
+          && let Ok(new_hash) = display_hash(&new_commit)
+          && let Ok(old_commit) = repo.find_commit(old)
+          && let Ok(old_hash) = display_hash(&old_commit)
+        {
+          println!(
+            "{} {} {} -> {}",
+            style("Updated").green(),
+            name,
+            old_hash,
+            new_hash
+          );
+        };
+      }
     }
+
     true
   }
 }
 
-/// Configures push callbacks
+/// Gets fully configured push callbacks
 pub fn get_push_callbacks<'cbs>(repo: &'cbs Repository) -> RemoteCallbacks<'cbs> {
   let mut cbs = RemoteCallbacks::new();
 
@@ -221,15 +216,4 @@ pub fn delete_config_section(key: &str) -> Result<()> {
     )
   })?;
   Ok(())
-}
-
-/// A simplified implementation of trim_prefix that doesn't use unstable library features. Uses a different name to avoid name collisions.
-pub trait TrimPrefix {
-  fn trim_prefix_opt(&self, prefix: &str) -> &str;
-}
-
-impl TrimPrefix for str {
-  fn trim_prefix_opt(&self, prefix: &str) -> &str {
-    self.strip_prefix(prefix).unwrap_or(self)
-  }
 }

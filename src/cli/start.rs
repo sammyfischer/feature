@@ -3,13 +3,12 @@
 use anyhow::{Context, Result};
 use clap::ValueHint;
 use console::style;
-use git2::Branch;
 
 use crate::templater::{LongVar, ShortVar, Templater};
-use crate::util::branch::{branch_to_commit, switch};
+use crate::util::branch::switch;
 use crate::util::branch_meta::BranchMeta;
 use crate::util::get_signature;
-use crate::util::lossy::ToStrLossyOwned;
+use crate::util::string::ToStrLossyOwned;
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Creates and switches to a new branch.
@@ -33,9 +32,6 @@ const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
 
 const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a branch or specify one manually
 with the --from option.";
-
-const EMPTY_REPO_MSG: &str =
-  r"Cannot call start on an empty repository. Create at least one commit first.";
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -89,9 +85,7 @@ impl Args {
       return Ok(());
     }
 
-    // find commit to create branch on
-    let start_commit =
-      branch_to_commit(&Branch::wrap(base.resolve(&state.repo)?))?.context(EMPTY_REPO_MSG)?;
+    let start_commit = base.resolve(&state.repo)?.peel_to_commit()?;
 
     // create branch
     let branch = state
