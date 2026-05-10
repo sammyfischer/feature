@@ -48,6 +48,20 @@ check:
 # check for compliance, generate up-to-date resources
 release: check schema
 
+tag:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  
+  version=$(grep -m1 '^version' Cargo.toml | sed 's/.*= *"\(.*\)"/\1/')
+  if [[ -z "$version" ]]; then
+    echo "Error: could not parse version from Cargo.toml" >&2
+    exit 1
+  fi
+
+  tag="v${version}"
+  git tag "$tag"
+  echo "Push tag with \"git push origin $tag\""
+
 install:
   cargo install --path .
 
