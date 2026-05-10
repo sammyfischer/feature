@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use clap::ValueHint;
 use console::{style, truncate_str};
 
-use crate::util::lossy::ToStrLossy;
+use crate::util::string::ToStrLossy;
 use crate::util::term::{get_term_width, paginate};
 use crate::{App, git};
 

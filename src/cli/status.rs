@@ -11,7 +11,7 @@ use crate::util::advice::{
   REVERT_CONFLICT_ADVICE, STATUS_ADVICE,
 };
 use crate::util::branch::{
-  commit_to_branch, get_ahead_behind, get_current_branch_or_commit, get_head, get_merge_head,
+  find_branch_at_commit, get_ahead_behind, get_current_branch_or_commit, get_head, get_merge_head,
   get_pick_head, get_revert_head,
 };
 use crate::util::branch_meta::BranchMeta;
@@ -19,9 +19,9 @@ use crate::util::diff::DiffSummary;
 use crate::util::display::{
   display_commit_compact, display_plus_minus, display_signature, trim_hash,
 };
-use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
+use crate::util::get_signature;
+use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::util::term::{get_term_width, is_term};
-use crate::util::{TrimPrefix, get_signature};
 use crate::{App, data, opt_advice};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -360,7 +360,7 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   })?)?;
 
   // try to find a matching branch, but don't error
-  let base = match commit_to_branch(repo, &base_commit.id()) {
+  let base = match find_branch_at_commit(repo, &base_commit.id()) {
     Ok(branch) => match branch {
       Some(branch) => match branch.name_bytes() {
         Ok(name) => Some(name.to_str_lossy_owned()),
@@ -396,7 +396,7 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
     .expect("HEAD should point to a commit during an active merge");
 
   // get the branch pointed to by MERGE_HEAD, else just use the hash
-  let base = match commit_to_branch(repo, &merge_commit.id())? {
+  let base = match find_branch_at_commit(repo, &merge_commit.id())? {
     Some(branch) => match branch.name_bytes() {
       Ok(name) => name.to_str_lossy_owned(),
       Err(_) => "unknown".to_string(),

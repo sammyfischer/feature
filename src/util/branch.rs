@@ -1,16 +1,14 @@
-//! Helper functions pertaining to branches
+//! Helper functions for branches and references
 
-use std::borrow::Cow;
-
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use git2::{
-  AutotagOption, Branch, BranchType, Commit, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid,
+  AutotagOption, Branch, BranchType, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid,
   Reference, RemoteCallbacks, Repository, ResetType,
 };
 
 use crate::util::branch_meta::BranchMeta;
 use crate::util::display::trim_hash;
-use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
+use crate::util::string::ToStrLossyOwned;
 use crate::util::{credentials_cb, get_current_commit};
 
 pub fn get_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
@@ -45,24 +43,8 @@ pub fn get_revert_head<'repo>(repo: &'repo Repository) -> Result<Option<Referenc
   }
 }
 
-pub fn branch_to_name<'repo>(branch: &'repo Branch) -> Result<Cow<'repo, str>> {
-  Ok(branch.name_bytes()?.to_str_lossy())
-}
-
-pub fn branch_to_commit<'repo>(branch: &Branch<'repo>) -> Result<Option<Commit<'repo>>> {
-  match branch.get().peel_to_commit() {
-    Ok(it) => Ok(Some(it)),
-    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-    Err(e) => Err(anyhow!(e).context(format!(
-      "Failed to get commit at branch {}",
-      branch_to_name(branch).unwrap_or(Cow::Borrowed("<unknown>"))
-    ))),
-  }
-}
-
-/// Iterates through all local (refs/heads/*) and remote (refs/remotes/*) branches to find one that
-/// points to the given commit
-pub fn commit_to_branch<'repo>(
+/// Iterates through all local and remote branches to find one that points to the given commit
+pub fn find_branch_at_commit<'repo>(
   repo: &'repo Repository,
   commit_id: &Oid,
 ) -> Result<Option<Branch<'repo>>> {
@@ -138,6 +120,7 @@ pub fn find_local_of_upstream<'repo>(
   Ok(None)
 }
 
+/// Gets the names of branches that worktrees are checked-out to
 pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
   let mut names = Vec::new();
 
@@ -153,30 +136,20 @@ pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
   Ok(names)
 }
 
-pub fn get_ahead_behind<'repo>(
-  repo: &'repo Repository,
-  branch: &Reference<'repo>,
-  upstream: &Reference<'repo>,
+pub fn get_ahead_behind(
+  repo: &Repository,
+  branch: &Reference,
+  upstream: &Reference,
 ) -> Result<(usize, usize)> {
-  let branch_tip = branch
-    .peel_to_commit()
-    .context("Failed to get branch commit when getting ahead/behind")?
-    .id();
-
-  let upstream_tip = upstream
-    .peel_to_commit()
-    .context("Failed to get upstream commit when getting ahead/behind")?
-    .id();
-
-  let ab = repo
-    .graph_ahead_behind(branch_tip, upstream_tip)
-    .context("Failed to get ahead/behind")?;
+  let branch_tip = branch.peel_to_commit()?.id();
+  let upstream_tip = upstream.peel_to_commit()?.id();
+  let ab = repo.graph_ahead_behind(branch_tip, upstream_tip)?;
   Ok(ab)
 }
 
 /// Fetches all remote branches
 pub fn fetch_all(repo: &Repository) -> Result<()> {
-  let remotes = repo.remotes().expect("Failed to list all remotes");
+  let remotes = repo.remotes()?;
   let mut results: Vec<Result<()>> = Vec::with_capacity(remotes.len());
 
   for remote_name in &remotes {
@@ -184,9 +157,7 @@ pub fn fetch_all(repo: &Repository) -> Result<()> {
       continue;
     };
 
-    let mut remote = repo
-      .find_remote(remote_name)
-      .unwrap_or_else(|_| panic!("Failed to get reference to remote {}", remote_name));
+    let mut remote = repo.find_remote(remote_name)?;
     let mut cbs = RemoteCallbacks::new();
     cbs.credentials(credentials_cb);
 
@@ -216,6 +187,9 @@ pub fn fetch_all(repo: &Repository) -> Result<()> {
 }
 
 /// Fetch a single branch. `branch` must be a remote branch.
+///
+/// # Panics
+/// If `branch` is not a remote branch
 pub fn fetch_upstream_branch(repo: &Repository, branch: &BranchMeta) -> Result<()> {
   assert!(
     branch.ty() == BranchType::Remote,
@@ -224,10 +198,12 @@ pub fn fetch_upstream_branch(repo: &Repository, branch: &BranchMeta) -> Result<(
   );
 
   let (shortname, remote_name) = branch.split_name_and_remote()?;
-  let mut remote = repo.find_remote(
-    &remote_name
-      .unwrap_or_else(|| panic!("Remote should exist on upstream branch: {}", branch.name())),
-  )?;
+  let mut remote = repo.find_remote(&remote_name.unwrap_or_else(|| {
+    panic!(
+      "Remote should exist on upstream branch: {}",
+      branch.refname()
+    )
+  }))?;
 
   let refspec = format!("+refs/heads/{}:{}", shortname, branch.refname());
 

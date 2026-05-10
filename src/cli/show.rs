@@ -6,7 +6,7 @@ use crate::App;
 use crate::config::PageWhen;
 use crate::util::diff::{DiffSummary, get_formatted_diff};
 use crate::util::display::{DisplayCommitMessageLevel, DisplayCommitOptions, display_commit};
-use crate::util::lossy::ToStrLossy;
+use crate::util::string::ToStrLossy;
 use crate::util::term::{is_term, paginate};
 
 const LONG_ABOUT: &str = r#"Show info about a commit

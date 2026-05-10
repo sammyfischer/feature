@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
 use crate::config::format::{DateStyle, HourStyle};
-use crate::util::lossy::{ToStrLossy, ToStrLossyOwned};
+use crate::util::string::{ToStrLossy, ToStrLossyOwned};
 
 // Creates a [StyledObject] with format args
 #[macro_export]
@@ -93,7 +93,7 @@ impl From<&Config> for DisplayTimeOptions {
 
 /// Displays formatted info about a commit
 ///
-/// With the maximum verbosity, it looks like:
+/// Example:
 /// ```txt
 /// 1234567 Apr 14, 2025 at 5:46 PM by Author Name
 ///
@@ -225,10 +225,10 @@ fn display_time_relative(time: &Time) -> Result<String> {
   const HOUR: i64 = 60 * 60;
   const DAY: i64 = HOUR * 24;
   const WEEK: i64 = DAY * 7;
-  const MONTH: i64 = WEEK * 4;
-  const YEAR: i64 = MONTH * 12;
+  const MONTH: i64 = DAY * 30;
+  const YEAR: i64 = DAY * 365;
 
-  // this should match git log's relative time format
+  // this should roughly match git log's relative time format
   Ok(match secs {
     s if s < 2 => "1 second ago".to_string(),
     s if s < 60 => format!("{} seconds ago", s),

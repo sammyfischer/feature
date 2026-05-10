@@ -6,7 +6,7 @@ use git2::Branch;
 
 use crate::util::branch::get_upstream;
 use crate::util::branch_meta::BranchMeta;
-use crate::util::lossy::ToStrLossyOwned;
+use crate::util::string::ToStrLossyOwned;
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.

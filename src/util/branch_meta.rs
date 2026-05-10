@@ -1,12 +1,7 @@
 use anyhow::{Result, anyhow};
 use git2::{Branch, BranchType, ErrorCode, Reference, Repository};
 
-use crate::util::lossy::ToStrLossyOwned;
-
-// In the future, this could keep a private cached value of the reference, and the resolve function
-// would reuse that. The caller would have to invalidate the cahce after a fetch. This keeps the
-// code clean but since fetches are rare, would reduce the number of calls to
-// `Repository::find_reference()`.
+use crate::util::string::ToStrLossyOwned;
 
 /// Collected metadata for a branch
 pub struct BranchMeta {
