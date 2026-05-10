@@ -117,4 +117,6 @@ This is because these options in particular can be used without a value at all (
 
 These commands *do* support completions with the '=' syntax, since it's the only valid syntax.
 
-> Note: Completions for these commands currently don't work. They'll be fixed eventually.
+# Known Bugs
+
+When completing for a file or dir name, completions may not work properly if the name starts with an '='. I don't currently plan on fixing this since it's rare and would make the completion script significantly more complicated.
