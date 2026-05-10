@@ -79,23 +79,13 @@ _feature_compgen_revisions() {
   printf "%s" "$(feature "${args[@]}")"
 }
 
-# Convenience function to reply with a list of files
-_feature_reply_files() {
-  local word="${COMP_WORDS[COMP_CWORD]}"
-  COMPREPLY=( $(IFS='\n' compgen -f "$word") )
-  compopt -o filenames
-}
-
-_feature_reply_dirs() {
-  local word="${COMP_WORDS[COMP_CWORD]}"
-  COMPREPLY=( $(IFS='\n' compgen -f "$word") )
-  compopt -o dirnames
-}
-
 _feature() {
   local bin="$1"
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="$3"
+  if [[ "$prev" == "=" ]]; then
+    prev="${COMP_WORDS[COMP_CWORD-2]}"
+  fi
   local cmd=""
   local git_dir=""
   local work_tree=""
@@ -220,14 +210,15 @@ _feature() {
       local opts="--help -V --version --config --git-dir --work-tree --wt base check commit \
         completions config graph list ls log prune push show start status st \
         sync update"
-
       case "$prev" in
         --config)
-          _feature_reply_files
+          COMPREPLY=( $(IFS='\n' compgen -f "${cur#=}") )
+          compopt -o filenames
           ;;
 
         --git-dir | --work-tree | --wt)
-          _feature_reply_dirs
+          COMPREPLY=( $(IFS='\n' compgen -d "${cur#=}") )
+          compopt -o dirnames
           ;;
 
         *)
@@ -336,7 +327,7 @@ _feature() {
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         -r | --remote)
-          COMPREPLY=( $(compgen -W "true false" -- "$cur") )
+          COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
           case "$cur" in
@@ -360,7 +351,7 @@ _feature() {
       local opts="--help -H --no-hash -U --no-upstream -B --no-base"
       case "$prev" in
         -H | --no-hash | -U | --no-upstream | -B | --no-base)
-          COMPREPLY=( $(compgen -W "true false" -- "$cur") )
+          COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -405,7 +396,7 @@ _feature() {
           COMPREPLY=( $(compgen -W "auto always never" -- "$cur") )
           ;;
         -S | --no-summary | -P | --no-patch)
-          COMPREPLY=( $(compgen -W "true false" -- "$cur") )
+          COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
           case "$cur" in
@@ -448,7 +439,7 @@ _feature() {
       local opts="--help --dry-run -P --no-prune"
       case "$prev" in
         -P | --no-prune)
-          COMPREPLY=( $(compgen -W "true false" -- "$cur") )
+          COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )

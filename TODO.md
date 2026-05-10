@@ -8,12 +8,7 @@
   - pre-commit
   - post-commit
   - post-rewrite (after amend/rebase only)
-- completions
-  - known bug: `--no-upstream=...` is still kind of broken
-    - `--no-upstream=` will complete "true false"
-    - `--no-upstream=t` will no offer completions
-    - this is because `$prev` is "=", just need to check the arg before in these cases (`"${COMP_WORDS[COMP_CWORD-2]}"`)
-  - custom zsh completions, maybe fish too
+- custom zsh completions, maybe fish too
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
 - split config into cosmetic and semantic
