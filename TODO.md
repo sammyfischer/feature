@@ -9,9 +9,10 @@
   - post-commit
   - post-rewrite (after amend/rebase only)
 - completions
-  - known bug: `--no-upstream=...` doesn't autocomplete boolean values (this is true for all bool flags that require '=')
-  - read `--git-dir` and `--work-tree` to generate completions for the correct repo
-  - add support for `--flag=value` syntax
+  - known bug: `--no-upstream=...` is still kind of broken
+    - `--no-upstream=` will complete "true false"
+    - `--no-upstream=t` will no offer completions
+    - this is because `$prev` is "=", just need to check the arg before in these cases (`"${COMP_WORDS[COMP_CWORD-2]}"`)
   - custom zsh completions, maybe fish too
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
@@ -35,8 +36,6 @@
 - start: better user substitution
   - using git user.name isn't very good since it often has capitalization and spaces
   - needs a dedicated config variable, "feature.user" in git config
-- undo
-  - uses reflog, undoes latest change
 - stash
   - more intuitive options to stash (--all => workdir/index, --unstaged => workdir, --staged => index)
   - action should be a flag, not positional (and should --push by default)
@@ -49,8 +48,6 @@
   - `ft mod sync` - run sync in all modules
   - `ft mod start` - start a branch with the same name in each module
   - each module can have its own feature config
-- worktree
-  - open an interactive menu to pick a branch and create a worktree from it
-  - or use specified branch in command line
-- reflog
-  - view reflog for a branch, select one to restore to that state
+- simplified worktree command
+  - `feature wt add <BRANCH>` would create a worktree checked-out to the branch, create new branch if it doesn't exist already
+  - would also have `rm`, `list`, maybe `mv`

@@ -1,6 +1,8 @@
-use anyhow::{Context, Result, anyhow};
+use std::path::Path;
+
+use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches};
-use git2::Repository;
+use git2::{ErrorClass, ErrorCode, Repository};
 
 use crate::cli::{Args, Command};
 use crate::config::Config;
@@ -20,13 +22,43 @@ pub struct App {
 }
 
 impl App {
-  pub fn new(args: Args) -> Result<Self> {
+  pub fn new(args: Args) -> Result<Option<Self>> {
     let config = match args.config {
       Some(path) => config::load_with_path(&path),
       None => config::load(),
     }?;
 
-    let repo = match (&args.git_dir, &args.work_tree) {
+    // completions command ignores git dir entirely
+    if let Command::Completions(args) = args.command {
+      args.run()?;
+      return Ok(None);
+    }
+
+    let repo = match Self::find_repo(args.git_dir.as_deref(), args.work_tree.as_deref()) {
+      Ok(repo) => Ok(repo) as Result<Repository>,
+      Err(e) if e.class() == ErrorClass::Repository && e.code() == ErrorCode::NotFound => {
+        // complete command should print an empty list (i.e. nothing) if no repo is found
+        if let Command::Complete(_) = args.command {
+          return Ok(None);
+        }
+        // this is an error for any other command
+        Err(e.into())
+      }
+      Err(e) => Err(e.into()),
+    }?;
+
+    Ok(Some(Self {
+      config,
+      repo,
+      command: args.command,
+    }))
+  }
+
+  fn find_repo(
+    git_dir: Option<&Path>,
+    work_tree: Option<&Path>,
+  ) -> Result<Repository, git2::Error> {
+    Ok(match (git_dir, work_tree) {
       // neither, do an automatic search
       (None, None) => Repository::open_from_env()?,
 
@@ -38,24 +70,10 @@ impl App {
 
       // git dir and worktree, open the git dir and set workdir to the worktree
       (Some(dir), Some(wt)) => {
-        let repo = Repository::open_bare(dir)
-          .context("Cannot specify a worktree on a non-bare repository")?;
-
-        if !repo.is_bare() {
-          return Err(anyhow!(
-            "Cannot specify a worktree on a non-bare repository"
-          ));
-        }
-
+        let repo = Repository::open_bare(dir)?;
         repo.set_workdir(wt, false)?;
         repo
       }
-    };
-
-    Ok(Self {
-      config,
-      repo,
-      command: args.command,
     })
   }
 }
@@ -68,5 +86,8 @@ fn main() -> Result<()> {
 
   let args = Args::from_arg_matches(&command.get_matches())?;
   let state = App::new(args)?;
-  cli::run(state)
+  if let Some(state) = state {
+    return cli::run(state);
+  }
+  Ok(())
 }

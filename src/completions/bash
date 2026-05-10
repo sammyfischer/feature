@@ -2,36 +2,81 @@
 #
 # Params
 # $0 - (required) the prefix to match
+# $1 - (optional) the git dir
+# $2 - (optional) the work tree
 #
 # Returns
 # Prints a space-separated list of matching branches
 _feature_compgen_branches() {
   local word="$1"
-  printf "%s" "$(feature complete --type branch "$word")"
+  local git_dir="$2"
+  local work_tree="$3"
+
+  local -a args=()
+  if [[ -n "$git_dir" ]]; then
+    args+=("--git-dir" "$git_dir")
+  fi
+  if [[ -n "$work_tree" ]]; then
+    args+=("--work-tree" "$work_tree")
+  fi
+
+  args+=("complete" "--type" "branch" "$word")
+
+  printf "%s" "$(feature "${args[@]}")"
 }
 
 # Generates completions for a remote name
 #
 # Params
 # $0 - (required) the prefix to match
+# $1 - (optional) the git dir
+# $2 - (optional) the work tree
 #
 # Returns
 # Prints a space-separated list of matching remotes
 _feature_compgen_remotes() {
   local word="$1"
-  printf "%s" "$(feature complete --type remotes "$word")"
+  local git_dir="$2"
+  local work_tree="$3"
+
+  local -a args=()
+  if [[ -n "$git_dir" ]]; then
+    args+=("--git-dir" "$git_dir")
+  fi
+  if [[ -n "$work_tree" ]]; then
+    args+=("--work-tree" "$work_tree")
+  fi
+
+  args+=("complete" "--type" "remote" "$word")
+
+  printf "%s" "$(feature "${args[@]}")"
 }
 
 # Generates completions for a revision name
 #
 # Params
 # $0 - (required) the prefix to match
+# $1 - (optional) the git dir
+# $2 - (optional) the work tree
 #
 # Returns
 # Prints a space-separated list of matching revisions
 _feature_compgen_revisions() {
   local word="$1"
-  printf "%s" "$(feature complete --type rev "$word")"
+  local git_dir="$2"
+  local work_tree="$3"
+
+  local -a args=()
+  if [[ -n "$git_dir" ]]; then
+    args+=("--git-dir" "$git_dir")
+  fi
+  if [[ -n "$work_tree" ]]; then
+    args+=("--work-tree" "$work_tree")
+  fi
+
+  args+=("complete" "--type" "rev" "$word")
+
+  printf "%s" "$(feature "${args[@]}")"
 }
 
 # Convenience function to reply with a list of files
@@ -52,6 +97,8 @@ _feature() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="$3"
   local cmd=""
+  local git_dir=""
+  local work_tree=""
 
   # find subcommand
   local word
@@ -59,6 +106,30 @@ _feature() {
     # match last seen command and current word
     case "$cmd,$word" in
       ",$bin")
+        cmd="feature"
+        ;;
+
+      "feature,--git-dir")
+        cmd="--git-dir"
+        ;;
+
+      "--git-dir,=")
+        ;;
+
+      "--git-dir,"*)
+        git_dir="$word"
+        cmd="feature"
+        ;;
+
+      "feature,--wt" | "feature,--work-tree")
+        cmd="--work-tree"
+        ;;
+
+      "--work-tree,=")
+        ;;
+
+      "--work-tree,"*)
+        work_tree="$word"
         cmd="feature"
         ;;
 
@@ -76,6 +147,22 @@ _feature() {
 
       feature,completions)
         cmd="completions"
+        ;;
+
+      feature,config)
+        cmd="config"
+        ;;
+
+      config,create)
+        cmd="config_create"
+        ;;
+
+      config,get)
+        cmd="config_get"
+        ;;
+
+      config,schema)
+        cmd="config_schema"
         ;;
 
       feature,end)
@@ -122,22 +209,6 @@ _feature() {
         cmd="update"
         ;;
 
-      feature,config)
-        cmd="config"
-        ;;
-
-      config,create)
-        cmd="config_create"
-        ;;
-
-      config,get)
-        cmd="config_get"
-        ;;
-
-      config,schema)
-        cmd="config_schema"
-        ;;
-
       *)
         ;;
     esac
@@ -169,7 +240,7 @@ _feature() {
       local opts="--help --branch"
       case "$prev" in
         --branch)
-          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
           case "$cur" in
@@ -177,7 +248,7 @@ _feature() {
               COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
               ;;
             *)
-              COMPREPLY=( $(_feature_compgen_branches "$cur") )
+              COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           esac
       esac
       ;;
@@ -186,7 +257,7 @@ _feature() {
       local opts="--help --base"
       case "$prev" in
         --base)
-          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
           case "$cur" in
@@ -194,7 +265,7 @@ _feature() {
               COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
               ;;
             *)
-              COMPREPLY=( $(_feature_compgen_branches "$cur") )
+              COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           esac
       esac
       ;;
@@ -203,7 +274,7 @@ _feature() {
       local opts="--help --amend --no-verify --to"
       case "$prev" in
         --to)
-          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
           case "$cur" in
@@ -262,14 +333,13 @@ _feature() {
       local opts="--help -r --remote -f --force --base"
       case "$prev" in
         --base)
-          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
+          ;;
+        -r | --remote)
+          COMPREPLY=( $(compgen -W "true false" -- "$cur") )
           ;;
         *)
           case "$cur" in
-            -r=* | --remote=*)
-              IFS='=' read -r prev cur <<< "$cur"
-              COMPREPLY=( $(compgen -p "$prev=" -W "true false" -- "$cur") )
-              ;;
             "" | -*)
               COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
               ;;
@@ -288,14 +358,13 @@ _feature() {
 
     list)
       local opts="--help -H --no-hash -U --no-upstream -B --no-base"
-
-      case "$cur" in
-        -H=* | --no-hash=* | -U=* | --no-upstream=* | -B=* | --no-base=*)
-          IFS='=' read -r prev cur <<< "$cur"
-          COMPREPLY=( $(compgen -p "$prev=" -W "true false" -- "$cur") )
+      case "$prev" in
+        -H | --no-hash | -U | --no-upstream | -B | --no-base)
+          COMPREPLY=( $(compgen -W "true false" -- "$cur") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
       esac
       ;;
 
@@ -308,10 +377,10 @@ _feature() {
       local opts="--help -f --force -r --remote -u --upstream"
       case "$prev" in
         -r | --remote)
-          COMPREPLY=( $(_feature_compgen_remotes "$cur") )
+          COMPREPLY=( $(_feature_compgen_remotes "$cur" "$git_dir" "$work_tree") )
           ;;
         -u | --upstream)
-          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
           case "$cur" in
@@ -319,7 +388,7 @@ _feature() {
               COMPREPLY=( $(compgen -W "$opts", -- "$cur") )
               ;;
             *)
-              COMPREPLY=( $(_feature_compgen_branches "$cur") )
+              COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
               ;;
           esac
           ;;
@@ -335,17 +404,16 @@ _feature() {
         --paging)
           COMPREPLY=( $(compgen -W "auto always never" -- "$cur") )
           ;;
+        -S | --no-summary | -P | --no-patch)
+          COMPREPLY=( $(compgen -W "true false" -- "$cur") )
+          ;;
         *)
           case "$cur" in
-            -S=* | --no-summary=* | -P=* | --no-patch=*)
-              IFS='=' read -r prev cur <<< "$cur"
-              COMPREPLY=( $(compgen -p "$prev=" -W "true false" -- "$cur") )
-              ;;
             -*)
               COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
               ;;
             *)
-              COMPREPLY=( $(_feature_compgen_revisions "$cur") )
+              COMPREPLY=( $(_feature_compgen_revisions "$cur" "$git_dir" "$work_tree") )
               ;;
           esac
           ;;
@@ -356,7 +424,7 @@ _feature() {
       local opts="--help --dry-run --sep --format --fmt --from -s --stay"
       case "$prev" in
         --from)
-          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
           case "$cur" in
@@ -378,10 +446,9 @@ _feature() {
 
     sync)
       local opts="--help --dry-run -P --no-prune"
-      case "$cur" in
-        -P=* | --no-prune=*)
-          IFS='=' read -r prev cur <<< "$cur"
-          COMPREPLY=( $(compgen -p "$prev=" -W "true false" -- "$cur") )
+      case "$prev" in
+        -P | --no-prune)
+          COMPREPLY=( $(compgen -W "true false" -- "$cur") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -396,7 +463,7 @@ _feature() {
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
           ;;
         *)
-          COMPREPLY=( $(_feature_compgen_branches "$cur") )
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
       ;;

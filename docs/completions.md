@@ -117,4 +117,4 @@ This is because these options in particular can be used without a value at all (
 
 These commands *do* support completions with the '=' syntax, since it's the only valid syntax.
 
-> Note: Completions for these commands currently don't work. They'll be fixed eventually.
+> Note: Completions for these args are somewhat buggy. They'll be fixed eventually.
