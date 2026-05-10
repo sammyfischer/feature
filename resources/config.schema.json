@@ -20,6 +20,13 @@
       "type": "string",
       "default": "origin"
     },
+    "end": {
+      "description": "Options for the end command",
+      "$ref": "#/$defs/EndConfig",
+      "default": {
+        "remote": false
+      }
+    },
     "format": {
       "description": "Formatting options",
       "$ref": "#/$defs/FormatConfig",
@@ -128,6 +135,17 @@
         "none",
         "subject",
         "full"
+      ]
+    },
+    "EndConfig": {
+      "type": "object",
+      "properties": {
+        "remote": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "remote"
       ]
     },
     "FormatConfig": {

@@ -14,7 +14,7 @@
    - files in `resources/` if they changed
 6. Push and merge the release branch.
 7. Switch to main and pull again.
-8. `git tag <version>`
+8. `just tag`
 9. `git push --tags origin`
 
 Double check that CI ran properly. If not, fix the issue on a new feature branch, merge it, then do a brand new release. In general, you'll increment only the patch version, unless it causes a breaking user-facing change (in which case you increment the major version).
