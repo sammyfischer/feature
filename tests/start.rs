@@ -86,6 +86,7 @@ fn sets_feature_base_using_remote() {
 #[test]
 fn uses_custom_format() {
   let repo = TestRepo::new();
+  repo.git(&["config", "feature.user", "test"]).success();
   repo.init_commit();
   repo.write_file(
     "feature.toml",
@@ -113,6 +114,7 @@ branch = "%(user)%(sep)%(base)%(sep)%s"
 #[test]
 fn advanced_custom_formats() {
   let repo = TestRepo::new();
+  repo.git(&["config", "feature.user", "test"]).success();
   repo.init_commit();
 
   // success cases
@@ -147,6 +149,7 @@ fn advanced_custom_formats() {
 #[test]
 fn dry_run_prints_branch() {
   let repo = TestRepo::new();
+  repo.git(&["config", "feature.user", "test"]).success();
   repo.init_commit();
   repo.write_file(
     "feature.toml",

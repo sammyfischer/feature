@@ -7,7 +7,6 @@ use console::style;
 use crate::templater::{LongVar, ShortVar, Templater};
 use crate::util::branch::switch;
 use crate::util::branch_meta::BranchMeta;
-use crate::util::get_signature;
 use crate::util::string::ToStrLossyOwned;
 use crate::{App, data};
 
@@ -18,20 +17,20 @@ unexpected behavior, you should specify all cli options first, then add branch
 name args.
 
 To be more explicit, you can separate WORDS with "--":
-• feature start --sep='_' -- remaining args
+• feature start --sep='_' -- name of the branch
 
 Supports several custom formatting options that can be specified in the command
 line or config file."#;
 
-const FORMAT_HELP_MSG: &str = r"Template replacements (in order):
+const FORMAT_HELP_MSG: &str = r#"Template replacements (in order):
   %%      -> a literal '%'
-  %(user) -> user.name found in git config
+  %(user) -> feature.user (set with "git config feature.user <username>")
   %(base) -> base branch name
   %(sep)  -> the separator used to join WORDS
-  %s      -> WORDS joined by the separator";
+  %s      -> WORDS joined by the separator"#;
 
-const NOT_ON_BRANCH_MSG: &str = r"Not currently on a branch! You can switch to a branch or specify one manually
-with the --from option.";
+const NOT_ON_BRANCH_MSG: &str = r#"Not currently on a branch! You can switch to a branch or specify one manually
+with the "--from <BRANCH>" option."#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -54,7 +53,7 @@ pub struct Args {
   pub format: Option<String>,
 
   /// Which base branch to start from
-  #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]
+  #[arg(long, visible_alias = "base", value_name = "BRANCH", value_hint = ValueHint::Other)]
   pub from: Option<String>,
 
   /// Whether to stay on the current branch
@@ -142,11 +141,12 @@ impl Args {
     let mut templater = Templater::new()
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
-        get_signature(&state.repo)
-          .expect("Failed to get default commit signature")
-          .expect("Specify a username with git config user.name <name>")
-          .name_bytes()
-          .to_str_lossy_owned()
+        state
+          .repo
+          .config()
+          .expect("Failed to get git config")
+          .get_string("feature.user")
+          .expect("Failed to get value for feature.user")
       }))
       .long(LongVar::eager("base", base_name))
       .long(LongVar::eager("sep", sep));
