@@ -1,12 +1,7 @@
-use std::io::IsTerminal;
-use std::str::Lines;
-
 use anyhow::{Context, Result};
 use clap::ValueHint;
-use console::{style, truncate_str};
 
-use crate::util::string::ToStrLossy;
-use crate::util::term::{get_term_width, paginate};
+use crate::util::term::paginate;
 use crate::{App, git};
 
 const LONG_ABOUT: &str = r"View a graph of commits.
@@ -39,43 +34,20 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    // like log, but author name and date are first and colored
-    let output = git!(
-      "log",
-      "--graph",
-      "--all",
-      "--color=always",
-      format!(
-        "--pretty={}",
-        self.format.as_ref().unwrap_or(&state.config.format.graph)
+    let fmt = self.format.as_ref().or(state.config.format.graph.as_ref());
+    let mut cmd = match fmt {
+      Some(fmt) => git!(
+        "log",
+        "--graph",
+        "--all",
+        "--color=always",
+        format!("--pretty={}", fmt)
       ),
-    )
-    .output()
-    .context("Failed to get git output")?;
+      None => git!("log", "--graph", "--all", "--color=always"),
+    };
 
-    let string_output = &output.stdout.to_str_lossy();
-
-    // if stdout is not a terminal, just print and return
-    if !std::io::stdout().is_terminal() {
-      println!("{}", string_output);
-      return Ok(());
-    }
-
-    // if stdout is a terminal, truncate lines
-    let truncated = truncate_lines(&mut string_output.lines()).join("\n");
-    paginate(truncated.as_bytes())
+    let output = cmd.output().context("Failed to get git output")?;
+    paginate(&output.stdout)?;
+    Ok(())
   }
-}
-
-fn truncate_lines(lines: &mut Lines) -> Vec<String> {
-  let mut out: Vec<String> = Vec::new();
-  let term_width = get_term_width();
-  let tail = style("…").dim().to_string();
-
-  // truncate each line to term width
-  for line in lines {
-    out.push(truncate_str(line, term_width, &tail).to_string());
-  }
-
-  out
 }

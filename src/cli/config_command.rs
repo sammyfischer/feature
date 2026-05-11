@@ -142,7 +142,10 @@ impl Args {
           Some(ref it) => it.clone(),
           None => "None".to_string(),
         },
-        "format.graph" => config.format.graph.clone(),
+        "format.graph" => match config.format.graph {
+          Some(ref it) => it.clone(),
+          None => "None".to_string(),
+        },
         "format.hour" => config.format.hour.to_string(),
         "format.date" => config.format.date.to_string(),
         "format.timezone" => toml_stringify!(config.format.timezone),

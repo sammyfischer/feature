@@ -14,7 +14,7 @@ pub struct FormatConfig {
   pub branch: Option<String>,
 
   /// Template for graph output
-  pub graph: String,
+  pub graph: Option<String>,
 
   /// Hour format, 12 or 24 hour
   pub hour: HourStyle,
@@ -36,7 +36,7 @@ impl Default for FormatConfig {
     Self {
       branch_sep: "-".into(),
       branch: Default::default(),
-      graph: "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s".into(),
+      graph: Default::default(),
       hour: Default::default(),
       date: Default::default(),
       timezone: false,

@@ -228,10 +228,26 @@ Prints a graph of commits.
 This command runs:
 
 ```bash
-git log --graph --all --pretty='format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s'
+git log --graph --all
+git log --graph --all --pretty=<FORMAT> # if --format was specified
 ```
 
-This provides an easier-to-type command to use the graph option (which many people might not know about) and allows you to specify a different format for graph. It also truncates outupt to the terminal width.
+This provides an easier-to-type command to use the graph option (which many people might not know about) and allows you to specify a different format for graph.
+
+Recommended config:
+
+```bash
+git config --global format.pretty 'format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)'
+
+# This isn't needed if you use the above format, but if not I highly recommend this. Git log uses the full hash by default.
+git config --global log.abbrevCommit yes
+```
+
+```toml
+# feature config
+[format]
+graph = "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s"
+```
 
 ## Show
 
