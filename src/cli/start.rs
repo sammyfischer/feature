@@ -141,12 +141,11 @@ impl Args {
     let mut templater = Templater::new()
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
-        state
-          .repo
-          .config()
-          .expect("Failed to get git config")
+        let config = state.repo.config().context("Failed to get git config")?;
+        let user = config
           .get_string("feature.user")
-          .expect("Failed to get value for feature.user")
+          .context("Failed to get value for feature.user")?;
+        Ok(user)
       }))
       .long(LongVar::eager("base", base_name))
       .long(LongVar::eager("sep", sep));

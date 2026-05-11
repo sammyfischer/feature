@@ -145,6 +145,26 @@ fn advanced_custom_formats() {
   }
 }
 
+/// When the templater fails, the proper error context should be printed
+#[test]
+fn fails_when_no_feature_user() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  // don't set feature.user
+  repo
+    .feature(&["start", "--format=%(user)/%s", "new", "branch"])
+    .failure()
+    .stderr(
+      r#"Error: Failed when replacing: %(user)
+
+Caused by:
+    0: Failed to get value for feature.user
+    1: config value 'feature.user' was not found; class=Config (7); code=NotFound (-3)
+"#,
+    );
+}
+
 /// Dry run mode only prints the would-be branch name, and doesn't create or switch to a branch
 #[test]
 fn dry_run_prints_branch() {

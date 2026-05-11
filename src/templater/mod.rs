@@ -24,34 +24,34 @@
 
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 
 struct EagerReplacement(String);
 
 struct LazyReplacement<'values> {
   value: Option<String>,
-  getter: Box<dyn Fn() -> String + 'values>,
+  getter: Box<dyn Fn() -> Result<String> + 'values>,
 }
 
 trait Replace<'values> {
-  fn replace(&mut self) -> &str;
+  fn replace(&mut self) -> Result<&str>;
 }
 
 impl<'values> Replace<'values> for EagerReplacement {
-  fn replace(&mut self) -> &str {
-    &self.0
+  fn replace(&mut self) -> Result<&str> {
+    Ok(&self.0)
   }
 }
 
 impl<'values> Replace<'values> for LazyReplacement<'values> {
-  fn replace(&mut self) -> &str {
-    match self.value {
+  fn replace(&mut self) -> Result<&str> {
+    Ok(match self.value {
       Some(ref it) => it,
       None => {
-        self.value = Some((self.getter)());
+        self.value = Some((self.getter)()?);
         self.value.as_ref().unwrap()
       }
-    }
+    })
   }
 }
 
@@ -74,7 +74,7 @@ impl<'values> ShortVar<'values> {
   /// Create a new lazily-evaluated variable. The value is computed on first replacement, and
   /// cached for subsequent replacements. The return value of `replacement` must outlive the
   /// [Templater].
-  pub fn lazy(name: char, replacement: impl Fn() -> String + 'values) -> Self {
+  pub fn lazy(name: char, replacement: impl Fn() -> Result<String> + 'values) -> Self {
     Self {
       name,
       value: Box::new(LazyReplacement::<'values> {
@@ -103,7 +103,7 @@ impl<'values> LongVar<'values> {
   /// Create a new lazily-evaluated variable. The value is computed on first replacement, and
   /// cached for subsequent replacements. The return value of `replacement` must outlive the
   /// [Templater].
-  pub fn lazy(name: &str, replacement: impl Fn() -> String + 'values) -> Self {
+  pub fn lazy(name: &str, replacement: impl Fn() -> Result<String> + 'values) -> Self {
     Self {
       name: name.to_string(),
       value: Box::new(LazyReplacement::<'values> {
@@ -206,7 +206,11 @@ impl<'values> Templater<'values> {
           // short variable
           _ => match self.short_vars.get_mut(&c) {
             Some(value) => {
-              out.push_str(value.replace());
+              out.push_str(
+                value
+                  .replace()
+                  .with_context(|| format!("Failed when replacing: %{}", c))?,
+              );
               state = State::Base;
             }
             None => return Err(anyhow!("Unrecognized variable: %{}", c)),
@@ -217,11 +221,15 @@ impl<'values> Templater<'values> {
           // finished long var name, perform replacement
           ')' => match self.long_vars.get_mut(&buf) {
             Some(value) => {
-              out.push_str(value.replace());
+              out.push_str(
+                value
+                  .replace()
+                  .with_context(|| format!("Failed when replacing: %({})", &buf))?,
+              );
               buf.clear();
               state = State::Base;
             }
-            None => return Err(anyhow!("Unrecognized variable: %({})", buf)),
+            None => return Err(anyhow!("Unrecognized variable: %({})", &buf)),
           },
 
           _ => buf.push(c),
@@ -255,7 +263,8 @@ fn builds_templater() {
       .short_vars
       .get_mut(&'l')
       .expect("Short var 'l' should be mapped")
-      .replace(),
+      .replace()
+      .unwrap(),
     "<-",
     "Short var 'l' should be mapped to '<-'"
   );
@@ -265,7 +274,8 @@ fn builds_templater() {
       .short_vars
       .get_mut(&'r')
       .expect("Short var 'r' should be mapped")
-      .replace(),
+      .replace()
+      .unwrap(),
     "->",
     "Short var 'r' should be mapped to '->'"
   );
@@ -275,7 +285,8 @@ fn builds_templater() {
       .long_vars
       .get_mut("huh")
       .expect("Long var 'huh' should be mapped")
-      .replace(),
+      .replace()
+      .unwrap(),
     "O_O",
     "Long var 'huh' should be mapped to 'O_O'"
   );
@@ -299,27 +310,17 @@ fn replaces_eager_vars() {
 #[test]
 fn replaces_lazy_vars() {
   let mut templater = Templater::new()
-    .short(ShortVar::lazy('l', || "<-".to_string()))
-    .short(ShortVar::lazy('r', || "->".to_string()))
-    .long(LongVar::lazy("huh", || "O_O".to_string()));
+    .short(ShortVar::lazy('l', || Ok("<-".to_string())))
+    .short(ShortVar::lazy('r', || Ok("->".to_string())))
+    .long(LongVar::lazy("huh", || Ok("O_O".to_string())));
 
-  assert_eq!(
-    templater
-      .replace("%r %(huh) %l")
-      .expect("Template should be processed"),
-    "-> O_O <-"
-  );
+  assert_eq!(templater.replace("%r %(huh) %l").unwrap(), "-> O_O <-");
 }
 
 #[test]
 fn replaces_repeated_lazy_vars() {
-  let mut templater = Templater::new().short(ShortVar::lazy('l', || "->".to_string()));
-  assert_eq!(
-    templater
-      .replace("%l %l")
-      .expect("Template should be processed"),
-    "-> ->"
-  );
+  let mut templater = Templater::new().short(ShortVar::lazy('l', || Ok("->".to_string())));
+  assert_eq!(templater.replace("%l %l").unwrap(), "-> ->");
 }
 
 #[test]
@@ -330,39 +331,16 @@ fn replaces_literal_percent() {
     .long(LongVar::eager("huh", "O_O"));
 
   assert_eq!(
-    templater
-      .replace("%%l should evaluate to %l")
-      .expect("Template should be processed"),
+    templater.replace("%%l should evaluate to %l").unwrap(),
     "%l should evaluate to <-"
   );
-
+  assert_eq!(templater.replace("%(huh) %%(huh)").unwrap(), "O_O %(huh)");
   assert_eq!(
-    templater
-      .replace("%(huh) %%(huh)")
-      .expect("Template should be processed"),
-    "O_O %(huh)"
-  );
-
-  assert_eq!(
-    templater
-      .replace("%%(unrecognized)")
-      .expect("Template should be processed"),
+    templater.replace("%%(unrecognized)").unwrap(),
     "%(unrecognized)"
   );
-
-  assert_eq!(
-    templater
-      .replace("%%")
-      .expect("Template should be processed"),
-    "%"
-  );
-
-  assert_eq!(
-    templater
-      .replace("%%%%")
-      .expect("Template should be processed"),
-    "%%"
-  );
+  assert_eq!(templater.replace("%%").unwrap(), "%");
+  assert_eq!(templater.replace("%%%%").unwrap(), "%%");
 }
 
 #[test]
@@ -372,17 +350,14 @@ fn handles_empty_template() {
     .short(ShortVar::eager('r', "->"))
     .long(LongVar::eager("huh", "O_O"));
 
-  assert_eq!(
-    templater.replace("").expect("Template should be processed"),
-    ""
-  );
+  assert_eq!(templater.replace("").unwrap(), "");
 }
 
 #[test]
 fn fails_on_unrecognized_short_vars() {
   let mut templater = Templater::new()
     .short(ShortVar::eager('l', "<-"))
-    .short(ShortVar::lazy('r', || "->".to_string()))
+    .short(ShortVar::lazy('r', || Ok("->".to_string())))
     .long(LongVar::eager("huh", "O_O"));
 
   templater
@@ -394,7 +369,7 @@ fn fails_on_unrecognized_short_vars() {
 fn fails_on_unrecognized_long_vars() {
   let mut templater = Templater::new()
     .short(ShortVar::eager('l', "<-"))
-    .short(ShortVar::lazy('r', || "->".to_string()))
+    .short(ShortVar::lazy('r', || Ok("->".to_string())))
     .long(LongVar::eager("huh", "O_O"));
 
   templater
@@ -406,7 +381,7 @@ fn fails_on_unrecognized_long_vars() {
 fn fails_on_incomplete_short_vars() {
   let mut templater = Templater::new()
     .short(ShortVar::eager('l', "<-"))
-    .short(ShortVar::lazy('r', || "->".to_string()))
+    .short(ShortVar::lazy('r', || Ok("->".to_string())))
     .long(LongVar::eager("huh", "O_O"));
 
   templater
@@ -418,7 +393,7 @@ fn fails_on_incomplete_short_vars() {
 fn fails_on_incomplete_long_vars() {
   let mut templater = Templater::new()
     .short(ShortVar::eager('l', "<-"))
-    .short(ShortVar::lazy('r', || "->".to_string()))
+    .short(ShortVar::lazy('r', || Ok("->".to_string())))
     .long(LongVar::eager("huh", "O_O"));
 
   templater
