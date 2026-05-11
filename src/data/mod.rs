@@ -1,9 +1,13 @@
 //! Interactions with persistent data
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
+use clap::ValueEnum;
 use git2::{Config, ErrorClass, ErrorCode, Repository};
 
-use crate::util::branch_meta::BranchMeta;
+use crate::{
+  config::PageWhen,
+  util::{branch_meta::BranchMeta, display::DisplayCommitMessageLevel},
+};
 
 /// Generates the function to get a variable from git config.
 ///
@@ -136,4 +140,32 @@ pub fn get_list_upstream(config: &Config) -> Result<bool> {
 /// Gets "feature.list.base". Defautls to `true`.
 pub fn get_list_base(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.base", true)
+}
+
+/// Gets "feature.show.message". Defaults to [DisplayCommitMessageLevel::default()].
+pub fn get_show_message(config: &Config) -> Result<DisplayCommitMessageLevel> {
+  let value = (get_option!(config, get_str, "feature.show.message") as Result<Option<&str>>)?;
+  Ok(match value {
+    Some(value) => DisplayCommitMessageLevel::from_str(value, true).map_err(|e| anyhow!(e))?,
+    None => DisplayCommitMessageLevel::default(),
+  })
+}
+
+/// Gets "feature.show.summary". Defaults to `true`.
+pub fn get_show_summary(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.show.summary", true)
+}
+
+/// Gets "feature.show.patch". Defaults to `false`.
+pub fn get_show_patch(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.show.patch", false)
+}
+
+/// Gets "feature.show.paging". Defaults to [PageWhen::default()].
+pub fn get_show_paging(config: &Config) -> Result<PageWhen> {
+  let value = (get_option!(config, get_str, "feature.show.paging") as Result<Option<&str>>)?;
+  Ok(match value {
+    Some(value) => PageWhen::from_str(value, true).map_err(|e| anyhow!(e))?,
+    None => PageWhen::default(),
+  })
 }

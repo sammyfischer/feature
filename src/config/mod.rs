@@ -11,10 +11,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::config::format::FormatConfig;
-use crate::config::show::ShowConfig;
 
 pub mod format;
-pub mod show;
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -25,9 +23,6 @@ pub struct Config {
   /// List of branches to protect from force-pushes/deletion
   pub protect: Vec<String>,
 
-  /// Options for the show command
-  pub show: ShowConfig,
-
   /// Formatting options
   pub format: FormatConfig,
 }
@@ -37,7 +32,6 @@ impl Default for Config {
     Self {
       default_remote: "origin".into(),
       protect: vec!["main".into()],
-      show: Default::default(),
       format: Default::default(),
     }
   }

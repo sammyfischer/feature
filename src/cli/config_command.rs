@@ -122,11 +122,6 @@ impl Args {
         "default_remote" => config.default_remote.clone(),
         "protect" => toml_stringify!(config.protect.clone()),
 
-        "show.message" => config.show.message.to_string(),
-        "show.summary" => toml_stringify!(config.show.summary),
-        "show.patch" => toml_stringify!(config.show.patch),
-        "show.paging" => config.show.paging.to_string(),
-
         "format.branch_sep" => config.format.branch_sep.clone(),
         "format.branch" => match config.format.branch {
           Some(ref it) => it.clone(),
