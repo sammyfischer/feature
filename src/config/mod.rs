@@ -10,7 +10,6 @@ use figment::providers::{Format, Serialized, Toml};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::config::advice::AdviceConfig;
 use crate::config::end::EndConfig;
 use crate::config::format::FormatConfig;
 use crate::config::list::ListConfig;
@@ -18,7 +17,6 @@ use crate::config::show::ShowConfig;
 use crate::config::status::StatusConfig;
 use crate::config::sync::SyncConfig;
 
-pub mod advice;
 pub mod end;
 pub mod format;
 pub mod list;
@@ -52,9 +50,6 @@ pub struct Config {
 
   /// Formatting options
   pub format: FormatConfig,
-
-  /// Advice options
-  pub advice: AdviceConfig,
 }
 
 impl Default for Config {
@@ -68,7 +63,6 @@ impl Default for Config {
       list: Default::default(),
       show: Default::default(),
       format: Default::default(),
-      advice: Default::default(),
     }
   }
 }

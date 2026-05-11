@@ -143,13 +143,6 @@ impl Args {
           None => "None".to_string(),
         },
 
-        "advice.status" => toml_stringify!(config.advice.status),
-        "advice.rebase" => toml_stringify!(config.advice.rebase),
-        "advice.merge" => toml_stringify!(config.advice.merge),
-        "advice.cherry_pick" => toml_stringify!(config.advice.cherry_pick),
-        "advice.revert" => toml_stringify!(config.advice.revert),
-        "advice.bisect" => toml_stringify!(config.advice.bisect),
-
         key => {
           eprintln!("Unrecognized key: {}", key);
           continue;

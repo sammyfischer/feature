@@ -39,38 +39,39 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
+    let config = state.repo.config()?;
     let head = get_head(&state.repo)?;
     let rebase_dir = get_rebase_dir(&state.repo);
 
     let (header, advice) = if let Some(dir) = rebase_dir.as_ref() {
       (
         display_rebase_header(&state.repo, dir)?,
-        opt_advice!(state.config.advice.rebase, REBASE_CONFLICT_ADVICE),
+        opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
       )
     } else if is_merge_active(&state.repo) {
       (
         display_merge_header(&state.repo)?,
-        opt_advice!(state.config.advice.merge, MERGE_CONFLICT_ADVICE),
+        opt_advice!(data::get_advice_conflict(&config)?, MERGE_CONFLICT_ADVICE),
       )
     } else if is_pick_active(&state.repo) {
       (
         display_pick_header(&state.repo)?,
-        opt_advice!(state.config.advice.cherry_pick, PICK_CONFLICT_ADVICE),
+        opt_advice!(data::get_advice_conflict(&config)?, PICK_CONFLICT_ADVICE),
       )
     } else if is_revert_active(&state.repo) {
       (
         display_revert_header(&state.repo)?,
-        opt_advice!(state.config.advice.revert, REVERT_CONFLICT_ADVICE),
+        opt_advice!(data::get_advice_conflict(&config)?, REVERT_CONFLICT_ADVICE),
       )
     } else if is_bisect_active(&state.repo) {
       (
         display_bisect_header(&state.repo)?,
-        opt_advice!(state.config.advice.bisect, BISECT_ADVICE),
+        opt_advice!(data::get_advice_status(&config)?, BISECT_ADVICE),
       )
     } else {
       (
         display_normal_header(state, head.as_ref())?,
-        opt_advice!(state.config.advice.status, STATUS_ADVICE),
+        opt_advice!(data::get_advice_status(&config)?, STATUS_ADVICE),
       )
     };
 

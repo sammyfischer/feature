@@ -83,7 +83,7 @@ struct CommitTarget<'repo> {
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     // if there's a pick active and the user has pick advice enabled
-    if get_pick_head(&state.repo)?.is_some() && state.config.advice.cherry_pick {
+    if get_pick_head(&state.repo)?.is_some() && data::get_advice_conflict(&state.repo.config()?)? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_PICK)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -92,7 +92,8 @@ impl Args {
     }
 
     // if there's a revert active and the user has revert advice enabled
-    if get_revert_head(&state.repo)?.is_some() && state.config.advice.revert {
+    if get_revert_head(&state.repo)?.is_some() && data::get_advice_conflict(&state.repo.config()?)?
+    {
       let confirmed = get_user_confirmation(CONFIRM_DURING_REVERT)?;
       if !confirmed {
         println!("Cancelled commit");

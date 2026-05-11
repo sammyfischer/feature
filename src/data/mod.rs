@@ -5,6 +5,42 @@ use git2::{Config, ErrorClass, ErrorCode, Repository};
 
 use crate::util::branch_meta::BranchMeta;
 
+/// Generates the function to get a variable from git config.
+///
+/// In the first form, the arguments are:
+/// ```
+/// get_option!(config, getter, key)
+/// ```
+///
+/// The returned value will be an `Option` wrapping the possible value.
+///
+/// In the second form, the arguments are:
+/// ```
+/// get_option!(config, getter, key, default)
+/// ```
+/// The returned value won't be an option, and if not found will use `default`.
+///
+/// In both forms, `config` is an instance of [git2::Config] and `getter` is one of the getter functions defined it.
+///
+/// `key` is always a string.
+macro_rules! get_option {
+  ($config:expr, $getter:ident, $key:literal) => {
+    Ok(match $config.$getter($key) {
+      Ok(it) => Some(it),
+      Err(e) if e.class() == ErrorClass::Config && e.code() == ErrorCode::NotFound => None,
+      Err(e) => return Err(e.into()),
+    })
+  };
+
+  ($config:expr, $getter:ident, $key:literal, $default:expr) => {
+    Ok(match $config.$getter($key) {
+      Ok(it) => it,
+      Err(e) if e.class() == ErrorClass::Config && e.code() == ErrorCode::NotFound => $default,
+      Err(e) => return Err(e.into()),
+    })
+  };
+}
+
 /// Gets the feature-base of a branch.
 ///
 /// # Params
@@ -44,36 +80,30 @@ pub fn set_feature_base(config: &mut Config, branch_name: &str, base_refname: &s
 
 /// Gets "feature.user" from git config
 pub fn get_feature_user(config: &Config) -> Result<Option<String>> {
-  Ok(match config.get_string("feature.user") {
-    Ok(it) => Some(it),
-    Err(e) if e.class() == ErrorClass::Config && e.code() == ErrorCode::NotFound => None,
-    Err(e) => return Err(e.into()),
-  })
+  get_option!(config, get_string, "feature.user")
 }
 
 /// Gets "feature.format.graph" from git config
 pub fn get_format_graph(config: &Config) -> Result<Option<String>> {
-  Ok(match config.get_string("feature.format.graph") {
-    Ok(it) => Some(it),
-    Err(e) if e.class() == ErrorClass::Config && e.code() == ErrorCode::NotFound => None,
-    Err(e) => return Err(e.into()),
-  })
+  get_option!(config, get_string, "feature.format.graph")
 }
 
 /// Gets "feature.format.date" from git config
 pub fn get_format_date(config: &Config) -> Result<Option<String>> {
-  Ok(match config.get_string("feature.format.date") {
-    Ok(it) => Some(it),
-    Err(e) if e.class() == ErrorClass::Config && e.code() == ErrorCode::NotFound => None,
-    Err(e) => return Err(e.into()),
-  })
+  get_option!(config, get_string, "feature.format.date")
 }
 
 /// Gets "feature.format.relative" from git config. Defaults to `false`.
 pub fn get_format_relative(config: &Config) -> Result<bool> {
-  Ok(match config.get_bool("feature.format.date") {
-    Ok(it) => it,
-    Err(e) if e.class() == ErrorClass::Config && e.code() == ErrorCode::NotFound => false,
-    Err(e) => return Err(e.into()),
-  })
+  get_option!(config, get_bool, "feature.format.relative", false)
+}
+
+/// Gets "advice.statusHints" from git config. Defaults to `false`.
+pub fn get_advice_status(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "advice.statusHints", false)
+}
+
+/// Gets "advice.resolveConflict" from git config. Defaults to `true`.
+pub fn get_advice_conflict(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "advice.resolveConflict", true)
 }
