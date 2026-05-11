@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{self, Config};
 use crate::util::term::get_user_confirmation;
 
-/// Creates a toml value out of the given value, then stringifies
+/// Serializes the value into a toml string
 macro_rules! toml_stringify {
   ($opt:expr) => {
     toml::Value::from($opt).to_string()
@@ -142,14 +142,6 @@ impl Args {
           Some(ref it) => it.clone(),
           None => "None".to_string(),
         },
-        "format.graph" => match config.format.graph {
-          Some(ref it) => it.clone(),
-          None => "None".to_string(),
-        },
-        "format.hour" => config.format.hour.to_string(),
-        "format.date" => config.format.date.to_string(),
-        "format.timezone" => toml_stringify!(config.format.timezone),
-        "format.relative" => toml_stringify!(config.format.relative),
 
         "advice.status" => toml_stringify!(config.advice.status),
         "advice.rebase" => toml_stringify!(config.advice.rebase),

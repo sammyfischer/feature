@@ -2,12 +2,14 @@ use anyhow::{Result, anyhow};
 use clap::ValueHint;
 use git2::ErrorCode;
 
-use crate::App;
 use crate::config::PageWhen;
 use crate::util::diff::{DiffSummary, get_formatted_diff};
-use crate::util::display::{DisplayCommitMessageLevel, DisplayCommitOptions, display_commit};
+use crate::util::display::{
+  DisplayCommitMessageLevel, DisplayCommitOptions, DisplayTimeOptions, display_commit,
+};
 use crate::util::string::ToStrLossy;
 use crate::util::term::{is_term, paginate};
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Show info about a commit
 
@@ -57,6 +59,7 @@ impl Args {
       .revparse_single(self.revision.as_deref().unwrap_or("HEAD"))?;
 
     let commit = object.peel_to_commit()?;
+    let config = state.repo.config()?;
     writeln!(
       buf,
       "{}",
@@ -64,7 +67,10 @@ impl Args {
         &commit,
         &DisplayCommitOptions {
           message: self.message.unwrap_or(state.config.show.message),
-          time: From::from(&state.config)
+          time: DisplayTimeOptions {
+            relative: data::get_format_relative(&config)?,
+            fmt: data::get_format_date(&config)?
+          }
         }
       )?
     )?;

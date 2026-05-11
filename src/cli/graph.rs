@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::ValueHint;
 
 use crate::util::term::paginate;
-use crate::{App, git};
+use crate::{App, data, git};
 
 const LONG_ABOUT: &str = r"View a graph of commits.
 
@@ -34,7 +34,17 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let fmt = self.format.as_ref().or(state.config.format.graph.as_ref());
+    let fmt = match self.format.as_ref() {
+      // use cli opt
+      Some(fmt) => Some(fmt.to_owned()),
+
+      // try to get config field
+      None => {
+        let config = state.repo.config()?;
+        data::get_format_graph(&config)?
+      }
+    };
+
     let mut cmd = match fmt {
       Some(fmt) => git!(
         "log",

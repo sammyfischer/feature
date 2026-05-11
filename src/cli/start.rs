@@ -142,10 +142,8 @@ impl Args {
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
         let config = state.repo.config().context("Failed to get git config")?;
-        let user = config
-          .get_string("feature.user")
-          .context("Failed to get value for feature.user")?;
-        Ok(user)
+        data::get_feature_user(&config)?
+          .context("No value for feature.user. Set it with \"git config feature.user <username>\".")
       }))
       .long(LongVar::eager("base", base_name))
       .long(LongVar::eager("sep", sep));

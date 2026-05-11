@@ -159,8 +159,7 @@ fn fails_when_no_feature_user() {
       r#"Error: Failed when replacing: %(user)
 
 Caused by:
-    0: Failed to get value for feature.user
-    1: config value 'feature.user' was not found; class=Config (7); code=NotFound (-3)
+    No value for feature.user. Set it with "git config feature.user <username>".
 "#,
     );
 }
