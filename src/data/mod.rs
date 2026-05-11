@@ -83,6 +83,16 @@ pub fn get_feature_user(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.user")
 }
 
+/// Gets "feature.end.remote". Defaults to `false`.
+pub fn get_end_remote(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.end.remote", false)
+}
+
+/// Gets "feature.sync.prune". Defaults to `true`.
+pub fn get_sync_prune(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.sync.prune", true)
+}
+
 /// Gets "status.showUntrackedFiles". Defaults to `true`.
 pub fn get_status_untracked(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "status.showUntrackedFiles", true)

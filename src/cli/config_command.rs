@@ -122,10 +122,6 @@ impl Args {
         "default_remote" => config.default_remote.clone(),
         "protect" => toml_stringify!(config.protect.clone()),
 
-        "end.remote" => toml_stringify!(config.end.remote),
-
-        "sync.prune" => toml_stringify!(config.sync.prune),
-
         "show.message" => config.show.message.to_string(),
         "show.summary" => toml_stringify!(config.show.summary),
         "show.patch" => toml_stringify!(config.show.patch),

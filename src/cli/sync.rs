@@ -2,12 +2,12 @@ use anyhow::{Result, anyhow};
 use console::style;
 use git2::{Branch, BranchType, Commit, Diff, Repository};
 
-use crate::App;
 use crate::cli::prune::prune_branches;
 use crate::util::branch::{fetch_all, get_current_branch_name, hard_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::{DiffSummary, has_workdir_changes};
 use crate::util::display::trim_hash;
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r"Updates all branches with their remotes (if they have one), then prunes merged
 feature branches.
@@ -93,7 +93,10 @@ impl Args {
       }
     }
 
-    if !self.no_prune.unwrap_or(!state.config.sync.prune) {
+    if !self
+      .no_prune
+      .unwrap_or(!data::get_sync_prune(&state.repo.config()?)?)
+    {
       prune_branches(state, self.dry_run)?;
     }
     Ok(())

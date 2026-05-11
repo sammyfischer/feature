@@ -304,12 +304,8 @@ _feature() {
 
     config_get)
       local opts="--help"
-      local keys="default_remote protect end.remote sync.prune \
-        status.show_untracked list.hash list.upstream list.base show.message \
-        show.summary show.patch show.paging format.branch_sep format.branch \
-        format.log format.graph format.hour format.date format.timezone \
-        format.relative advice.status advice.rebase advice.merge \
-        advice.cherry_pick advice.revert advice.bisect"
+      local keys="default_remote protect show.message show.summary show.patch \
+        show.paging format.branch_sep format.branch"
       case "$cur" in
         -*)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur"))

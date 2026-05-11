@@ -10,15 +10,11 @@ use figment::providers::{Format, Serialized, Toml};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::config::end::EndConfig;
 use crate::config::format::FormatConfig;
 use crate::config::show::ShowConfig;
-use crate::config::sync::SyncConfig;
 
-pub mod end;
 pub mod format;
 pub mod show;
-pub mod sync;
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -28,12 +24,6 @@ pub struct Config {
 
   /// List of branches to protect from force-pushes/deletion
   pub protect: Vec<String>,
-
-  /// Options for the end command
-  pub end: EndConfig,
-
-  /// Options for the sync command
-  pub sync: SyncConfig,
 
   /// Options for the show command
   pub show: ShowConfig,
@@ -47,8 +37,6 @@ impl Default for Config {
     Self {
       default_remote: "origin".into(),
       protect: vec!["main".into()],
-      end: Default::default(),
-      sync: Default::default(),
       show: Default::default(),
       format: Default::default(),
     }

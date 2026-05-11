@@ -179,7 +179,9 @@ fn deletes_from_remote() {
 #[test]
 fn deletes_from_remote_using_config() {
   let (local, remote) = TestRepo::new_with_remote();
-  local.write_file("feature.toml", "[end]\nremote = true");
+  local
+    .git(&["config", "feature.end.remote", "yes"])
+    .success();
   local.init_commit();
   local.git(&["push", "-u", "origin", "main"]).success();
 
