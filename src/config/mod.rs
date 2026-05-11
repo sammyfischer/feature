@@ -13,13 +13,11 @@ use serde::{Deserialize, Serialize};
 use crate::config::end::EndConfig;
 use crate::config::format::FormatConfig;
 use crate::config::show::ShowConfig;
-use crate::config::status::StatusConfig;
 use crate::config::sync::SyncConfig;
 
 pub mod end;
 pub mod format;
 pub mod show;
-pub mod status;
 pub mod sync;
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -37,9 +35,6 @@ pub struct Config {
   /// Options for the sync command
   pub sync: SyncConfig,
 
-  /// Options for the status command
-  pub status: StatusConfig,
-
   /// Options for the show command
   pub show: ShowConfig,
 
@@ -54,7 +49,6 @@ impl Default for Config {
       protect: vec!["main".into()],
       end: Default::default(),
       sync: Default::default(),
-      status: Default::default(),
       show: Default::default(),
       format: Default::default(),
     }

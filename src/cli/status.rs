@@ -34,7 +34,7 @@ use crate::{App, data, opt_advice};
 pub struct Args {
   /// Hides untracked files from output
   #[arg(short = 'u', long, value_name = "HIDE")]
-  pub hide_untracked: bool,
+  pub no_untracked: bool,
 }
 
 impl Args {
@@ -161,7 +161,7 @@ impl Args {
     };
 
     // unstaged changes
-    let mut opts = if self.hide_untracked || !state.config.status.show_untracked {
+    let mut opts = if self.no_untracked || !data::get_status_untracked(&state.repo.config()?)? {
       None
     } else {
       let mut opts = DiffOptions::new();

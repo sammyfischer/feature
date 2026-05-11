@@ -78,47 +78,52 @@ pub fn set_feature_base(config: &mut Config, branch_name: &str, base_refname: &s
   Ok(())
 }
 
-/// Gets "feature.user" from git config
+/// Gets "feature.user"
 pub fn get_feature_user(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.user")
 }
 
-/// Gets "feature.format.graph" from git config
+/// Gets "status.showUntrackedFiles". Defaults to `true`.
+pub fn get_status_untracked(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "status.showUntrackedFiles", true)
+}
+
+/// Gets "feature.format.graph"
 pub fn get_format_graph(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.format.graph")
 }
 
-/// Gets "feature.format.date" from git config
+/// Gets "feature.format.date"
 pub fn get_format_date(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.format.date")
 }
 
-/// Gets "feature.format.relative" from git config. Defaults to `false`.
+/// Gets "feature.format.relative". Defaults to `false`.
 pub fn get_format_relative(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.format.relative", false)
 }
 
-/// Gets "advice.statusHints" from git config. Defaults to `false`.
+/// Gets "advice.statusHints". Defaults to `false`.
 pub fn get_advice_status(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "advice.statusHints", false)
 }
 
-/// Gets "advice.resolveConflict" from git config. Defaults to `true`.
+/// Gets "advice.resolveConflict". Defaults to `true`.
 pub fn get_advice_conflict(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "advice.resolveConflict", true)
 }
 
-/// Gets "feature.list.hash" from git config. Defautls to `true`.
+/// Gets "feature.list.hash". Defautls to `true`.
 pub fn get_list_hash(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.hash", true)
 }
 
-/// Gets "feature.list.upstream" from git config. Defautls to `true`.
+/// Gets "feature.list.upstream". Defautls to `true`.
 pub fn get_list_upstream(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.upstream", true)
 }
 
-/// Gets "feature.list.base" from git config. Defautls to `true`.
+/// Gets "feature.list.base". Defautls to `true`.
 pub fn get_list_base(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.base", true)
 }

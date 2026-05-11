@@ -431,7 +431,7 @@ _feature() {
       ;;
 
     status)
-      local opts="--help -u --hide-untracked"
+      local opts="--help -u --no-untracked"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
