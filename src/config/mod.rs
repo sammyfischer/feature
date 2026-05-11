@@ -12,14 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::end::EndConfig;
 use crate::config::format::FormatConfig;
-use crate::config::list::ListConfig;
 use crate::config::show::ShowConfig;
 use crate::config::status::StatusConfig;
 use crate::config::sync::SyncConfig;
 
 pub mod end;
 pub mod format;
-pub mod list;
 pub mod show;
 pub mod status;
 pub mod sync;
@@ -42,9 +40,6 @@ pub struct Config {
   /// Options for the status command
   pub status: StatusConfig,
 
-  /// Options for the list command
-  pub list: ListConfig,
-
   /// Options for the show command
   pub show: ShowConfig,
 
@@ -60,7 +55,6 @@ impl Default for Config {
       end: Default::default(),
       sync: Default::default(),
       status: Default::default(),
-      list: Default::default(),
       show: Default::default(),
       format: Default::default(),
     }

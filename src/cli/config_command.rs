@@ -128,10 +128,6 @@ impl Args {
 
         "status.show_untracked" => toml_stringify!(config.status.show_untracked),
 
-        "list.hash" => toml_stringify!(config.list.hash),
-        "list.upstream" => toml_stringify!(config.list.upstream),
-        "list.base" => toml_stringify!(config.list.base),
-
         "show.message" => config.show.message.to_string(),
         "show.summary" => toml_stringify!(config.show.summary),
         "show.patch" => toml_stringify!(config.show.patch),

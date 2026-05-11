@@ -107,3 +107,18 @@ pub fn get_advice_status(config: &Config) -> Result<bool> {
 pub fn get_advice_conflict(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "advice.resolveConflict", true)
 }
+
+/// Gets "feature.list.hash" from git config. Defautls to `true`.
+pub fn get_list_hash(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.list.hash", true)
+}
+
+/// Gets "feature.list.upstream" from git config. Defautls to `true`.
+pub fn get_list_upstream(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.list.upstream", true)
+}
+
+/// Gets "feature.list.base" from git config. Defautls to `true`.
+pub fn get_list_base(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.list.base", true)
+}
