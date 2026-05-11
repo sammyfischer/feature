@@ -217,22 +217,6 @@ This is similar to `git branch` except that:
   - git branch output can be customized, but there's no clear documentation for the available field names
 - it's more colorful
 
-## Log
-
-```bash
-feature log
-```
-
-Lists commits with their commit message and author info at the end.
-
-This command is *equivalent* to:
-
-```bash
-git log --all --pretty:'format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)'
-```
-
-The main benefit is that there is a preconfigued default, and you can customize the format in a config file unlike with git.
-
 ## Graph
 
 ```bash
@@ -247,7 +231,7 @@ This command runs:
 git log --graph --all --pretty='format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s'
 ```
 
-Like log, you can customize the format. Unlike log, this will truncate each line to the terminal width, so one commit will never take up multiple lines (unless you resize the terminal).
+This provides an easier-to-type command to use the graph option (which many people might not know about) and allows you to specify a different format for graph. It also truncates outupt to the terminal width.
 
 ## Show
 

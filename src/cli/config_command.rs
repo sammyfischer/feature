@@ -142,7 +142,6 @@ impl Args {
           Some(ref it) => it.clone(),
           None => "None".to_string(),
         },
-        "format.log" => config.format.log.clone(),
         "format.graph" => config.format.graph.clone(),
         "format.hour" => config.format.hour.to_string(),
         "format.date" => config.format.date.to_string(),

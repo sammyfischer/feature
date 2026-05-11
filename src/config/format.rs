@@ -13,9 +13,6 @@ pub struct FormatConfig {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub branch: Option<String>,
 
-  /// Template for log output
-  pub log: String,
-
   /// Template for graph output
   pub graph: String,
 
@@ -39,7 +36,6 @@ impl Default for FormatConfig {
     Self {
       branch_sep: "-".into(),
       branch: Default::default(),
-      log: "format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)".into(),
       graph: "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s".into(),
       hour: Default::default(),
       date: Default::default(),

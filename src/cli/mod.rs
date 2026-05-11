@@ -15,7 +15,6 @@ mod config_command;
 mod end;
 mod graph;
 mod list;
-mod log;
 mod prune;
 mod push;
 mod show;
@@ -95,7 +94,6 @@ pub enum Command {
   // ==== DISPLAY / INFO ====
   Status(status::Args),
   List(list::Args),
-  Log(log::Args),
   Graph(graph::Args),
   Show(show::Args),
 
@@ -118,7 +116,6 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Prune(args) => args.run(&state),
     Command::Status(args) => args.run(&state),
     Command::List(args) => args.run(&state),
-    Command::Log(args) => args.run(&state),
     Command::Graph(args) => args.run(&state),
     Command::Show(args) => args.run(&state),
     Command::Config(args) => args.run(&state.config),

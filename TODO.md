@@ -28,9 +28,6 @@
   - use default git push config to determine whether to merge or rebase
 - release / version tags
   - maybe a single command to create and push a tag
-- start: better user substitution
-  - using git user.name isn't very good since it often has capitalization and spaces
-  - needs a dedicated config variable, "feature.user" in git config
 - stash
   - more intuitive options to stash (--all => workdir/index, --unstaged => workdir, --staged => index)
   - action should be a flag, not positional (and should --push by default)
