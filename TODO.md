@@ -31,7 +31,6 @@
   - concatenate args as message
   - pretty output
 - submodule aware output
-  - status
   - list
 - mod (submodule commands)
   - `ft mod sync` - run sync in all modules

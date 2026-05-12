@@ -77,11 +77,6 @@ If the value is a default git option that feature doesn't use, it will contain "
     # Whether to try deleting the branch from remote when calling "feature end".
     remote = no
 
-# Config for the sync command
-[feature "sync"]
-    # Whether to automatically prune during the sync command.
-    prune = yes
-
 # Config for the list command
 [feature "list"]
     # Whether to show the hash column.
@@ -106,6 +101,16 @@ If the value is a default git option that feature doesn't use, it will contain "
 
     # When to page output. Valid values: auto, always, never.
     paging = auto
+
+# Config for the status command
+[feature "status"]
+    # Whether to show submodule info in status output
+    showModules = yes
+
+# Config for the sync command
+[feature "sync"]
+    # Whether to automatically prune during the sync command.
+    prune = yes
 
 # Various formatting options used by feature
 [feature "format"]

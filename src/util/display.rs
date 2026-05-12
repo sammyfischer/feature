@@ -29,8 +29,8 @@ pub fn display_hash(commit: &Commit) -> Result<String> {
   Ok(style(trim_hash(commit)?).yellow().to_string())
 }
 
-/// Displays the name in cyan, email in dim (gray), and "no one" in red if there is no configured
-/// signature. Errors if any error (other than not having a signature) is encountered.
+/// Displays the name in cyan, email in dim (gray), and "No user info" in red
+/// if there is no configured signature.
 pub fn display_signature(signature: Option<&Signature>) -> String {
   match signature {
     Some(it) => {
@@ -38,7 +38,7 @@ pub fn display_signature(signature: Option<&Signature>) -> String {
       let email = it.email_bytes().to_str_lossy();
       format!("{} {}", style(name).cyan(), style(email).dim())
     }
-    None => style("no one").red().to_string(),
+    None => style("No user info").red().to_string(),
   }
 }
 

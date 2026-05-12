@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{DiffOptions, Oid, Reference, Repository};
+use git2::{DiffOptions, Oid, Reference, Repository, Submodule};
 
 use crate::util::advice::{
   BISECT_ADVICE, MERGE_CONFLICT_ADVICE, PICK_CONFLICT_ADVICE, REBASE_CONFLICT_ADVICE,
@@ -33,8 +33,12 @@ use crate::{App, data, opt_advice};
 )]
 pub struct Args {
   /// Hides untracked files from output
-  #[arg(short = 'u', long, value_name = "HIDE")]
-  pub no_untracked: bool,
+  #[arg(short = 'U', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_untracked: Option<bool>,
+
+  /// Hides git submodules from output
+  #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_modules: Option<bool>,
 }
 
 impl Args {
@@ -161,7 +165,13 @@ impl Args {
     };
 
     // unstaged changes
-    let mut opts = if self.no_untracked || !data::get_status_untracked(&state.repo.config()?)? {
+
+    let hide_untracked = match self.no_untracked {
+      Some(it) => it,
+      None => !data::get_status_untracked(&config)?,
+    };
+
+    let mut opts = if hide_untracked {
       None
     } else {
       let mut opts = DiffOptions::new();
@@ -190,7 +200,122 @@ impl Args {
       }
     };
 
+    let hide_modules = match self.no_modules {
+      Some(it) => it,
+      None => !data::get_status_modules(&config)?,
+    };
+
+    if !hide_modules {
+      let modules = state.repo.submodules()?;
+      if !modules.is_empty() {
+        println!("\n{}", style("Modules").bold());
+      }
+      for module in modules {
+        println!("{}", self.display_module(&state.repo, &module)?);
+      }
+    }
+
     Ok(())
+  }
+
+  /// Builds output for a particular submodule
+  ///
+  /// # Params
+  /// - `repo` - The *parent* repo, not the submodule repo
+  /// - `module` - The submodule, usually obtained from [Repository::submodules]
+  fn display_module(&self, repo: &Repository, module: &Submodule) -> Result<String> {
+    let mut out = String::new();
+
+    let name = module.name_bytes().to_str_lossy();
+    out.push_str(&style(name).cyan().to_string());
+
+    let mod_repo = module.open()?;
+
+    // committed state of submodule (commit parent expects module to be on)
+    let head_id = module.head_id();
+    // current state of submodule (commit module is actually on)
+    let index_id = module.index_id();
+
+    match (index_id, head_id) {
+      (Some(index_id), Some(head_id)) => {
+        let (ahead, behind) = mod_repo.graph_ahead_behind(index_id, head_id)?;
+        out.push_str(&format!(
+          " {}{}{}",
+          style("[").dim(),
+          display_plus_minus(ahead, behind),
+          style("]").dim()
+        ));
+      }
+
+      (Some(_), None) => {
+        out.push_str(&format!(
+          " {}{}{}",
+          style("[").dim(),
+          style("untracked").red(),
+          style("]").dim()
+        ));
+      }
+      _ => (),
+    }
+
+    // actual repo info
+    if let Some(head) = get_head(&mod_repo)? {
+      let commit = head.peel_to_commit()?;
+
+      if head.is_branch() || head.is_remote() || head.is_tag() {
+        let name = head.shorthand_bytes().to_str_lossy();
+        out.push_str(&format!(" on {}", style(name).green()));
+      }
+      out.push_str(&format!(" -> {}", display_commit_compact(&commit)?));
+
+      if is_term() {
+        out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
+      }
+
+      let sig = get_signature(repo)?;
+      let mod_sig = get_signature(&mod_repo)?;
+
+      if let Some(mod_sig) = mod_sig {
+        if let Some(sig) = sig
+          && sig.name_bytes() == mod_sig.name_bytes()
+          && sig.email_bytes() == mod_sig.email_bytes()
+        {
+          // name and email are the same, don't display signature
+        } else {
+          out.push_str(&format!("\n  {}", display_signature(Some(&mod_sig))));
+        }
+      } else {
+        // default text for when no name/email is found
+        out.push_str(&format!("\n  {}", display_signature(None)));
+      }
+
+      // staged and unstaged changes
+      let tree = commit.tree()?;
+      let mut staged = mod_repo.diff_tree_to_index(Some(&tree), None, None)?;
+      staged.find_similar(None)?;
+      let staged = DiffSummary::new(&staged)?;
+
+      let mut unstaged = mod_repo.diff_index_to_workdir(None, None)?;
+      unstaged.find_similar(None)?;
+      let unstaged = DiffSummary::new(&unstaged)?;
+
+      if staged.num_files > 0 {
+        out.push_str(&format!(
+          "\n  {} - {}",
+          style("Staged").green(),
+          staged.display_header()
+        ));
+      }
+      if unstaged.num_files > 0 {
+        out.push_str(&format!(
+          "\n  {} - {}",
+          style("Unstaged").red(),
+          unstaged.display_header()
+        ));
+      }
+    };
+
+    Ok(out)
   }
 }
 
