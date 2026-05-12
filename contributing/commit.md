@@ -12,12 +12,15 @@ The types used are:
 - docs
 - dev
 - style
+- release
 
 These are generally in order of priority. If changes in a commit span multiple of these categories, use the highest one applicable. Although, it's good practice to split them up as much as possible.
 
 Refactors, formatting, and linting fall under the "style" type.
 
 The "dev" type means anything related only to developer workflow. Some examples are changes to scripts (justfile, pre-commit) and changes to github workflows.
+
+The "release" type is only for release commits. This never needs a scope. This will generally contain the version bump in `Cargo.toml` and any updates to files in `./resources`.
 
 ## Scopes
 
