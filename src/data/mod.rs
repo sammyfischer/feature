@@ -82,67 +82,72 @@ pub fn set_feature_base(config: &mut Config, branch_name: &str, base_refname: &s
   Ok(())
 }
 
-/// Gets "feature.user"
+/// Gets `feature.user`
 pub fn get_feature_user(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.user")
 }
 
-/// Gets "feature.end.remote". Defaults to `false`.
+/// Gets `feature.end.remote`. Defaults to `false`.
 pub fn get_end_remote(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.end.remote", false)
 }
 
-/// Gets "feature.sync.prune". Defaults to `true`.
+/// Gets `feature.sync.prune`. Defaults to `true`.
 pub fn get_sync_prune(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.sync.prune", true)
 }
 
-/// Gets "status.showUntrackedFiles". Defaults to `true`.
+/// Gets `status.showUntrackedFiles`. Defaults to `true`.
 pub fn get_status_untracked(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "status.showUntrackedFiles", true)
 }
 
-/// Gets "feature.format.graph"
+/// Gets `feature.status.showModules`. Defaults to `true`.
+pub fn get_status_modules(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.status.showModules", true)
+}
+
+/// Gets `feature.format.graph`
 pub fn get_format_graph(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.format.graph")
 }
 
-/// Gets "feature.format.date"
+/// Gets `feature.format.date`
 pub fn get_format_date(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.format.date")
 }
 
-/// Gets "feature.format.relative". Defaults to `false`.
+/// Gets `feature.format.relative`. Defaults to `false`.
 pub fn get_format_relative(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.format.relative", false)
 }
 
-/// Gets "advice.statusHints". Defaults to `false`.
+/// Gets `advice.statusHints`. Defaults to `false`.
 pub fn get_advice_status(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "advice.statusHints", false)
 }
 
-/// Gets "advice.resolveConflict". Defaults to `true`.
+/// Gets `advice.resolveConflict`. Defaults to `true`.
 pub fn get_advice_conflict(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "advice.resolveConflict", true)
 }
 
-/// Gets "feature.list.hash". Defautls to `true`.
+/// Gets `feature.list.hash`. Defautls to `true`.
 pub fn get_list_hash(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.hash", true)
 }
 
-/// Gets "feature.list.upstream". Defautls to `true`.
+/// Gets `feature.list.upstream`. Defautls to `true`.
 pub fn get_list_upstream(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.upstream", true)
 }
 
-/// Gets "feature.list.base". Defautls to `true`.
+/// Gets `feature.list.base`. Defautls to `true`.
 pub fn get_list_base(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.base", true)
 }
 
-/// Gets "feature.show.message". Defaults to [DisplayCommitMessageLevel::default()].
+/// Gets `feature.show.message`. Defaults to [DisplayCommitMessageLevel::default()].
 pub fn get_show_message(config: &Config) -> Result<DisplayCommitMessageLevel> {
   let value = (get_option!(config, get_str, "feature.show.message") as Result<Option<&str>>)?;
   Ok(match value {
@@ -151,17 +156,17 @@ pub fn get_show_message(config: &Config) -> Result<DisplayCommitMessageLevel> {
   })
 }
 
-/// Gets "feature.show.summary". Defaults to `true`.
+/// Gets `feature.show.summary`. Defaults to `true`.
 pub fn get_show_summary(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.show.summary", true)
 }
 
-/// Gets "feature.show.patch". Defaults to `false`.
+/// Gets `feature.show.patch`. Defaults to `false`.
 pub fn get_show_patch(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.show.patch", false)
 }
 
-/// Gets "feature.show.paging". Defaults to [PageWhen::default()].
+/// Gets `feature.show.paging`. Defaults to [PageWhen::default()].
 pub fn get_show_paging(config: &Config) -> Result<PageWhen> {
   let value = (get_option!(config, get_str, "feature.show.paging") as Result<Option<&str>>)?;
   Ok(match value {
