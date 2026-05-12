@@ -11,9 +11,6 @@
 - custom zsh completions, maybe fish too
 - update is buggy and weird
   - tests need to be way more rigorous so I can get this to work once and for all
-- split config into cosmetic and semantic
-  - cosmetic config can go in git config
-  - semantic config (default remote, protected branches) can stay in feature config, but there doesn't need to be a global one
 - show
   - handle merge commits in different ways (currently shows diff against first parent)
 - improve test environment
