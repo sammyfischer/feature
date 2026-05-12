@@ -122,8 +122,8 @@ impl Args {
         "default_remote" => config.default_remote.clone(),
         "protect" => toml_stringify!(config.protect.clone()),
 
-        "format.branch_sep" => config.format.branch_sep.clone(),
-        "format.branch" => match config.format.branch {
+        "branch.sep" => config.branch.sep.clone(),
+        "branch.template" => match config.branch.template {
           Some(ref it) => it.clone(),
           None => "None".to_string(),
         },

@@ -10,9 +10,9 @@ use figment::providers::{Format, Serialized, Toml};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::config::format::FormatConfig;
+use crate::config::branch::BranchConfig;
 
-pub mod format;
+pub mod branch;
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -23,8 +23,8 @@ pub struct Config {
   /// List of branches to protect from force-pushes/deletion
   pub protect: Vec<String>,
 
-  /// Formatting options
-  pub format: FormatConfig,
+  /// Branch name options
+  pub branch: BranchConfig,
 }
 
 impl Default for Config {
@@ -32,7 +32,7 @@ impl Default for Config {
     Self {
       default_remote: "origin".into(),
       protect: vec!["main".into()],
-      format: Default::default(),
+      branch: Default::default(),
     }
   }
 }

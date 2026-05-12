@@ -90,9 +90,9 @@ fn uses_custom_format() {
   repo.init_commit();
   repo.write_file(
     "feature.toml",
-    r#"[format]
-branch_sep = "_"
-branch = "%(user)%(sep)%(base)%(sep)%s"
+    r#"[branch]
+sep = "_"
+template = "%(user)%(sep)%(base)%(sep)%s"
 "#,
   );
 
@@ -172,9 +172,9 @@ fn dry_run_prints_branch() {
   repo.init_commit();
   repo.write_file(
     "feature.toml",
-    r#"[format]
-branch_sep = "_"
-branch = "%(user)%(sep)%(base)%(sep)%s"
+    r#"[branch]
+sep = "_"
+template = "%(user)%(sep)%(base)%(sep)%s"
 "#,
   );
 
