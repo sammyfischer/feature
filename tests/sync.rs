@@ -109,11 +109,8 @@ fn respects_no_prune() {
     "Sync should respect cli option"
   );
 
-  local.write_file(
-    "feature.toml",
-    r#"[sync]
-prune = false"#,
-  );
+  // now use config option
+  local.git(&["config", "feature.sync.prune", "no"]).success();
   local.feature(&["sync"]).success();
 
   let text = local.list_branches_and_upstreams();

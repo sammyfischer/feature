@@ -90,9 +90,9 @@ fn uses_custom_format() {
   repo.init_commit();
   repo.write_file(
     "feature.toml",
-    r#"[format]
-branch_sep = "_"
-branch = "%(user)%(sep)%(base)%(sep)%s"
+    r#"[branch]
+sep = "_"
+template = "%(user)%(sep)%(base)%(sep)%s"
 "#,
   );
 
@@ -159,8 +159,7 @@ fn fails_when_no_feature_user() {
       r#"Error: Failed when replacing: %(user)
 
 Caused by:
-    0: Failed to get value for feature.user
-    1: config value 'feature.user' was not found; class=Config (7); code=NotFound (-3)
+    No value for feature.user. Set it with "git config feature.user <username>".
 "#,
     );
 }
@@ -173,9 +172,9 @@ fn dry_run_prints_branch() {
   repo.init_commit();
   repo.write_file(
     "feature.toml",
-    r#"[format]
-branch_sep = "_"
-branch = "%(user)%(sep)%(base)%(sep)%s"
+    r#"[branch]
+sep = "_"
+template = "%(user)%(sep)%(base)%(sep)%s"
 "#,
   );
 

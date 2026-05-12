@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{self, Config};
 use crate::util::term::get_user_confirmation;
 
-/// Creates a toml value out of the given value, then stringifies
+/// Serializes the value into a toml string
 macro_rules! toml_stringify {
   ($opt:expr) => {
     toml::Value::from($opt).to_string()
@@ -122,39 +122,11 @@ impl Args {
         "default_remote" => config.default_remote.clone(),
         "protect" => toml_stringify!(config.protect.clone()),
 
-        "end.prune" => toml_stringify!(config.end.remote),
-
-        "sync.prune" => toml_stringify!(config.sync.prune),
-
-        "status.show_untracked" => toml_stringify!(config.status.show_untracked),
-
-        "list.hash" => toml_stringify!(config.list.hash),
-        "list.upstream" => toml_stringify!(config.list.upstream),
-        "list.base" => toml_stringify!(config.list.base),
-
-        "show.message" => config.show.message.to_string(),
-        "show.summary" => toml_stringify!(config.show.summary),
-        "show.patch" => toml_stringify!(config.show.patch),
-        "show.paging" => config.show.paging.to_string(),
-
-        "format.branch_sep" => config.format.branch_sep.clone(),
-        "format.branch" => match config.format.branch {
+        "branch.sep" => config.branch.sep.clone(),
+        "branch.template" => match config.branch.template {
           Some(ref it) => it.clone(),
           None => "None".to_string(),
         },
-        "format.log" => config.format.log.clone(),
-        "format.graph" => config.format.graph.clone(),
-        "format.hour" => config.format.hour.to_string(),
-        "format.date" => config.format.date.to_string(),
-        "format.timezone" => toml_stringify!(config.format.timezone),
-        "format.relative" => toml_stringify!(config.format.relative),
-
-        "advice.status" => toml_stringify!(config.advice.status),
-        "advice.rebase" => toml_stringify!(config.advice.rebase),
-        "advice.merge" => toml_stringify!(config.advice.merge),
-        "advice.cherry_pick" => toml_stringify!(config.advice.cherry_pick),
-        "advice.revert" => toml_stringify!(config.advice.revert),
-        "advice.bisect" => toml_stringify!(config.advice.bisect),
 
         key => {
           eprintln!("Unrecognized key: {}", key);

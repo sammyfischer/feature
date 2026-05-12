@@ -25,24 +25,3 @@ fn uses_custom_format() {
     );
   }
 }
-
-#[test]
-fn uses_custom_format_from_config() {
-  let repo = TestRepo::new();
-  let file_name = "file.txt";
-
-  for msg in ["A", "B", "C"] {
-    repo.write_file(file_name, msg);
-    repo.commit_all(msg);
-  }
-
-  repo.write_file(
-    "feature.toml",
-    r#"[format]
-log = "format:%s"
-"#,
-  );
-
-  let cmd = repo.feature(&["log"]).success();
-  assert_eq!(get_stdout!(cmd).trim(), "C\nB\nA");
-}

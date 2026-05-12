@@ -170,8 +170,10 @@ impl Args {
         }
       }
 
+      let config = state.repo.config()?;
+
       'hash: {
-        if self.no_hash.unwrap_or(!state.config.list.hash) {
+        if self.no_hash.unwrap_or(!data::get_list_hash(&config)?) {
           break 'hash;
         }
 
@@ -185,7 +187,10 @@ impl Args {
       }
 
       'upstream: {
-        if self.no_upstream.unwrap_or(!state.config.list.upstream) {
+        if self
+          .no_upstream
+          .unwrap_or(!data::get_list_upstream(&config)?)
+        {
           break 'upstream;
         }
 
@@ -204,7 +209,7 @@ impl Args {
       }
 
       'base: {
-        if self.no_base.unwrap_or(!state.config.list.base) {
+        if self.no_base.unwrap_or(!data::get_list_base(&config)?) {
           break 'base;
         }
 

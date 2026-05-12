@@ -102,7 +102,9 @@ impl Args {
     }
 
     // begin actual deletions
-    if self.remote.unwrap_or(state.config.end.remote)
+    if self
+      .remote
+      .unwrap_or(data::get_end_remote(&state.repo.config()?)?)
       && let Err(e) = delete_upstream(&state.repo, &branch)
     {
       eprintln!("Failed to delete upstream: {}", e);

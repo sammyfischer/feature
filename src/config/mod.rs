@@ -10,21 +10,9 @@ use figment::providers::{Format, Serialized, Toml};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::config::advice::AdviceConfig;
-use crate::config::end::EndConfig;
-use crate::config::format::FormatConfig;
-use crate::config::list::ListConfig;
-use crate::config::show::ShowConfig;
-use crate::config::status::StatusConfig;
-use crate::config::sync::SyncConfig;
+use crate::config::branch::BranchConfig;
 
-pub mod advice;
-pub mod end;
-pub mod format;
-pub mod list;
-pub mod show;
-pub mod status;
-pub mod sync;
+pub mod branch;
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -35,26 +23,8 @@ pub struct Config {
   /// List of branches to protect from force-pushes/deletion
   pub protect: Vec<String>,
 
-  /// Options for the end command
-  pub end: EndConfig,
-
-  /// Options for the sync command
-  pub sync: SyncConfig,
-
-  /// Options for the status command
-  pub status: StatusConfig,
-
-  /// Options for the list command
-  pub list: ListConfig,
-
-  /// Options for the show command
-  pub show: ShowConfig,
-
-  /// Formatting options
-  pub format: FormatConfig,
-
-  /// Advice options
-  pub advice: AdviceConfig,
+  /// Branch name options
+  pub branch: BranchConfig,
 }
 
 impl Default for Config {
@@ -62,13 +32,7 @@ impl Default for Config {
     Self {
       default_remote: "origin".into(),
       protect: vec!["main".into()],
-      end: Default::default(),
-      sync: Default::default(),
-      status: Default::default(),
-      list: Default::default(),
-      show: Default::default(),
-      format: Default::default(),
-      advice: Default::default(),
+      branch: Default::default(),
     }
   }
 }

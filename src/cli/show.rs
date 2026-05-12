@@ -2,12 +2,14 @@ use anyhow::{Result, anyhow};
 use clap::ValueHint;
 use git2::ErrorCode;
 
-use crate::App;
 use crate::config::PageWhen;
 use crate::util::diff::{DiffSummary, get_formatted_diff};
-use crate::util::display::{DisplayCommitMessageLevel, DisplayCommitOptions, display_commit};
+use crate::util::display::{
+  DisplayCommitMessageLevel, DisplayCommitOptions, DisplayTimeOptions, display_commit,
+};
 use crate::util::string::ToStrLossy;
 use crate::util::term::{is_term, paginate};
+use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Show info about a commit
 
@@ -57,14 +59,18 @@ impl Args {
       .revparse_single(self.revision.as_deref().unwrap_or("HEAD"))?;
 
     let commit = object.peel_to_commit()?;
+    let config = state.repo.config()?;
     writeln!(
       buf,
       "{}",
       display_commit(
         &commit,
         &DisplayCommitOptions {
-          message: self.message.unwrap_or(state.config.show.message),
-          time: From::from(&state.config)
+          message: self.message.unwrap_or(data::get_show_message(&config)?),
+          time: DisplayTimeOptions {
+            relative: data::get_format_relative(&config)?,
+            fmt: data::get_format_date(&config)?
+          }
         }
       )?
     )?;
@@ -81,12 +87,13 @@ impl Args {
       None => None,
     };
 
+    let config = state.repo.config()?;
     let mut diff = state
       .repo
       .diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), None)?;
     diff.find_similar(None)?;
 
-    let show_summary = !self.no_summary.unwrap_or(!state.config.show.summary);
+    let show_summary = !self.no_summary.unwrap_or(!data::get_show_summary(&config)?);
     if show_summary {
       let summary = DiffSummary::new(&diff)?;
       if summary.num_files != 0 {
@@ -94,13 +101,13 @@ impl Args {
       }
     }
 
-    let show_patch = !self.no_patch.unwrap_or(!state.config.show.patch);
+    let show_patch = !self.no_patch.unwrap_or(!data::get_show_patch(&config)?);
     if show_patch {
       buf.extend_from_slice(&get_formatted_diff(&diff)?);
     }
 
     // use config value only if it's not explicitly set in the command line
-    let paging = self.paging.unwrap_or(state.config.show.paging);
+    let paging = self.paging.unwrap_or(data::get_show_paging(&config)?);
     match (paging, is_term()) {
       (PageWhen::Auto, true) | (PageWhen::Always, _) => paginate(&buf),
       (PageWhen::Auto, false) | (PageWhen::Never, _) => {

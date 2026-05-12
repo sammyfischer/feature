@@ -120,13 +120,13 @@ impl Args {
   }
 
   fn build_branch_name(&self, state: &App, base_name: &str) -> Result<String> {
-    let sep = self.sep.as_ref().unwrap_or(&state.config.format.branch_sep);
+    let sep = self.sep.as_ref().unwrap_or(&state.config.branch.sep);
     let main_part = self.words.join(sep);
 
     let mut template = self.format.as_ref();
     // use config if cli option isn't specified
     if template.is_none() {
-      template = state.config.format.branch.as_ref();
+      template = state.config.branch.template.as_ref();
     }
 
     // if neither cli nor config specifies a template, just use the main part
@@ -142,10 +142,8 @@ impl Args {
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
         let config = state.repo.config().context("Failed to get git config")?;
-        let user = config
-          .get_string("feature.user")
-          .context("Failed to get value for feature.user")?;
-        Ok(user)
+        data::get_feature_user(&config)?
+          .context("No value for feature.user. Set it with \"git config feature.user <username>\".")
       }))
       .long(LongVar::eager("base", base_name))
       .long(LongVar::eager("sep", sep));

@@ -239,7 +239,7 @@ impl<'values> Templater<'values> {
 
     // reached end of template while parsing a long variable
     if state == State::LongVariable {
-      return Err(anyhow!("Unrecognized variable: %({})", buf));
+      return Err(anyhow!("Incomplete variable: %({}", buf));
     }
 
     // template ended with a '%'

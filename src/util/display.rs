@@ -10,8 +10,6 @@ use git2::{Commit, Signature, Time};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::config::Config;
-use crate::config::format::{DateStyle, HourStyle};
 use crate::util::string::{ToStrLossy, ToStrLossyOwned};
 
 // Creates a [StyledObject] with format args
@@ -75,20 +73,7 @@ impl Display for DisplayCommitMessageLevel {
 pub struct DisplayTimeOptions {
   /// False for absolute, true for relative
   pub relative: bool,
-  pub date: DateStyle,
-  pub hour: HourStyle,
-  pub timezone: bool,
-}
-
-impl From<&Config> for DisplayTimeOptions {
-  fn from(value: &Config) -> Self {
-    Self {
-      relative: value.format.relative,
-      date: value.format.date,
-      hour: value.format.hour,
-      timezone: value.format.timezone,
-    }
-  }
+  pub fmt: Option<String>,
 }
 
 /// Displays formatted info about a commit
@@ -186,11 +171,12 @@ pub fn display_time(time: &Time, options: &DisplayTimeOptions) -> Result<String>
   if options.relative {
     display_time_relative(time)
   } else {
-    display_time_absolute(time, options)
+    display_time_absolute(time, options.fmt.as_deref())
   }
 }
 
-fn display_time_absolute(time: &Time, options: &DisplayTimeOptions) -> Result<String> {
+/// `fmt` is passed to chronos as-is. Defaults to "%b %d, %Y at %I:%M %p", which looks like "May 11, 2026 at 4:44 PM"
+fn display_time_absolute(time: &Time, fmt: Option<&str>) -> Result<String> {
   let tz = FixedOffset::east_opt(time.offset_minutes() * 60)
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
@@ -199,19 +185,8 @@ fn display_time_absolute(time: &Time, options: &DisplayTimeOptions) -> Result<St
     .single()
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
-  let time_fmt = match options.hour {
-    HourStyle::Twelve => "%I:%M %p",
-    HourStyle::TwentyFour => "%H:%M",
-  };
-
-  let tz_fmt = if options.timezone { " %z" } else { "" };
-
-  let date_fmt = match options.date {
-    DateStyle::Textual => format!("%b %d, %Y at {}{}", time_fmt, tz_fmt),
-    DateStyle::Numeric => format!("%Y-%m-%d {}{}", time_fmt, tz_fmt),
-  };
-
-  Ok(date.format(&date_fmt).to_string())
+  let fmt = fmt.unwrap_or("%b %d, %Y at %I:%M %p");
+  Ok(date.format(fmt).to_string())
 }
 
 fn display_time_relative(time: &Time) -> Result<String> {
