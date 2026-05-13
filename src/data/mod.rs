@@ -102,9 +102,9 @@ pub fn get_status_untracked(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "status.showUntrackedFiles", true)
 }
 
-/// Gets `feature.status.showModules`. Defaults to `true`.
+/// Gets `feature.status.modules`. Defaults to `true`.
 pub fn get_status_modules(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.status.showModules", true)
+  get_option!(config, get_bool, "feature.status.modules", true)
 }
 
 /// Gets `feature.format.graph`
@@ -145,6 +145,11 @@ pub fn get_list_upstream(config: &Config) -> Result<bool> {
 /// Gets `feature.list.base`. Defautls to `true`.
 pub fn get_list_base(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.base", true)
+}
+
+/// Gets `feature.list.modules`. Defaults to `true`.
+pub fn get_list_modules(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.list.modules", true)
 }
 
 /// Gets `feature.show.message`. Defaults to [DisplayCommitMessageLevel::default()].

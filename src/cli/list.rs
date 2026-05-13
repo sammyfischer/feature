@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use console::{Alignment, measure_text_width, pad_str, style, truncate_str};
-use git2::{Branch, Repository};
+use git2::{Branch, Branches, Repository};
 
 use crate::util::branch::{
   get_ahead_behind, get_current_branch_name, get_upstream, get_worktree_branch_names,
@@ -11,6 +11,32 @@ use crate::util::term::{get_term_width, is_term};
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Lists all branches. The format is similar to "git branch -vv"."#;
+
+#[derive(clap::Args, Clone, Debug)]
+#[command(
+  visible_alias = "ls",
+  about = "Lists branches",
+  long_about = LONG_ABOUT,
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
+pub struct Args {
+  /// Hides hash column
+  #[arg(short = 'H', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_hash: Option<bool>,
+
+  /// Hides upstream branch column
+  #[arg(short = 'U', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_upstream: Option<bool>,
+
+  /// Hides base branch column
+  #[arg(short = 'B', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_base: Option<bool>,
+
+  /// Hides git submodules from output
+  #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_modules: Option<bool>,
+}
 
 #[derive(Default)]
 struct Row {
@@ -78,28 +104,6 @@ impl Widths {
   }
 }
 
-#[derive(clap::Args, Clone, Debug)]
-#[command(
-  visible_alias = "ls",
-  about = "Lists branches",
-  long_about = LONG_ABOUT,
-  disable_help_flag = true,
-  disable_help_subcommand = true
-)]
-pub struct Args {
-  /// Hides hash column
-  #[arg(short = 'H', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
-  pub no_hash: Option<bool>,
-
-  /// Hides upstream branch column
-  #[arg(short = 'U', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
-  pub no_upstream: Option<bool>,
-
-  /// Hides base branch column
-  #[arg(short = 'B', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
-  pub no_base: Option<bool>,
-}
-
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let branches = state
@@ -107,139 +111,31 @@ impl Args {
       .branches(Some(git2::BranchType::Local))
       .context("Failed to get list of branches")?;
 
-    let mut rows: Vec<Row> = vec![Row::header()];
+    let (rows, widths) = self.build_table(&state.repo, branches)?;
+    self.print_table(&state.repo, &rows, widths)?;
 
-    // the width each column will be
-    let mut col_widths = Row::header().widths();
+    let hide_modules = match self.no_modules {
+      Some(it) => it,
+      None => !data::get_list_modules(&state.repo.config()?)?,
+    };
 
-    for (branch, _) in branches.flatten() {
-      let row = self.build_branch_line(&state.repo, &branch);
-      match row {
-        Ok(row) => {
-          let branch_width = row.branch.len();
-          let hash_width = row.hash.len();
-          let upstream_width = row.upstream.len();
-          let ab_upstream_width = measure_text_width(&row.ab_upstream);
-          let base_width = row.base.len();
-          let ab_base_width = measure_text_width(&row.ab_base);
+    if !hide_modules {
+      let modules = state.repo.submodules()?;
+      for module in modules {
+        let name = module.name_bytes().to_str_lossy();
+        let repo = module.open()?;
+        let branches = repo.branches(Some(git2::BranchType::Local))?;
 
-          col_widths.branch = col_widths.branch.max(branch_width);
-          col_widths.hash = col_widths.hash.max(hash_width);
-          col_widths.upstream = col_widths.upstream.max(upstream_width);
-          col_widths.ab_upstream = col_widths.ab_upstream.max(ab_upstream_width);
-          col_widths.base = col_widths.base.max(base_width);
-          col_widths.ab_base = col_widths.ab_base.max(ab_base_width);
-
-          rows.push(row);
-        }
-        Err(e) => eprintln!("{}", e),
-      }
-    }
-
-    let current = get_current_branch_name(&state.repo)?;
-    let wt_branches = get_worktree_branch_names(&state.repo)?;
-    let max_widths = Widths::max();
-    let line_tail = style("…").dim().to_string();
-    let trunc_tail = "…";
-    let term_width = get_term_width();
-
-    use std::fmt::Write;
-    let mut buf = String::with_capacity(200);
-
-    for (i, row) in rows.iter().enumerate() {
-      buf.clear();
-
-      'branch: {
-        let branch = fix_width(
-          &row.branch,
-          col_widths.branch.min(max_widths.branch),
-          trunc_tail,
-        );
-
-        if i == 0 {
-          write!(buf, "{}", &style(branch).bold().to_string())?;
-          break 'branch;
-        }
-
-        if current.as_ref().is_some_and(|it| it == &row.branch) {
-          write!(buf, "{}", style(&branch).green())?;
-        } else if wt_branches.contains(&row.branch) {
-          write!(buf, "{}", style(&branch).cyan())?;
-        } else {
-          write!(buf, "{}", &branch)?;
-        }
-      }
-
-      let config = state.repo.config()?;
-
-      'hash: {
-        if self.no_hash.unwrap_or(!data::get_list_hash(&config)?) {
-          break 'hash;
-        }
-
-        let hash = fix_width(&row.hash, col_widths.hash, trunc_tail);
-
-        if i == 0 {
-          write!(buf, " {}", style(&hash).bold().yellow())?;
-        } else {
-          write!(buf, " {}", style(&hash).yellow())?;
-        }
-      }
-
-      'upstream: {
-        if self
-          .no_upstream
-          .unwrap_or(!data::get_list_upstream(&config)?)
-        {
-          break 'upstream;
-        }
-
-        let upstream = fix_width(
-          &row.upstream,
-          col_widths.upstream.min(max_widths.upstream),
-          trunc_tail,
-        );
-        let ab = fix_width(&row.ab_upstream, col_widths.ab_upstream, trunc_tail);
-
-        if i == 0 {
-          write!(buf, " {} {}", style(&upstream).bold().blue(), &ab)?;
-        } else {
-          write!(buf, " {} {}", style(&upstream).blue(), &ab)?;
-        }
-      }
-
-      'base: {
-        if self.no_base.unwrap_or(!data::get_list_base(&config)?) {
-          break 'base;
-        }
-
-        let base = fix_width(&row.base, col_widths.base.min(max_widths.base), trunc_tail);
-        let ab = fix_width(&row.ab_base, col_widths.ab_base, trunc_tail);
-
-        if i == 0 {
-          write!(buf, " {} {}", style(&base).bold().magenta(), &ab)?;
-        } else {
-          write!(buf, " {} {}", style(&base).magenta(), &ab)?;
-        }
-      }
-
-      if i == 0 {
-        write!(buf, " {}", style(&row.subject).bold())?;
-      } else {
-        write!(buf, " {}", &row.subject)?;
-      }
-
-      if is_term() {
-        println!("{}", truncate_str(&buf, term_width, &line_tail));
-      } else {
-        println!("{}", &buf);
+        println!("\n{} {}", style("Module").bold(), style(name).cyan());
+        let (rows, widths) = self.build_table(&repo, branches)?;
+        self.print_table(&repo, &rows, widths)?;
       }
     }
 
     Ok(())
   }
 
-  fn build_branch_line(&self, repo: &Repository, branch: &Branch) -> Result<Row> {
+  fn build_row(&self, repo: &Repository, branch: &Branch) -> Result<Row> {
     let mut row = Row::new();
     let branch_name = branch.name_bytes()?.to_str_lossy();
     row.branch = branch_name.to_string();
@@ -282,6 +178,141 @@ impl Args {
       .to_str_lossy_owned();
 
     Ok(row)
+  }
+
+  fn build_table(&self, repo: &Repository, branches: Branches) -> Result<(Vec<Row>, Widths)> {
+    let mut rows: Vec<Row> = vec![Row::header()];
+    let mut widths = Row::header().widths();
+
+    for (branch, _) in branches.flatten() {
+      let row = self.build_row(repo, &branch);
+      match row {
+        Ok(row) => {
+          let branch_width = row.branch.len();
+          let hash_width = row.hash.len();
+          let upstream_width = row.upstream.len();
+          let ab_upstream_width = measure_text_width(&row.ab_upstream);
+          let base_width = row.base.len();
+          let ab_base_width = measure_text_width(&row.ab_base);
+
+          widths.branch = widths.branch.max(branch_width);
+          widths.hash = widths.hash.max(hash_width);
+          widths.upstream = widths.upstream.max(upstream_width);
+          widths.ab_upstream = widths.ab_upstream.max(ab_upstream_width);
+          widths.base = widths.base.max(base_width);
+          widths.ab_base = widths.ab_base.max(ab_base_width);
+
+          rows.push(row);
+        }
+        Err(e) => eprintln!("{}", e),
+      }
+    }
+
+    Ok((rows, widths))
+  }
+
+  fn print_table(&self, repo: &Repository, rows: &[Row], widths: Widths) -> Result<()> {
+    let current = get_current_branch_name(repo)?;
+    let wt_branches = get_worktree_branch_names(repo)?;
+    let max_widths = Widths::max();
+    let line_tail = style("…").dim().to_string();
+    let trunc_tail = "…";
+    let term_width = get_term_width();
+
+    use std::fmt::Write;
+    let mut buf = String::with_capacity(200);
+
+    for (i, row) in rows.iter().enumerate() {
+      buf.clear();
+
+      'branch: {
+        let branch = fix_width(
+          &row.branch,
+          widths.branch.min(max_widths.branch),
+          trunc_tail,
+        );
+
+        if i == 0 {
+          write!(buf, "{}", &style(branch).bold().green().to_string())?;
+          break 'branch;
+        }
+
+        if current.as_ref().is_some_and(|it| it == &row.branch) {
+          write!(buf, "{}", style(&branch).green())?;
+        } else if wt_branches.contains(&row.branch) {
+          write!(buf, "{}", style(&branch).cyan())?;
+        } else {
+          write!(buf, "{}", &branch)?;
+        }
+      }
+
+      let config = repo.config()?;
+
+      'hash: {
+        if self.no_hash.unwrap_or(!data::get_list_hash(&config)?) {
+          break 'hash;
+        }
+
+        let hash = fix_width(&row.hash, widths.hash, trunc_tail);
+
+        if i == 0 {
+          write!(buf, " {}", style(&hash).bold().yellow())?;
+        } else {
+          write!(buf, " {}", style(&hash).yellow())?;
+        }
+      }
+
+      'upstream: {
+        if self
+          .no_upstream
+          .unwrap_or(!data::get_list_upstream(&config)?)
+        {
+          break 'upstream;
+        }
+
+        let upstream = fix_width(
+          &row.upstream,
+          widths.upstream.min(max_widths.upstream),
+          trunc_tail,
+        );
+        let ab = fix_width(&row.ab_upstream, widths.ab_upstream, trunc_tail);
+
+        if i == 0 {
+          write!(buf, " {} {}", style(&upstream).bold().blue(), &ab)?;
+        } else {
+          write!(buf, " {} {}", style(&upstream).blue(), &ab)?;
+        }
+      }
+
+      'base: {
+        if self.no_base.unwrap_or(!data::get_list_base(&config)?) {
+          break 'base;
+        }
+
+        let base = fix_width(&row.base, widths.base.min(max_widths.base), trunc_tail);
+        let ab = fix_width(&row.ab_base, widths.ab_base, trunc_tail);
+
+        if i == 0 {
+          write!(buf, " {} {}", style(&base).bold().magenta(), &ab)?;
+        } else {
+          write!(buf, " {} {}", style(&base).magenta(), &ab)?;
+        }
+      }
+
+      if i == 0 {
+        write!(buf, " {}", style(&row.subject).bold())?;
+      } else {
+        write!(buf, " {}", &row.subject)?;
+      }
+
+      if is_term() {
+        println!("{}", truncate_str(&buf, term_width, &line_tail));
+      } else {
+        println!("{}", &buf);
+      }
+    }
+
+    Ok(())
   }
 }
 
