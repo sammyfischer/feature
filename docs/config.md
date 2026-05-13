@@ -72,6 +72,10 @@ If the value is a default git option that feature doesn't use, it will contain "
     # and the template contains "%(user)", creating a branch will error.
     user = username
 
+    # Whether to automatically fetch before commands that may benefit from a
+    # fetch first.
+    autofetch = yes
+
 # Config for the end command
 [feature "end"]
     # Whether to try deleting the branch from remote when calling "feature end".

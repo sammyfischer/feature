@@ -30,6 +30,10 @@ pub struct Args {
   #[arg(long)]
   pub dry_run: bool,
 
+  /// Skip automatic fetch of base branch
+  #[arg(short = 'F', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_fetch: Option<bool>,
+
   /// Don't prune after updating
   #[arg(short = 'P', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_prune: Option<bool>,
@@ -37,7 +41,15 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    fetch_all(&state.repo)?;
+    let config = state.repo.config()?;
+    let skip_fetch = match self.no_fetch {
+      Some(it) => it,
+      None => !data::get_feature_autofetch(&config)?,
+    };
+
+    if !skip_fetch {
+      fetch_all(&state.repo)?;
+    }
 
     if self.dry_run {
       println!(
@@ -93,10 +105,12 @@ impl Args {
       }
     }
 
-    if !self
-      .no_prune
-      .unwrap_or(!data::get_sync_prune(&state.repo.config()?)?)
-    {
+    let skip_prune = match self.no_prune {
+      Some(it) => it,
+      None => !data::get_sync_prune(&config)?,
+    };
+
+    if !skip_prune {
       prune_branches(state, self.dry_run)?;
     }
     Ok(())

@@ -119,3 +119,76 @@ fn respects_no_prune() {
     "Sync should respect config file"
   );
 }
+
+/// Sync should automatically fetch all branches
+#[test]
+fn autofetches() {
+  let file_name = "file.txt";
+  let (local, remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // new commits on main
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file(file_name, "B");
+  local2.commit_all("B");
+  local2.git(&["push", "-f", "origin", "main"]).success();
+
+  // should autofetch and sync new changes
+  local.git(&["switch", "main"]).success();
+  local.feature(&["sync"]).success();
+  assert_eq!(
+    local.list_commit_subjects("main"),
+    "B\nA",
+    "main should have updated"
+  );
+}
+
+/// Sync should skip automatic fetch when `--no-fetch` is specified
+#[test]
+fn skips_autofetch_cli() {
+  let file_name = "file.txt";
+  let (local, remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // new commits on main
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file(file_name, "B");
+  local2.commit_all("B");
+  local2.git(&["push", "-f", "origin", "main"]).success();
+
+  // should autofetch and sync new changes
+  local.git(&["switch", "main"]).success();
+  local.feature(&["sync", "--no-fetch"]).success();
+  assert_eq!(
+    local.list_commit_subjects("main"),
+    "A",
+    "main should not have updated"
+  );
+}
+
+/// Sync should skip automatic fetch when specified in git config
+#[test]
+fn skips_autofetch_config() {
+  let file_name = "file.txt";
+  let (local, remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // new commits on main
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file(file_name, "B");
+  local2.commit_all("B");
+  local2.git(&["push", "-f", "origin", "main"]).success();
+
+  // should autofetch and sync new changes
+  local.git(&["switch", "main"]).success();
+  local.git(&["config", "feature.autofetch", "no"]).success();
+  local.feature(&["sync"]).success();
+  assert_eq!(
+    local.list_commit_subjects("main"),
+    "A",
+    "main should not have updated"
+  );
+}

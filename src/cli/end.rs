@@ -37,6 +37,10 @@ pub struct Args {
   #[arg(short, long)]
   pub force: bool,
 
+  /// Skip automatic fetch of base branch
+  #[arg(short = 'F', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_fetch: Option<bool>,
+
   /// The branch to treat as its base
   #[arg(long)]
   pub base: Option<String>,
@@ -47,6 +51,8 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
+    let config = state.repo.config()?;
+
     let branch = match &self.branch {
       Some(name) => BranchMeta::from_name_dwim(&state.repo, name)?,
       None => BranchMeta::current(&state.repo)?,
@@ -62,9 +68,14 @@ impl Args {
       return Err(anyhow!(NO_BASE_MSG));
     };
 
+    let skip_fetch = match self.no_fetch {
+      Some(it) => it,
+      None => !data::get_feature_autofetch(&config)?,
+    };
+
     // check if it's merged before deleting (unless --force)
     if !self.force {
-      if base.is_remote() {
+      if base.is_remote() && !skip_fetch {
         // fetch latest base
         fetch_upstream_branch(&state.repo, &base)?;
         println!("{}", style!("Fetched {}", base.name()).dim());
@@ -101,12 +112,13 @@ impl Args {
       }
     }
 
+    let delete_remote = match self.remote {
+      Some(it) => it,
+      None => data::get_end_remote(&config)?,
+    };
+
     // begin actual deletions
-    if self
-      .remote
-      .unwrap_or(data::get_end_remote(&state.repo.config()?)?)
-      && let Err(e) = delete_upstream(&state.repo, &branch)
-    {
+    if delete_remote && let Err(e) = delete_upstream(&state.repo, &branch) {
       eprintln!("Failed to delete upstream: {}", e);
     }
 
