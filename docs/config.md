@@ -88,6 +88,9 @@ If the value is a default git option that feature doesn't use, it will contain "
     # Whether to show the base column.
     base = yes
 
+    # Whether to list branches in each submodule.
+    modules = yes
+
 # Config for the show command
 [feature "show"]
     # How much of the commit message to show. Valid values: none, subject, full.
@@ -104,8 +107,8 @@ If the value is a default git option that feature doesn't use, it will contain "
 
 # Config for the status command
 [feature "status"]
-    # Whether to show submodule info in status output
-    showModules = yes
+    # Whether to show submodule info in status output.
+    modules = yes
 
 # Config for the sync command
 [feature "sync"]
