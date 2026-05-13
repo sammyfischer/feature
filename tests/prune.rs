@@ -208,3 +208,94 @@ fn prunes_with_squash_workflow() {
     "topic should have been pruned"
   );
 }
+
+/// Prune should automatically fetch all branches
+#[test]
+fn autofetches() {
+  let file_name = "file.txt";
+  let (local, remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // local is ahead of origin/main in repo 1
+  local.feature(&["start", "topic"]).success();
+  local.write_file(file_name, "B");
+  local.commit_all("B");
+  local.git(&["push", "-u", "origin", "topic"]).success();
+
+  // update main to topic
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.git(&["reset", "--hard", "origin/topic"]).success();
+  local2.git(&["push", "-f", "origin", "main"]).success();
+
+  // should autofetch new changes and realize it's merged
+  local.git(&["switch", "main"]).success();
+  local.feature(&["prune"]).success();
+  assert!(
+    !local
+      .list_branches_and_upstreams()
+      .contains("refs/heads/topic"),
+    "topic should have been pruned"
+  );
+}
+
+/// Prune should skip automatic fetch when `--no-fetch` is specified
+#[test]
+fn skips_autofetch_cli() {
+  let file_name = "file.txt";
+  let (local, remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // local is ahead of origin/main in repo 1
+  local.feature(&["start", "topic"]).success();
+  local.write_file(file_name, "B");
+  local.commit_all("B");
+  local.git(&["push", "-u", "origin", "topic"]).success();
+
+  // update main to topic
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.git(&["reset", "--hard", "origin/topic"]).success();
+  local2.git(&["push", "-f", "origin", "main"]).success();
+
+  // shouldn't autofetch new changes, still thinks it's unmerged
+  local.git(&["switch", "main"]).success();
+  local.feature(&["prune", "--no-fetch"]).success();
+  assert!(
+    local
+      .list_branches_and_upstreams()
+      .contains("refs/heads/topic"),
+    "topic should not have been pruned"
+  );
+}
+
+/// Prune should skip automatic fetch when specified in git config
+#[test]
+fn skips_autofetch_config() {
+  let file_name = "file.txt";
+  let (local, remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // local is ahead of origin/main in repo 1
+  local.feature(&["start", "topic"]).success();
+  local.write_file(file_name, "B");
+  local.commit_all("B");
+  local.git(&["push", "-u", "origin", "topic"]).success();
+
+  // update main to topic
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.git(&["reset", "--hard", "origin/topic"]).success();
+  local2.git(&["push", "-f", "origin", "main"]).success();
+
+  // shouldn't autofetch new changes, still thinks it's unmerged
+  local.git(&["switch", "main"]).success();
+  local.git(&["config", "feature.autofetch", "no"]).success();
+  local.feature(&["prune"]).success();
+  assert!(
+    local
+      .list_branches_and_upstreams()
+      .contains("refs/heads/topic"),
+    "topic should not have been pruned"
+  );
+}

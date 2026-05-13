@@ -30,11 +30,22 @@ pub struct Args {
   /// Display output but don't delete any branches. Will still fetch all remotes.
   #[arg(long)]
   dry_run: bool,
+
+  /// Skip automatic fetch of base branch
+  #[arg(short = 'F', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_fetch: Option<bool>,
 }
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    fetch_all(&state.repo)?;
+    let skip_fetch = match self.no_fetch {
+      Some(it) => it,
+      None => !data::get_feature_autofetch(&state.repo.config()?)?,
+    };
+
+    if !skip_fetch {
+      fetch_all(&state.repo)?;
+    }
 
     if self.dry_run {
       println!(

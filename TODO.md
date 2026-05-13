@@ -30,8 +30,6 @@
   - action should be a flag, not positional (and should --push by default)
   - concatenate args as message
   - pretty output
-- submodule aware output
-  - list
 - mod (submodule commands)
   - `ft mod sync` - run sync in all modules
   - `ft mod start` - start a branch with the same name in each module

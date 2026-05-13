@@ -87,25 +87,12 @@ pub fn get_feature_user(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.user")
 }
 
-/// Gets `feature.end.remote`. Defaults to `false`.
-pub fn get_end_remote(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.end.remote", false)
+/// Gets `feature.autofetch`. Defaults to `true`.
+pub fn get_feature_autofetch(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.autofetch", true)
 }
 
-/// Gets `feature.sync.prune`. Defaults to `true`.
-pub fn get_sync_prune(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.sync.prune", true)
-}
-
-/// Gets `status.showUntrackedFiles`. Defaults to `true`.
-pub fn get_status_untracked(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "status.showUntrackedFiles", true)
-}
-
-/// Gets `feature.status.modules`. Defaults to `true`.
-pub fn get_status_modules(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.status.modules", true)
-}
+// FORMAT
 
 /// Gets `feature.format.graph`
 pub fn get_format_graph(config: &Config) -> Result<Option<String>> {
@@ -122,6 +109,8 @@ pub fn get_format_relative(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.format.relative", false)
 }
 
+// ADVICE
+
 /// Gets `advice.statusHints`. Defaults to `false`.
 pub fn get_advice_status(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "advice.statusHints", false)
@@ -131,6 +120,15 @@ pub fn get_advice_status(config: &Config) -> Result<bool> {
 pub fn get_advice_conflict(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "advice.resolveConflict", true)
 }
+
+// END
+
+/// Gets `feature.end.remote`. Defaults to `false`.
+pub fn get_end_remote(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.end.remote", false)
+}
+
+// LIST
 
 /// Gets `feature.list.hash`. Defautls to `true`.
 pub fn get_list_hash(config: &Config) -> Result<bool> {
@@ -151,6 +149,8 @@ pub fn get_list_base(config: &Config) -> Result<bool> {
 pub fn get_list_modules(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.modules", true)
 }
+
+// SHOW
 
 /// Gets `feature.show.message`. Defaults to [DisplayCommitMessageLevel::default()].
 pub fn get_show_message(config: &Config) -> Result<DisplayCommitMessageLevel> {
@@ -178,4 +178,23 @@ pub fn get_show_paging(config: &Config) -> Result<PageWhen> {
     Some(value) => PageWhen::from_str(value, true).map_err(|e| anyhow!(e))?,
     None => PageWhen::default(),
   })
+}
+
+// STATUS
+
+/// Gets `status.showUntrackedFiles`. Defaults to `true`.
+pub fn get_status_untracked(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "status.showUntrackedFiles", true)
+}
+
+/// Gets `feature.status.modules`. Defaults to `true`.
+pub fn get_status_modules(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.status.modules", true)
+}
+
+// SYNC
+
+/// Gets `feature.sync.prune`. Defaults to `true`.
+pub fn get_sync_prune(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.sync.prune", true)
 }

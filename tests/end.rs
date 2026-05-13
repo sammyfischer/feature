@@ -149,6 +149,58 @@ fn fetches_latest_base() {
   );
 }
 
+/// End should skip automatic fetch when `--no-fetch` is specified
+#[test]
+fn skips_autofetch_cli() {
+  let file_name = "file.txt";
+  let (local, remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // start feature branch
+  local.feature(&["start", "topic"]).success();
+  local.write_file(file_name, "B");
+  local.commit_all("B");
+
+  // commit new changes to main
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file("other-file.txt", "X");
+  local2.commit_all("X");
+  local2.git(&["push", "origin", "main"]).success();
+
+  // end should NOT fetch latest main
+  local
+    .feature(&["end", "--no-fetch"])
+    .failure()
+    .stderr("Error: topic is not merged into origin/main\n");
+}
+
+/// End should skip automatic fetch when specified in git config
+#[test]
+fn skips_autofetch_config() {
+  let file_name = "file.txt";
+  let (local, remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // start feature branch
+  local.feature(&["start", "topic"]).success();
+  local.write_file(file_name, "B");
+  local.commit_all("B");
+
+  // commit new changes to main
+  let local2 = TestRepo::new_from(&remote, "repo2-");
+  local2.write_file("other-file.txt", "X");
+  local2.commit_all("X");
+  local2.git(&["push", "origin", "main"]).success();
+
+  // end should NOT fetch latest main
+  local.git(&["config", "feature.autofetch", "no"]).success();
+  local
+    .feature(&["end"])
+    .failure()
+    .stderr("Error: topic is not merged into origin/main\n");
+}
 /// End should delete the branch on remote if --remote is specified
 #[test]
 fn deletes_from_remote() {
