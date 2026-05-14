@@ -30,9 +30,10 @@ This simply removes the metadata to track the project (entries in feature.toml
 and .gitignore). To protect against data loss, it doesn't delete the repo
 itself."#;
 
-#[derive(clap::Args, Clone, Debug)]
+#[derive(clap::Args, Debug)]
 #[command(
   about = "Interact with projects",
+  visible_alias = "proj",
   long_about = LONG_ABOUT,
   disable_help_flag = true,
   disable_help_subcommand = true
@@ -42,13 +43,14 @@ pub struct Args {
   command: ProjectCommand,
 }
 
-#[derive(Clone, Debug, Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum ProjectCommand {
   Add(AddArgs),
   Rm(RmArgs),
+  Ls(LsArgs),
 }
 
-#[derive(clap::Args, Clone, Debug)]
+#[derive(clap::Args, Debug)]
 #[command(
   about = "Add a project to this repo",
   long_about = ADD_LONG_ABOUT,
@@ -68,9 +70,10 @@ pub struct AddArgs {
   name: String,
 }
 
-#[derive(clap::Args, Clone, Debug)]
+#[derive(clap::Args, Debug)]
 #[command(
   about = "Remove a project from this repo",
+  visible_alias = "remove",
   long_about = RM_LONG_ABOUT,
   disable_help_flag = true,
   disable_help_subcommand = true
@@ -80,11 +83,21 @@ pub struct RmArgs {
   name: String,
 }
 
+#[derive(clap::Args, Debug)]
+#[command(
+  about = "List all projects in this repo",
+  visible_alias = "list",
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
+pub struct LsArgs {}
+
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     match &self.command {
       ProjectCommand::Add(args) => args.run(state),
       ProjectCommand::Rm(args) => args.run(state),
+      ProjectCommand::Ls(args) => args.run(state),
     }
   }
 }
@@ -405,6 +418,17 @@ impl RmArgs {
       style("Removed").red(),
       style(project_path).cyan()
     );
+    Ok(())
+  }
+}
+
+impl LsArgs {
+  pub fn run(&self, state: &App) -> Result<()> {
+    for (name, project) in &state.config.projects {
+      println!("{}", style(name).cyan());
+      println!("  url = {}", project.url);
+      println!("  path = {}", project.path.to_string_lossy());
+    }
     Ok(())
   }
 }
