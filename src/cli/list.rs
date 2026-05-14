@@ -116,7 +116,7 @@ impl Args {
 
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_list_modules(&state.repo.config()?)?,
+      None => !data::get_feature_show_modules(&state.repo.config()?)?,
     };
 
     if !hide_modules {

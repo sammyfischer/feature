@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{DiffOptions, Oid, Reference, Repository, Submodule};
+use git2::{Commit, DiffOptions, Oid, Reference, Repository, Submodule};
 
+use crate::config::projects::ProjectEntry;
 use crate::util::advice::{
   BISECT_ADVICE, MERGE_CONFLICT_ADVICE, PICK_CONFLICT_ADVICE, REBASE_CONFLICT_ADVICE,
   REVERT_CONFLICT_ADVICE, STATUS_ADVICE,
@@ -35,6 +36,10 @@ pub struct Args {
   /// Hides untracked files from output
   #[arg(short = 'U', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_untracked: Option<bool>,
+
+  /// Hides feature subprojects from output
+  #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_projects: Option<bool>,
 
   /// Hides git submodules from output
   #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
@@ -200,15 +205,30 @@ impl Args {
       }
     };
 
+    let hide_projects = match self.no_projects {
+      Some(it) => it,
+      None => !data::get_feature_show_projects(&config)?,
+    };
+
+    if !hide_projects {
+      let projects = &state.config.projects;
+      if !projects.is_empty() {
+        println!("\n{}", style("Projects").bold().blue());
+      }
+      for project in &state.config.projects {
+        println!("{}", self.display_project(&state.repo, project)?);
+      }
+    }
+
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_status_modules(&config)?,
+      None => !data::get_feature_show_modules(&config)?,
     };
 
     if !hide_modules {
       let modules = state.repo.submodules()?;
       if !modules.is_empty() {
-        println!("\n{}", style("Modules").bold());
+        println!("\n{}", style("Modules").bold().magenta());
       }
       for module in modules {
         println!("{}", self.display_module(&state.repo, &module)?);
@@ -216,6 +236,43 @@ impl Args {
     }
 
     Ok(())
+  }
+
+  /// Builds output for a particular subproject
+  ///
+  /// # Params
+  /// - `repo` - The *parent* repo, not the subproject repo
+  /// - `project` - A tuple of the project name and [ProjectEntry]
+  fn display_project(
+    &self,
+    repo: &Repository,
+    project: (&String, &ProjectEntry),
+  ) -> Result<String> {
+    let mut out = String::new();
+    let (name, project) = project;
+
+    out.push_str(&style(name).cyan().to_string());
+
+    let proj_repo = Repository::open(&project.path)?;
+
+    if let Some(head) = get_head(&proj_repo)? {
+      let commit = head.peel_to_commit()?;
+
+      if head.is_branch() || head.is_remote() || head.is_tag() {
+        let name = head.shorthand_bytes().to_str_lossy();
+        out.push_str(&format!(" on {}", style(name).green()));
+      }
+      out.push_str(&format!(" -> {}", display_commit_compact(&commit)?));
+
+      if is_term() {
+        out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
+      }
+
+      out.push_str(&self.display_different_signature(repo, &proj_repo)?);
+      out.push_str(&self.display_subrepo_changes(&proj_repo, &commit)?);
+    };
+
+    Ok(out)
   }
 
   /// Builds output for a particular submodule
@@ -272,48 +329,69 @@ impl Args {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
-      let sig = get_signature(repo)?;
-      let mod_sig = get_signature(&mod_repo)?;
-
-      if let Some(mod_sig) = mod_sig {
-        if let Some(sig) = sig
-          && sig.name_bytes() == mod_sig.name_bytes()
-          && sig.email_bytes() == mod_sig.email_bytes()
-        {
-          // name and email are the same, don't display signature
-        } else {
-          out.push_str(&format!("\n  {}", display_signature(Some(&mod_sig))));
-        }
-      } else {
-        // default text for when no name/email is found
-        out.push_str(&format!("\n  {}", display_signature(None)));
-      }
-
-      // staged and unstaged changes
-      let tree = commit.tree()?;
-      let mut staged = mod_repo.diff_tree_to_index(Some(&tree), None, None)?;
-      staged.find_similar(None)?;
-      let staged = DiffSummary::new(&staged)?;
-
-      let mut unstaged = mod_repo.diff_index_to_workdir(None, None)?;
-      unstaged.find_similar(None)?;
-      let unstaged = DiffSummary::new(&unstaged)?;
-
-      if staged.num_files > 0 {
-        out.push_str(&format!(
-          "\n  {} - {}",
-          style("Staged").green(),
-          staged.display_header()
-        ));
-      }
-      if unstaged.num_files > 0 {
-        out.push_str(&format!(
-          "\n  {} - {}",
-          style("Unstaged").red(),
-          unstaged.display_header()
-        ));
-      }
+      out.push_str(&self.display_different_signature(repo, &mod_repo)?);
+      out.push_str(&self.display_subrepo_changes(&mod_repo, &commit)?);
     };
+
+    Ok(out)
+  }
+
+  /// Displays appednable signature (tabbed on a new line) only if it differs from parent
+  fn display_different_signature(&self, parent: &Repository, child: &Repository) -> Result<String> {
+    let mut out = String::new();
+    let parent_sig = get_signature(parent)?;
+    let child_sig = get_signature(child)?;
+
+    if let Some(child_sig) = child_sig {
+      if let Some(parent_sig) = parent_sig
+        && parent_sig.name_bytes() == child_sig.name_bytes()
+        && parent_sig.email_bytes() == child_sig.email_bytes()
+      {
+        // name and email are the same, don't display signature
+      } else {
+        out.push_str(&format!("\n  {}", display_signature(Some(&child_sig))));
+      }
+    } else {
+      // default text for when no name/email is found
+      out.push_str(&format!("\n  {}", display_signature(None)));
+    }
+
+    Ok(out)
+  }
+
+  /// Displays appendable staged and unstaged changes tabbed on a new line
+  fn display_subrepo_changes(&self, repo: &Repository, head: &Commit) -> Result<String> {
+    let mut out = String::new();
+
+    let tree = head.tree()?;
+    let mut staged = repo.diff_tree_to_index(Some(&tree), None, None)?;
+    staged.find_similar(None)?;
+    let staged = DiffSummary::new(&staged)?;
+
+    let mut opts = DiffOptions::new();
+    let include = match self.no_untracked {
+      Some(it) => !it,
+      None => data::get_status_untracked(&repo.config()?)?,
+    };
+    opts.include_untracked(include);
+    let mut unstaged = repo.diff_index_to_workdir(None, Some(&mut opts))?;
+    unstaged.find_similar(None)?;
+    let unstaged = DiffSummary::new(&unstaged)?;
+
+    if staged.num_files > 0 {
+      out.push_str(&format!(
+        "\n  {} - {}",
+        style("Staged").green(),
+        staged.display_header()
+      ));
+    }
+    if unstaged.num_files > 0 {
+      out.push_str(&format!(
+        "\n  {} - {}",
+        style("Unstaged").red(),
+        unstaged.display_header()
+      ));
+    }
 
     Ok(out)
   }
