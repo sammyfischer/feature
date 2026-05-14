@@ -264,9 +264,9 @@ impl AddArgs {
     file.unlock()?;
 
     println!(
-      "{} {}",
-      style("Added entry to").dim(),
-      style(path.to_string_lossy()).dim().cyan()
+      "{} entry to {}",
+      style("Added").green(),
+      style(path.to_string_lossy()).cyan()
     );
 
     Ok(())
@@ -294,7 +294,7 @@ impl AddArgs {
       return Ok(());
     }
 
-    if !ignore.ends_with('\n') && !ignore.is_empty() {
+    if !ignore.ends_with('\n') && !ignore.trim().is_empty() {
       ignore.push('\n');
     }
     ignore.push_str(&format!("{}\n", path_string));
@@ -305,10 +305,9 @@ impl AddArgs {
     file.unlock()?;
 
     println!(
-      "{}{}{}",
-      style("Added \"").dim(),
-      style(path_string).dim().cyan(),
-      style("\" to .gitignore").dim()
+      "{} \"{}\" to .gitignore",
+      style("Added").green(),
+      style(path_string).cyan()
     );
     Ok(())
   }
@@ -362,6 +361,7 @@ impl RmArgs {
     let path = old
       .get("path")
       .with_context(|| format!("No value for 'path' in '{}'", &self.name))?;
+    let path_string = path.as_str().context("'path' is not a string!")?.to_owned();
     println!(
       "{} {} from {}",
       style("Removed").red(),
@@ -369,11 +369,11 @@ impl RmArgs {
       config_path.to_string_lossy()
     );
     if let Some(url) = old.get("url") {
-      println!("  url = {}", url);
+      println!("  url ={}", url);
     }
-    println!("  path = {}", path);
+    println!("  path ={}", path);
 
-    Ok(path.to_string())
+    Ok(path_string)
   }
 
   fn remove_gitignore_entry(&self, root_path: &Path, project_path: &str) -> Result<()> {
@@ -390,7 +390,7 @@ impl RmArgs {
 
     let mut new_ignore = ignore
       .lines()
-      .filter(|line| line == &project_path)
+      .filter(|line| *line != project_path)
       .collect::<Vec<_>>()
       .join("\n");
     new_ignore.push('\n');

@@ -40,3 +40,33 @@ fn removes_metadata() {
     .assert()
     .stdout("A");
 }
+
+// Feature should only remove the project metadata, and preserve everything else
+#[test]
+fn preserves_other_metadata() {
+  // setup subproject
+  let repo = TestRepo::new();
+  let module = TestRepo::new();
+  module.init_commit();
+
+  repo.write_file("feature.toml", "default_remote = \"origin\"\n");
+  repo.write_file(".gitignore", "node_modules\n");
+
+  repo
+    .feature(&[
+      "project",
+      "add",
+      "--repo",
+      module.path().to_str().unwrap(),
+      "frontend",
+    ])
+    .success();
+
+  repo.feature(&["project", "rm", "frontend"]).success();
+
+  let config = fs::read_to_string(repo.path().join("feature.toml")).unwrap();
+  assert_eq!(config, "default_remote = \"origin\"\n\n[projects]\n");
+
+  let ignore = fs::read_to_string(repo.path().join(".gitignore")).unwrap();
+  assert_eq!(ignore, "node_modules\n");
+}
