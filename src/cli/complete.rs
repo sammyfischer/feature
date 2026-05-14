@@ -2,6 +2,7 @@ use anyhow::Result;
 use git2::{BranchType, Repository};
 
 use crate::App;
+use crate::config::Config;
 use crate::util::string::ToStrLossyOwned;
 
 /// Dynamic shell completions
@@ -21,6 +22,7 @@ pub enum CompletionType {
   Branch,
   Remote,
   Rev,
+  Project,
 }
 
 impl Args {
@@ -29,6 +31,7 @@ impl Args {
       CompletionType::Branch => self.find_matching_branches(&state.repo)?,
       CompletionType::Remote => self.find_matching_remotes(&state.repo)?,
       CompletionType::Rev => self.find_matching_revs(&state.repo)?,
+      CompletionType::Project => self.find_matching_projects(&state.config)?,
     };
     print_matches(reply);
     Ok(())
@@ -108,6 +111,19 @@ impl Args {
         .filter(|name| name.starts_with(prefix))
         .collect(),
     )
+  }
+
+  fn find_matching_projects(&self, config: &Config) -> Result<Vec<String>> {
+    let prefix = &self.value;
+    let mut names = Vec::new();
+
+    for (name, _) in &config.projects {
+      if name.starts_with(prefix) {
+        names.push(name.to_owned());
+      }
+    }
+
+    Ok(names)
   }
 }
 
