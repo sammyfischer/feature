@@ -8,7 +8,7 @@ use console::style;
 use git2::{ErrorClass, ErrorCode, Repository};
 use toml_edit::{DocumentMut, Item, Table, value};
 
-use crate::App;
+use crate::{App, style};
 
 const LONG_ABOUT: &str = r"Interact with feature projects.
 
@@ -56,11 +56,11 @@ pub enum ProjectCommand {
   disable_help_subcommand = true
 )]
 pub struct AddArgs {
-  /// The repo url of the project
-  #[arg(long)]
-  url: Option<String>,
+  /// The repo uri
+  #[arg(long, value_name = "URI")]
+  repo: Option<String>,
 
-  /// The path to the subproject root. This must be relative to the superproject root.
+  /// The path where the subproject will reside, relative to this repo.
   #[arg(long)]
   path: Option<String>,
 
@@ -95,7 +95,7 @@ impl Args {
 
 struct ProjectInfo {
   name: String,
-  url: String,
+  uri: String,
   path: PathBuf,
 }
 
@@ -103,7 +103,7 @@ impl AddArgs {
   fn run(&self, state: &App) -> Result<()> {
     let parent_root = state.repo.workdir().unwrap_or_else(|| state.repo.path());
 
-    let project = match (self.url.as_ref(), self.path.as_ref()) {
+    let project = match (self.repo.as_ref(), self.path.as_ref()) {
       // neither, check if dir called `name` exists and use that
       (None, None) => {
         let path = PathBuf::from(&self.name);
@@ -170,6 +170,21 @@ impl AddArgs {
     self.write_to_config(&state.config_path, &project)?;
     self.write_to_gitignore(parent_root, &project)?;
 
+    println!(
+      "{} project {}",
+      style("Created").green(),
+      style(&project.name).cyan()
+    );
+    println!(
+      "  in {}",
+      style!(
+        "./{}",
+        &project.path.to_str().expect("Path should be utf-8")
+      )
+      .blue()
+    );
+    println!("  from {}", style(&project.uri).magenta());
+
     Ok(())
   }
 
@@ -186,17 +201,18 @@ impl AddArgs {
 
     Ok(ProjectInfo {
       name: self.name.clone(),
-      url: url.to_owned(),
+      uri: url.to_owned(),
       path,
     })
   }
 
-  fn clone_and_add(&self, url: String, path: PathBuf) -> Result<ProjectInfo> {
-    Repository::clone(&url, &path)?;
+  fn clone_and_add(&self, uri: String, path: PathBuf) -> Result<ProjectInfo> {
+    Repository::clone(&uri, &path)
+      .context("Attempting to clone because \"--repo\" was specified")?;
 
     Ok(ProjectInfo {
       name: self.name.clone(),
-      url,
+      uri,
       path,
     })
   }
@@ -235,7 +251,7 @@ impl AddArgs {
       doc.insert("projects", Item::Table(Table::new()));
     }
 
-    doc["projects"][&project.name]["url"] = value(&project.url);
+    doc["projects"][&project.name]["url"] = value(&project.uri);
     doc["projects"][&project.name]["path"] = value(
       project
         .path
@@ -250,11 +266,18 @@ impl AddArgs {
     file.set_len(toml.len() as u64)?;
     file.write_all(toml)?;
     file.unlock()?;
+
+    println!(
+      "{} {}",
+      style("Added entry to").dim(),
+      style(path.to_string_lossy()).dim().cyan()
+    );
+
     Ok(())
   }
 
   fn write_to_gitignore(&self, root: &Path, project: &ProjectInfo) -> Result<()> {
-    let entry = project
+    let path_string = project
       .path
       .to_str()
       .context("Project path must be valid utf-8!")?;
@@ -270,16 +293,27 @@ impl AddArgs {
     let mut ignore = String::new();
     file.read_to_string(&mut ignore)?;
 
+    if ignore.lines().any(|line| line == path_string) {
+      file.unlock()?;
+      return Ok(());
+    }
+
     if !ignore.ends_with('\n') && !ignore.is_empty() {
       ignore.push('\n');
     }
-    ignore.push_str(&format!("{}\n", entry));
+    ignore.push_str(&format!("{}\n", path_string));
 
     file.seek(SeekFrom::Start(0))?;
     file.set_len(ignore.len() as u64)?;
     file.write_all(ignore.as_bytes())?;
     file.unlock()?;
-    println!("Added {} to .gitignore", style(entry).cyan());
+
+    println!(
+      "{}{}{}",
+      style("Added \"").dim(),
+      style(path_string).dim().cyan(),
+      style("\" to .gitignore").dim()
+    );
     Ok(())
   }
 }

@@ -6,9 +6,9 @@ use crate::common::TestRepo;
 
 mod common;
 
-/// Should add project when --url is specified
+/// Should add project when --repo is specified
 #[test]
-fn adds_with_url() {
+fn adds_with_uri() {
   let repo = TestRepo::new();
   let module = TestRepo::new();
   module.init_commit();
@@ -17,7 +17,7 @@ fn adds_with_url() {
     .feature(&[
       "project",
       "add",
-      "--url",
+      "--repo",
       module.path().to_str().unwrap(),
       "frontend",
     ])
@@ -89,9 +89,9 @@ frontend = {{ url = "{}", path = "frontend" }}
   assert_eq!(ignore, "frontend\n");
 }
 
-/// Should add project when --url and --path are specified
+/// Should add project when --repo and --path are specified
 #[test]
-fn adds_with_url_and_path() {
+fn adds_with_uri_and_path() {
   let repo = TestRepo::new();
   let module = TestRepo::new();
   module.init_commit();
@@ -100,7 +100,7 @@ fn adds_with_url_and_path() {
     .feature(&[
       "project",
       "add",
-      "--url",
+      "--repo",
       module.path().to_str().unwrap(),
       "--path",
       "modules/frontend",
@@ -147,7 +147,7 @@ fn writes_newline_to_gitignore() {
     .feature(&[
       "project",
       "add",
-      "--url",
+      "--repo",
       module.path().to_str().unwrap(),
       "frontend",
     ])
@@ -170,7 +170,7 @@ fn adds_multiple_projects() {
     .feature(&[
       "project",
       "add",
-      "--url",
+      "--repo",
       frontend.path().to_str().unwrap(),
       "frontend",
     ])
@@ -180,7 +180,7 @@ fn adds_multiple_projects() {
     .feature(&[
       "project",
       "add",
-      "--url",
+      "--repo",
       backend.path().to_str().unwrap(),
       "backend",
     ])
@@ -218,4 +218,28 @@ backend = {{ url = "{}", path = "backend" }}
   // check gitignore
   let ignore = fs::read_to_string(repo.path().join(".gitignore")).unwrap();
   assert_eq!(ignore, "frontend\nbackend\n");
+}
+
+/// Doesn't add entry to gitignore if it's already in it
+#[test]
+fn doesnt_add_to_gitignore_multiple_times() {
+  let repo = TestRepo::new();
+  let frontend = TestRepo::new();
+  frontend.init_commit();
+
+  repo
+    .feature(&[
+      "project",
+      "add",
+      "--repo",
+      frontend.path().to_str().unwrap(),
+      "frontend",
+    ])
+    .success();
+
+  repo.feature(&["project", "add", "frontend"]).success();
+
+  // but there should only be one entry
+  let ignore = fs::read_to_string(repo.path().join(".gitignore")).unwrap();
+  assert_eq!(ignore, "frontend\n");
 }
