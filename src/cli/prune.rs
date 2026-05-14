@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Branch, BranchType, Commit, ErrorCode};
+use git2::{Branch, BranchType, Commit, ErrorCode, Repository};
 
+use crate::config::Config;
 use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::delete_config_section;
@@ -54,16 +55,17 @@ impl Args {
       );
     }
 
-    prune_branches(state, self.dry_run)
+    prune_branches(&state.repo, &state.config, self.dry_run)
   }
 }
 
-pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
-  let branches = state.repo.branches(Some(BranchType::Local))?;
-  let current_name = get_current_branch_name(&state.repo)?;
+pub fn prune_branches(repo: &Repository, config: &Config, dry_run: bool) -> Result<()> {
+  let branches = repo.branches(Some(BranchType::Local))?;
+  let current_name = get_current_branch_name(repo)?;
 
   for (mut branch, _) in branches.flatten() {
-    if let Err(e) = safe_delete_branch(state, &mut branch, current_name.as_deref(), dry_run) {
+    if let Err(e) = safe_delete_branch(repo, config, &mut branch, current_name.as_deref(), dry_run)
+    {
       eprintln!("{}", e);
     }
   }
@@ -82,7 +84,8 @@ pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
 /// was determined to be unsafe to delete, rather than anything going wrong. An error implies that
 /// something went wrong.
 fn safe_delete_branch(
-  state: &App,
+  repo: &Repository,
+  config: &Config,
   branch: &mut Branch,
   current_branch_name: Option<&str>,
   dry_run: bool,
@@ -90,14 +93,14 @@ fn safe_delete_branch(
   let meta = BranchMeta::from_branch(branch)?;
 
   // skip branches that have never been pushed
-  match state.repo.branch_upstream_remote(meta.refname()) {
+  match repo.branch_upstream_remote(meta.refname()) {
     Ok(_) => {}
     Err(e) if e.code() == ErrorCode::NotFound => return Ok(false),
     Err(e) => return Err(e.into()),
   }
 
   // skip protected branches
-  if state.config.protect.iter().any(|it| it == meta.name()) {
+  if config.protect.iter().any(|it| it == meta.name()) {
     return Ok(false);
   }
 
@@ -108,7 +111,7 @@ fn safe_delete_branch(
     println!(
       "{}",
       style(format!(
-        "Skipping currently checked-out branch: {}",
+        "Skipping prune check for currently checked-out branch: {}",
         meta.name()
       ))
       .dim()
@@ -117,20 +120,19 @@ fn safe_delete_branch(
   }
 
   // find base branch from db, else skip
-  let base = match data::get_feature_base(&state.repo, meta.name())? {
+  let base = match data::get_feature_base(repo, meta.name())? {
     Some(base) => base,
     None => return Ok(false),
   };
 
   // detect if branch is merged (i.e. has no commits that aren't on its base)
-  let is_merged =
-    is_merged(&state.repo, branch.get(), &base.resolve(&state.repo)?).with_context(|| {
-      format!(
-        "Failed to determine if {} is merged into {}",
-        meta.name(),
-        base.name()
-      )
-    })?;
+  let is_merged = is_merged(repo, branch.get(), &base.resolve(repo)?).with_context(|| {
+    format!(
+      "Failed to determine if {} is merged into {}",
+      meta.name(),
+      base.name()
+    )
+  })?;
 
   if is_merged {
     let commit = branch

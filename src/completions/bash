@@ -514,9 +514,9 @@ _feature() {
       ;;
 
     sync)
-      local opts="--help --dry-run -P --no-prune"
+      local opts="--help --dry-run --no-prune --no-projects"
       case "$prev" in
-        -P | --no-prune)
+        --no-prune | --no-projects)
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)

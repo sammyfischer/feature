@@ -3,6 +3,7 @@ use console::style;
 use git2::{Branch, BranchType, Commit, Diff, Repository};
 
 use crate::cli::prune::prune_branches;
+use crate::config::{self, Config};
 use crate::util::branch::{fetch_all, get_current_branch_name, hard_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::{DiffSummary, has_workdir_changes};
@@ -35,20 +36,48 @@ pub struct Args {
   pub no_fetch: Option<bool>,
 
   /// Don't prune after updating
-  #[arg(short = 'P', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  #[arg(long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_prune: Option<bool>,
+
+  /// Don't sync subprojects
+  #[arg(long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_projects: Option<bool>,
 }
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?;
+    println!("Syncing repo\u{2026}");
+    self.sync_repo(&state.repo, &state.config)?;
+    println!("{} repo", style("Synced").green());
+
+    let skip_projects = match self.no_projects {
+      Some(it) => it,
+      None => !data::get_sync_projects(&state.repo.config()?)?,
+    };
+
+    if !skip_projects {
+      // TODO: figure out a better way to organize output so it can be parallelized
+      for (name, project) in &state.config.projects {
+        println!("\nSyncing project {}\u{2026}", style(name).cyan());
+        let repo = Repository::open(&project.path)?;
+        let config = config::load_with_path(&project.path)?;
+        self.sync_repo(&repo, &config)?;
+        println!("{} project {}", style("Synced").green(), style(name).cyan());
+      }
+    }
+
+    Ok(())
+  }
+
+  fn sync_repo(&self, repo: &Repository, config: &Config) -> Result<()> {
+    let git_config = repo.config()?;
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
-      None => !data::get_feature_autofetch(&config)?,
+      None => !data::get_feature_autofetch(&git_config)?,
     };
 
     if !skip_fetch {
-      fetch_all(&state.repo)?;
+      fetch_all(repo)?;
     }
 
     if self.dry_run {
@@ -58,8 +87,8 @@ impl Args {
       );
     }
 
-    let current_branch = get_current_branch_name(&state.repo)?;
-    let branches = state.repo.branches(Some(BranchType::Local))?;
+    let current_branch = get_current_branch_name(repo)?;
+    let branches = repo.branches(Some(BranchType::Local))?;
 
     for (mut branch, _) in branches.flatten() {
       let branch_meta = BranchMeta::from_branch(&branch)?;
@@ -67,7 +96,7 @@ impl Args {
         .as_ref()
         .is_some_and(|it| *it == branch_meta.name());
 
-      let upstream = branch_meta.upstream(&state.repo)?;
+      let upstream = branch_meta.upstream(repo)?;
       let Some(upstream) = upstream else {
         // no upstream, nothing to update
         continue;
@@ -76,7 +105,7 @@ impl Args {
 
       if is_current {
         // check for local changes
-        if has_workdir_changes(&state.repo)? {
+        if has_workdir_changes(repo)? {
           println!(
             "{} {} due to local changes",
             style("Skipping").yellow(),
@@ -87,7 +116,7 @@ impl Args {
       }
 
       if let Err(e) = fast_forward(
-        &state.repo,
+        repo,
         &mut branch,
         &branch_meta,
         &upstream,
@@ -107,11 +136,11 @@ impl Args {
 
     let skip_prune = match self.no_prune {
       Some(it) => it,
-      None => !data::get_sync_prune(&config)?,
+      None => !data::get_sync_prune(&git_config)?,
     };
 
     if !skip_prune {
-      prune_branches(state, self.dry_run)?;
+      prune_branches(repo, config, self.dry_run)?;
     }
     Ok(())
   }
