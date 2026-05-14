@@ -343,9 +343,9 @@ _feature() {
       ;;
 
     list)
-      local opts="--help -H --no-hash -U --no-upstream -B --no-base"
+      local opts="--help -H --no-hash -U --no-upstream -B --no-base -P --no-projects -M --no-modules"
       case "$prev" in
-        -H | --no-hash | -U | --no-upstream | -B | --no-base)
+        -H | --no-hash | -U | --no-upstream | -B | --no-base | -P | --no-projects | -M | --no-modules)
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
@@ -426,7 +426,12 @@ _feature() {
       ;;
 
     status)
-      local opts="--help -u --no-untracked"
+      local opts="--help -U --no-untracked -P --no-projects -M --no-modules"
+      case "$prev" in
+        -U | --no-untracked | -P | --no-projects | -M | --no-modules)
+          COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
+          ;;
+      esac
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
