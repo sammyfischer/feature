@@ -1,3 +1,5 @@
+use std::fs;
+
 use assert_cmd::Command;
 
 use crate::common::TestRepo;
@@ -246,4 +248,100 @@ fn syncs_projects() {
     .args(["log", "--pretty=format:%s", "main"])
     .assert()
     .stdout("B\nA");
+}
+
+/// Feature should clone projects when the dir doesn't exist
+#[test]
+fn clones_projects() {
+  let repo = TestRepo::new();
+  let home = repo.path().parent().unwrap();
+
+  let frontend = TestRepo::new();
+  let backend = TestRepo::new();
+  frontend.init_commit();
+  backend.init_commit();
+
+  // add the config without actually cloning
+  repo.write_file(
+    "feature.toml",
+    &format!(
+      r#"[projects]
+frontend = {{ url = "{}", path = "frontend" }}
+backend = {{ url = "{}", path = "backend" }}
+"#,
+      frontend.path().to_str().unwrap(),
+      backend.path().to_str().unwrap()
+    ),
+  );
+  repo.write_file(".gitignore", "frontend\nbackend\n");
+
+  // sync should auto clone
+  let cmd = repo.feature(&["sync"]).success();
+  println!("Sync stdout:\n{}", get_stdout!(cmd));
+  println!("Sync stderr:\n{}", get_stderr!(cmd));
+
+  // repos should exist now with all the commits
+  Command::new("git")
+    .current_dir(repo.path().join("frontend"))
+    .env("HOME", home)
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("A");
+
+  Command::new("git")
+    .current_dir(repo.path().join("backend"))
+    .env("HOME", home)
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("A");
+}
+
+/// Feature should clone the project into the existing dir
+#[test]
+fn clones_project_if_dir_exists() {
+  let repo = TestRepo::new();
+  let home = repo.path().parent().unwrap();
+
+  let frontend = TestRepo::new();
+  let backend = TestRepo::new();
+  frontend.init_commit();
+  backend.init_commit();
+
+  // add the config without actually cloning
+  repo.write_file(
+    "feature.toml",
+    &format!(
+      r#"[projects]
+frontend = {{ url = "{}", path = "frontend" }}
+backend = {{ url = "{}", path = "backend" }}
+"#,
+      frontend.path().to_str().unwrap(),
+      backend.path().to_str().unwrap()
+    ),
+  );
+  repo.write_file(".gitignore", "frontend\nbackend\n");
+
+  // make the dirs first, but they contain no repo
+  fs::create_dir(repo.path().join("frontend")).unwrap();
+  fs::create_dir(repo.path().join("backend")).unwrap();
+
+  // sync should auto clone
+  let cmd = repo.feature(&["sync"]).success();
+  println!("Sync stdout:\n{}", get_stdout!(cmd));
+  println!("Sync stderr:\n{}", get_stderr!(cmd));
+
+  // repos should exist now with all the commits
+  Command::new("git")
+    .current_dir(repo.path().join("frontend"))
+    .env("HOME", home)
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("A");
+
+  Command::new("git")
+    .current_dir(repo.path().join("backend"))
+    .env("HOME", home)
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("A");
 }

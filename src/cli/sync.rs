@@ -1,8 +1,13 @@
+use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
+
 use anyhow::{Result, anyhow};
 use console::style;
-use git2::{Branch, BranchType, Commit, Diff, Repository};
+use git2::{Branch, BranchType, Commit, Diff, ErrorClass, ErrorCode, Repository};
 
 use crate::cli::prune::prune_branches;
+use crate::config::projects::ProjectEntry;
 use crate::config::{self, Config};
 use crate::util::branch::{fetch_all, get_current_branch_name, hard_reset};
 use crate::util::branch_meta::BranchMeta;
@@ -64,12 +69,19 @@ impl Args {
 
     if !skip_projects {
       // TODO: figure out a better way to organize output so it can be parallelized
+      let root = state.repo.workdir().unwrap_or_else(|| state.repo.path());
       for (name, project) in &state.config.projects {
         println!("\nSyncing project {}\u{2026}", style(name).cyan());
-        let repo = Repository::open(&project.path)?;
-        let config = config::load_with_path(&project.path)?;
-        self.sync_repo(&repo, &config)?;
-        println!("{} project {}", style("Synced").green(), style(name).cyan());
+
+        match self.sync_or_clone_project(root, project) {
+          Ok(_) => println!("{} project {}", style("Synced").green(), style(name).cyan()),
+          Err(e) => eprintln!(
+            "{} to sync {}: {}",
+            style("Failed").red(),
+            style(name).cyan(),
+            e
+          ),
+        };
       }
     }
 
@@ -142,6 +154,35 @@ impl Args {
     if !skip_prune {
       prune_branches(repo, config, self.dry_run)?;
     }
+    Ok(())
+  }
+
+  fn sync_or_clone_project(&self, root: &Path, project: &ProjectEntry) -> Result<()> {
+    match Repository::open(&project.path) {
+      // already cloned, sync it
+      Ok(repo) => {
+        let config = config::load_with_path(&project.path)?;
+        self.sync_repo(&repo, &config)?;
+      }
+
+      // doesn't exist, just clone and continue
+      Err(e)
+        if (e.class() == ErrorClass::Os && e.code() == ErrorCode::NotFound)
+          || (e.class() == ErrorClass::Repository && e.code() == ErrorCode::NotFound) =>
+      {
+        // make sure path exists
+        let path = root.join(&project.path);
+        match fs::create_dir_all(&path) {
+          Ok(_) => (),
+          Err(e) if e.kind() == ErrorKind::AlreadyExists => (),
+          Err(e) => return Err(e.into()),
+        }
+        Repository::clone(&project.url, &path)?;
+      }
+
+      Err(e) => return Err(e.into()),
+    };
+
     Ok(())
   }
 }
