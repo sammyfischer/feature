@@ -46,6 +46,13 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
+    if self.dry_run {
+      println!(
+        "{}",
+        style("Running in dry-run mode, no branches will be updated or deleted").dim()
+      );
+    }
+
     println!("Syncing repo\u{2026}");
     self.sync_repo(&state.repo, &state.config)?;
     println!("{} repo", style("Synced").green());
@@ -78,13 +85,6 @@ impl Args {
 
     if !skip_fetch {
       fetch_all(repo)?;
-    }
-
-    if self.dry_run {
-      println!(
-        "{}",
-        style("Running in dry-run mode, no branches will be updated or deleted").dim()
-      );
     }
 
     let current_branch = get_current_branch_name(repo)?;

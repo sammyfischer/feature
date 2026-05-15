@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use console::style;
 use git2::{Branch, BranchType, Commit, ErrorCode, Repository};
 
-use crate::config::Config;
+use crate::config::{self, Config};
 use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::delete_config_section;
@@ -35,19 +35,14 @@ pub struct Args {
   /// Skip automatic fetch of base branch
   #[arg(short = 'F', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_fetch: Option<bool>,
+
+  /// Don't sync subprojects
+  #[arg(long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_projects: Option<bool>,
 }
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let skip_fetch = match self.no_fetch {
-      Some(it) => it,
-      None => !data::get_feature_autofetch(&state.repo.config()?)?,
-    };
-
-    if !skip_fetch {
-      fetch_all(&state.repo)?;
-    }
-
     if self.dry_run {
       println!(
         "{}",
@@ -55,7 +50,40 @@ impl Args {
       );
     }
 
-    prune_branches(&state.repo, &state.config, self.dry_run)
+    println!("Pruning repo\u{2026}");
+    self.prune_repo(&state.repo, &state.config)?;
+    println!("{} repo", style("Pruned").green());
+
+    let skip_projects = match self.no_projects {
+      Some(it) => it,
+      None => !data::get_sync_projects(&state.repo.config()?)?,
+    };
+
+    if !skip_projects {
+      // TODO: like sync, fix output
+      for (name, project) in &state.config.projects {
+        println!("\nPruning project {}\u{2026}", style(name).cyan());
+        let repo = Repository::open(&project.path)?;
+        let config = config::load_with_path(&project.path)?;
+        self.prune_repo(&repo, &config)?;
+        println!("{} project {}", style("Pruned").green(), style(name).cyan());
+      }
+    }
+
+    Ok(())
+  }
+
+  fn prune_repo(&self, repo: &Repository, config: &Config) -> Result<()> {
+    let skip_fetch = match self.no_fetch {
+      Some(it) => it,
+      None => !data::get_feature_autofetch(&repo.config()?)?,
+    };
+
+    if !skip_fetch {
+      fetch_all(repo)?;
+    }
+
+    prune_branches(repo, config, self.dry_run)
   }
 }
 
