@@ -25,8 +25,6 @@
 
 ## Features
 
-- subprojects
-  - `feature proj start` start branch in every subproject
 - submodules
   - `feature sync` should checkout modules to expected commit
 - auto merge/rebase

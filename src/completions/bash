@@ -216,6 +216,10 @@ _feature() {
         cmd="project_ls"
         ;;
 
+      project,each)
+        cmd="project_each"
+        ;;
+
       feature,prune)
         cmd="prune"
         ;;
@@ -401,7 +405,7 @@ _feature() {
       ;;
 
     project)
-      local opts="--help add rm remove ls list"
+      local opts="--help add rm remove ls list each"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
@@ -430,6 +434,34 @@ _feature() {
     project_ls)
       local opts="--help"
       COMPREPLY=("$opts")
+      ;;
+
+    project_each)
+      local opts="--help"
+      local i
+      local subcmd_start=0
+      local seen=""
+      for (( i = 1; i < ${#COMP_WORDS[@]}; i++ )); do
+        case "$seen,${COMP_WORDS[i]}" in
+          ",each")
+            seen="each"
+            ;;
+          "each,--help")
+            seen="--help"
+            ;;
+          "each,"* | "--help,"*)
+            subcmd_start=$i
+            break
+            ;;
+        esac
+      done
+      if [[ $subcmd_start -ge ${#COMP_WORDS[@]} ]]; then
+        COMPREPLY=( $(compgen -c -- "$cur") $(compgen -W "$opts" -- "$cur") )
+      elif declare -f _command_offset > /dev/null; then
+        _command_offset $subcmd_start
+      else
+        COMPREPLY=( $(compgen -c -- "$cur") )
+      fi
       ;;
 
     prune)

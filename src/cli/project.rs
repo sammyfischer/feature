@@ -1,9 +1,10 @@
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
-use clap::Subcommand;
+use clap::{Subcommand, ValueHint};
 use console::style;
 use git2::{ErrorClass, ErrorCode, Repository};
 use toml_edit::{DocumentMut, Item, Table, value};
@@ -48,6 +49,7 @@ pub enum ProjectCommand {
   Add(AddArgs),
   Rm(RmArgs),
   Ls(LsArgs),
+  Each(EachArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -92,12 +94,24 @@ pub struct RmArgs {
 )]
 pub struct LsArgs {}
 
+#[derive(clap::Args, Debug)]
+#[command(
+  about = "Run a command in each project",
+  disable_help_flag = true,
+  disable_help_subcommand = true
+)]
+pub struct EachArgs {
+  #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true, value_hint = ValueHint::CommandWithArguments)]
+  args: Vec<String>,
+}
+
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     match &self.command {
       ProjectCommand::Add(args) => args.run(state),
       ProjectCommand::Rm(args) => args.run(state),
       ProjectCommand::Ls(args) => args.run(state),
+      ProjectCommand::Each(args) => args.run(state),
     }
   }
 }
@@ -428,6 +442,34 @@ impl LsArgs {
       println!("{}", style(name).cyan());
       println!("  url = {}", project.url);
       println!("  path = {}", project.path.to_string_lossy());
+    }
+    Ok(())
+  }
+}
+
+impl EachArgs {
+  pub fn run(&self, state: &App) -> Result<()> {
+    // run sequentially rather than in parallel bc we have no knowledge of the command being run
+    for (i, (name, project)) in state.config.projects.iter().enumerate() {
+      if i > 0 {
+        println!();
+      }
+      println!("{}", style(name).bold().cyan());
+
+      let mut cmd_line = self.args.iter();
+      let cmd = cmd_line.next().context("Must specify a command!")?;
+      let args: Vec<&String> = cmd_line.collect();
+
+      let st = Command::new(cmd)
+        .args(args)
+        .current_dir(&project.path)
+        .status()?;
+
+      if st.success() {
+        println!("{} {}", style(name).cyan(), style("succeeded").green());
+      } else {
+        println!("{} {} {}", style(name).cyan(), style("failed").red(), st);
+      }
     }
     Ok(())
   }
