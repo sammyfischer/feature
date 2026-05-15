@@ -180,6 +180,10 @@ fi
 
 on each `(branch, base)` pair. Note that this script does not cover branch iteration, or determining which base belongs to which branch.
 
+## Project
+
+See [the docs](./projects.md)
+
 ## Status
 
 ```bash

@@ -25,6 +25,9 @@
 
 ## Features
 
+- projects
+  - `feature sync` needs to check if subrepos are cloned
+  - `feature project each` should support filter by project names
 - submodules
   - `feature sync` should checkout modules to expected commit
 - auto merge/rebase
