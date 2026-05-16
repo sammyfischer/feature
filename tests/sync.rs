@@ -1,3 +1,7 @@
+use std::fs;
+
+use assert_cmd::Command;
+
 use crate::common::TestRepo;
 
 mod common;
@@ -191,4 +195,153 @@ fn skips_autofetch_config() {
     "A",
     "main should not have updated"
   );
+}
+
+// Feature should sync all subprojects
+#[test]
+fn syncs_projects() {
+  let file_name = "file.txt";
+  let repo = TestRepo::new();
+  let frontend = TestRepo::new();
+  let backend = TestRepo::new();
+  frontend.init_commit();
+  backend.init_commit();
+
+  repo
+    .feature(&[
+      "project",
+      "add",
+      "--repo",
+      frontend.path().to_str().unwrap(),
+      "frontend",
+    ])
+    .success();
+
+  repo
+    .feature(&[
+      "project",
+      "add",
+      "--repo",
+      backend.path().to_str().unwrap(),
+      "backend",
+    ])
+    .success();
+
+  // new commit to the remotes
+  frontend.write_file(file_name, "B");
+  frontend.commit_all("B");
+  backend.write_file(file_name, "B");
+  backend.commit_all("B");
+
+  repo.feature(&["sync"]).success();
+
+  Command::new("git")
+    .current_dir(repo.path().join("frontend"))
+    .env("HOME", repo.path().parent().unwrap().to_str().unwrap())
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("B\nA");
+
+  Command::new("git")
+    .current_dir(repo.path().join("backend"))
+    .env("HOME", repo.path().parent().unwrap().to_str().unwrap())
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("B\nA");
+}
+
+/// Feature should clone projects when the dir doesn't exist
+#[test]
+fn clones_projects() {
+  let repo = TestRepo::new();
+  let home = repo.path().parent().unwrap();
+
+  let frontend = TestRepo::new();
+  let backend = TestRepo::new();
+  frontend.init_commit();
+  backend.init_commit();
+
+  // add the config without actually cloning
+  repo.write_file(
+    "feature.toml",
+    &format!(
+      r#"[projects]
+frontend = {{ url = "{}", path = "frontend" }}
+backend = {{ url = "{}", path = "backend" }}
+"#,
+      frontend.path().to_str().unwrap(),
+      backend.path().to_str().unwrap()
+    ),
+  );
+  repo.write_file(".gitignore", "frontend\nbackend\n");
+
+  // sync should auto clone
+  let cmd = repo.feature(&["sync"]).success();
+  println!("Sync stdout:\n{}", get_stdout!(cmd));
+  println!("Sync stderr:\n{}", get_stderr!(cmd));
+
+  // repos should exist now with all the commits
+  Command::new("git")
+    .current_dir(repo.path().join("frontend"))
+    .env("HOME", home)
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("A");
+
+  Command::new("git")
+    .current_dir(repo.path().join("backend"))
+    .env("HOME", home)
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("A");
+}
+
+/// Feature should clone the project into the existing dir
+#[test]
+fn clones_project_if_dir_exists() {
+  let repo = TestRepo::new();
+  let home = repo.path().parent().unwrap();
+
+  let frontend = TestRepo::new();
+  let backend = TestRepo::new();
+  frontend.init_commit();
+  backend.init_commit();
+
+  // add the config without actually cloning
+  repo.write_file(
+    "feature.toml",
+    &format!(
+      r#"[projects]
+frontend = {{ url = "{}", path = "frontend" }}
+backend = {{ url = "{}", path = "backend" }}
+"#,
+      frontend.path().to_str().unwrap(),
+      backend.path().to_str().unwrap()
+    ),
+  );
+  repo.write_file(".gitignore", "frontend\nbackend\n");
+
+  // make the dirs first, but they contain no repo
+  fs::create_dir(repo.path().join("frontend")).unwrap();
+  fs::create_dir(repo.path().join("backend")).unwrap();
+
+  // sync should auto clone
+  let cmd = repo.feature(&["sync"]).success();
+  println!("Sync stdout:\n{}", get_stdout!(cmd));
+  println!("Sync stderr:\n{}", get_stderr!(cmd));
+
+  // repos should exist now with all the commits
+  Command::new("git")
+    .current_dir(repo.path().join("frontend"))
+    .env("HOME", home)
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("A");
+
+  Command::new("git")
+    .current_dir(repo.path().join("backend"))
+    .env("HOME", home)
+    .args(["log", "--pretty=format:%s", "main"])
+    .assert()
+    .stdout("A");
 }

@@ -15,6 +15,7 @@ mod config_command;
 mod end;
 mod graph;
 mod list;
+mod project;
 mod prune;
 mod push;
 mod show;
@@ -90,6 +91,7 @@ pub enum Command {
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(sync::Args),
   Prune(prune::Args),
+  Project(project::Args),
 
   // ==== DISPLAY / INFO ====
   Status(status::Args),
@@ -112,12 +114,16 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Push(args) => args.run(&state),
     Command::Check(args) => args.run(&state),
     Command::End(args) => args.run(&state),
+
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),
+    Command::Project(args) => args.run(&state),
+
     Command::Status(args) => args.run(&state),
     Command::List(args) => args.run(&state),
     Command::Graph(args) => args.run(&state),
     Command::Show(args) => args.run(&state),
+
     Command::Config(args) => args.run(&state.config),
     Command::Completions(args) => args.run(),
     Command::Complete(args) => args.run(&state),

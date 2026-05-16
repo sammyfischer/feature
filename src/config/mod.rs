@@ -11,10 +11,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::config::branch::BranchConfig;
+use crate::config::projects::ProjectsConfig;
 
 pub mod branch;
+pub mod projects;
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct Config {
   /// Name of the remote to use when one can't be determined automatically
@@ -25,6 +27,10 @@ pub struct Config {
 
   /// Branch name options
   pub branch: BranchConfig,
+
+  /// Stores list of subprojects
+  #[serde(default)]
+  pub projects: ProjectsConfig,
 }
 
 impl Default for Config {
@@ -33,6 +39,7 @@ impl Default for Config {
       default_remote: "origin".into(),
       protect: vec!["main".into()],
       branch: Default::default(),
+      projects: Default::default(),
     }
   }
 }

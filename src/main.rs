@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches};
@@ -16,17 +16,23 @@ mod util;
 
 /// Shared state of the cli
 pub struct App {
+  /// Fully layered config struct
   pub config: Config,
+
+  /// Path to the project-level config file. May not exist.
+  pub config_path: PathBuf,
+
   pub repo: Repository,
+
   pub command: Command,
 }
 
 impl App {
   pub fn new(args: Args) -> Result<Option<Self>> {
-    let config = match args.config {
-      Some(path) => config::load_with_path(&path),
-      None => config::load(),
-    }?;
+    let (config, config_path) = match args.config {
+      Some(path) => (config::load_with_path(&path)?, path),
+      None => (config::load()?, config::project::path()),
+    };
 
     // completions command ignores git dir entirely
     if let Command::Completions(args) = args.command {
@@ -49,6 +55,7 @@ impl App {
 
     Ok(Some(Self {
       config,
+      config_path,
       repo,
       command: args.command,
     }))

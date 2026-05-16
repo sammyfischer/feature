@@ -79,6 +79,28 @@ _feature_compgen_revisions() {
   printf "%s" "$(feature "${args[@]}")"
 }
 
+# Generates completions for a project name
+#
+# Params
+# $0 - (required) the prefix to match
+# $1 - (optional) the project-level config file
+#
+# Returns
+# Prints a space-separated list of matching revisions
+_feature_compgen_projects() {
+  local word="$1"
+  local config="$2"
+
+  local -a args=()
+  if [[ -n "$config" ]]; then
+    args+=("--config" "$git_dir")
+  fi
+
+  args+=("complete" "--type" "project" "$word")
+
+  printf "%s" "$(feature "${args[@]}")"
+}
+
 _feature() {
   local bin="$1"
   local cur="${COMP_WORDS[COMP_CWORD]}"
@@ -87,6 +109,7 @@ _feature() {
     prev="${COMP_WORDS[COMP_CWORD-2]}"
   fi
   local cmd=""
+  local config=""
   local git_dir=""
   local work_tree=""
 
@@ -99,13 +122,21 @@ _feature() {
         cmd="feature"
         ;;
 
+      "feature,--config")
+        cmd="--config"
+        ;;
+      "--config,=")
+        ;;
+      "--config,"*)
+        config="$word"
+        cmd="feature"
+        ;;
+
       "feature,--git-dir")
         cmd="--git-dir"
         ;;
-
       "--git-dir,=")
         ;;
-
       "--git-dir,"*)
         git_dir="$word"
         cmd="feature"
@@ -114,10 +145,8 @@ _feature() {
       "feature,--wt" | "feature,--work-tree")
         cmd="--work-tree"
         ;;
-
       "--work-tree,=")
         ;;
-
       "--work-tree,"*)
         work_tree="$word"
         cmd="feature"
@@ -171,6 +200,26 @@ _feature() {
         cmd="log"
         ;;
 
+      feature,proj | feature,project)
+        cmd="project"
+        ;;
+
+      project,add)
+        cmd="project_add"
+        ;;
+
+      project,rm | project,remove)
+        cmd="project_rm"
+        ;;
+
+      project,ls | project,list)
+        cmd="project_ls"
+        ;;
+
+      project,each)
+        cmd="project_each"
+        ;;
+
       feature,prune)
         cmd="prune"
         ;;
@@ -207,9 +256,9 @@ _feature() {
   # generate completions depending on the cmd found
   case "$cmd" in
     feature)
-      local opts="--help -V --version --config --git-dir --work-tree --wt base check commit \
-        completions config graph list ls log prune push show start status st \
-        sync update"
+      local opts="--help -V --version --config --git-dir --work-tree --wt \
+        base check commit completions config graph list ls log project proj \
+        prune push show start status st sync update"
       case "$prev" in
         --config)
           COMPREPLY=( $(IFS='\n' compgen -f "${cur#=}") )
@@ -343,15 +392,84 @@ _feature() {
       ;;
 
     list)
-      local opts="--help -H --no-hash -U --no-upstream -B --no-base"
+      local opts="--help -H --no-hash -U --no-upstream -B --no-base -P \
+        --no-projects -M --no-modules"
       case "$prev" in
-        -H | --no-hash | -U | --no-upstream | -B | --no-base)
+        -H | --no-hash | -U | --no-upstream | -B | --no-base | -P | --no-projects | -M | --no-modules)
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
           ;;
       esac
+      ;;
+
+    project)
+      local opts="--help add rm remove ls list each"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      ;;
+
+    project_add)
+      local opts="--help --repo --path"
+      case "$prev" in
+        --repo)
+          # default comps
+          ;;
+        --path)
+          COMPREPLY=( $(IFS='\n' compgen -d "${cur#=}") )
+          compopt -o dirnames
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+      esac
+      ;;
+
+    project_rm)
+      local opts="--help"
+      local projects="$(_feature_compgen_projects "$cur" "$config")"
+      COMPREPLY=( $(compgen -W "$opts $projects" -- "$cur") )
+      ;;
+
+    project_ls)
+      local opts="--help"
+      COMPREPLY=("$opts")
+      ;;
+
+    project_each)
+      local opts="--help -f --filter"
+      local i
+      local subcmd_start=0
+      local seen=""
+      for (( i = 1; i < ${#COMP_WORDS[@]}; i++ )); do
+        case "$seen,${COMP_WORDS[i]}" in
+          ",each")
+            seen="each"
+            ;;
+          "each,--help")
+            ;;
+          "each,-f" | "each,--filter")
+            seen="--filter"
+            ;;
+          "--filter,=")
+            seen="--filter="
+            ;;
+          "--filter,"* | "--filter=,"*)
+            seen="each"
+            ;;
+          "each,"*)
+            subcmd_start=$i
+            break
+            ;;
+        esac
+      done
+      if [[ $subcmd_start -ge ${#COMP_WORDS[@]} ]]; then
+        COMPREPLY=( $(compgen -c -- "$cur") $(compgen -W "$opts" -- "$cur") )
+      elif declare -f _command_offset > /dev/null; then
+        _command_offset $subcmd_start
+      else
+        COMPREPLY=( $(compgen -c -- "$cur") )
+      fi
       ;;
 
     prune)
@@ -371,7 +489,7 @@ _feature() {
         *)
           case "$cur" in
             -*)
-              COMPREPLY=( $(compgen -W "$opts", -- "$cur") )
+              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
               ;;
             *)
               COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
@@ -426,14 +544,19 @@ _feature() {
       ;;
 
     status)
-      local opts="--help -u --no-untracked"
+      local opts="--help -U --no-untracked -P --no-projects -M --no-modules"
+      case "$prev" in
+        -U | --no-untracked | -P | --no-projects | -M | --no-modules)
+          COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
+          ;;
+      esac
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
     sync)
-      local opts="--help --dry-run -P --no-prune"
+      local opts="--help --dry-run --no-prune --no-projects"
       case "$prev" in
-        -P | --no-prune)
+        --no-prune | --no-projects)
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)

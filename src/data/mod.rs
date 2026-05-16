@@ -92,6 +92,16 @@ pub fn get_feature_autofetch(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.autofetch", true)
 }
 
+/// Gets `feature.showProjects`. Defaults to `true`.
+pub fn get_feature_show_projects(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.showProjects", true)
+}
+
+/// Gets `feature.showModules`. Defaults to `true`.
+pub fn get_feature_show_modules(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.showModules", true)
+}
+
 // FORMAT
 
 /// Gets `feature.format.graph`
@@ -145,11 +155,6 @@ pub fn get_list_base(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.list.base", true)
 }
 
-/// Gets `feature.list.modules`. Defaults to `true`.
-pub fn get_list_modules(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.list.modules", true)
-}
-
 // SHOW
 
 /// Gets `feature.show.message`. Defaults to [DisplayCommitMessageLevel::default()].
@@ -187,14 +192,14 @@ pub fn get_status_untracked(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "status.showUntrackedFiles", true)
 }
 
-/// Gets `feature.status.modules`. Defaults to `true`.
-pub fn get_status_modules(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.status.modules", true)
-}
-
 // SYNC
 
 /// Gets `feature.sync.prune`. Defaults to `true`.
 pub fn get_sync_prune(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.sync.prune", true)
+}
+
+/// Gets `feature.sync.projects`. Defaults to `true`.
+pub fn get_sync_projects(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.sync.projects", true)
 }

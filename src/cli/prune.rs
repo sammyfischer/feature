@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use console::style;
-use git2::{Branch, BranchType, Commit, ErrorCode};
+use git2::{Branch, BranchType, Commit, ErrorCode, Repository};
 
+use crate::config::{self, Config};
 use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::delete_config_section;
@@ -34,19 +35,14 @@ pub struct Args {
   /// Skip automatic fetch of base branch
   #[arg(short = 'F', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_fetch: Option<bool>,
+
+  /// Don't sync subprojects
+  #[arg(long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_projects: Option<bool>,
 }
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let skip_fetch = match self.no_fetch {
-      Some(it) => it,
-      None => !data::get_feature_autofetch(&state.repo.config()?)?,
-    };
-
-    if !skip_fetch {
-      fetch_all(&state.repo)?;
-    }
-
     if self.dry_run {
       println!(
         "{}",
@@ -54,16 +50,50 @@ impl Args {
       );
     }
 
-    prune_branches(state, self.dry_run)
+    println!("Pruning repo\u{2026}");
+    self.prune_repo(&state.repo, &state.config)?;
+    println!("{} repo", style("Pruned").green());
+
+    let skip_projects = match self.no_projects {
+      Some(it) => it,
+      None => !data::get_sync_projects(&state.repo.config()?)?,
+    };
+
+    if !skip_projects {
+      // TODO: like sync, fix output
+      for (name, project) in &state.config.projects {
+        println!("\nPruning project {}\u{2026}", style(name).cyan());
+        let repo = Repository::open(&project.path)?;
+        let config = config::load_with_path(&project.path)?;
+        self.prune_repo(&repo, &config)?;
+        println!("{} project {}", style("Pruned").green(), style(name).cyan());
+      }
+    }
+
+    Ok(())
+  }
+
+  fn prune_repo(&self, repo: &Repository, config: &Config) -> Result<()> {
+    let skip_fetch = match self.no_fetch {
+      Some(it) => it,
+      None => !data::get_feature_autofetch(&repo.config()?)?,
+    };
+
+    if !skip_fetch {
+      fetch_all(repo)?;
+    }
+
+    prune_branches(repo, config, self.dry_run)
   }
 }
 
-pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
-  let branches = state.repo.branches(Some(BranchType::Local))?;
-  let current_name = get_current_branch_name(&state.repo)?;
+pub fn prune_branches(repo: &Repository, config: &Config, dry_run: bool) -> Result<()> {
+  let branches = repo.branches(Some(BranchType::Local))?;
+  let current_name = get_current_branch_name(repo)?;
 
   for (mut branch, _) in branches.flatten() {
-    if let Err(e) = safe_delete_branch(state, &mut branch, current_name.as_deref(), dry_run) {
+    if let Err(e) = safe_delete_branch(repo, config, &mut branch, current_name.as_deref(), dry_run)
+    {
       eprintln!("{}", e);
     }
   }
@@ -82,7 +112,8 @@ pub fn prune_branches(state: &App, dry_run: bool) -> Result<()> {
 /// was determined to be unsafe to delete, rather than anything going wrong. An error implies that
 /// something went wrong.
 fn safe_delete_branch(
-  state: &App,
+  repo: &Repository,
+  config: &Config,
   branch: &mut Branch,
   current_branch_name: Option<&str>,
   dry_run: bool,
@@ -90,14 +121,14 @@ fn safe_delete_branch(
   let meta = BranchMeta::from_branch(branch)?;
 
   // skip branches that have never been pushed
-  match state.repo.branch_upstream_remote(meta.refname()) {
+  match repo.branch_upstream_remote(meta.refname()) {
     Ok(_) => {}
     Err(e) if e.code() == ErrorCode::NotFound => return Ok(false),
     Err(e) => return Err(e.into()),
   }
 
   // skip protected branches
-  if state.config.protect.iter().any(|it| it == meta.name()) {
+  if config.protect.iter().any(|it| it == meta.name()) {
     return Ok(false);
   }
 
@@ -108,7 +139,7 @@ fn safe_delete_branch(
     println!(
       "{}",
       style(format!(
-        "Skipping currently checked-out branch: {}",
+        "Skipping prune check for currently checked-out branch: {}",
         meta.name()
       ))
       .dim()
@@ -117,20 +148,19 @@ fn safe_delete_branch(
   }
 
   // find base branch from db, else skip
-  let base = match data::get_feature_base(&state.repo, meta.name())? {
+  let base = match data::get_feature_base(repo, meta.name())? {
     Some(base) => base,
     None => return Ok(false),
   };
 
   // detect if branch is merged (i.e. has no commits that aren't on its base)
-  let is_merged =
-    is_merged(&state.repo, branch.get(), &base.resolve(&state.repo)?).with_context(|| {
-      format!(
-        "Failed to determine if {} is merged into {}",
-        meta.name(),
-        base.name()
-      )
-    })?;
+  let is_merged = is_merged(repo, branch.get(), &base.resolve(repo)?).with_context(|| {
+    format!(
+      "Failed to determine if {} is merged into {}",
+      meta.name(),
+      base.name()
+    )
+  })?;
 
   if is_merged {
     let commit = branch

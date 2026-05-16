@@ -1,3 +1,6 @@
+use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
+
 use crate::common::TestRepo;
 
 mod common;
@@ -298,4 +301,78 @@ fn skips_autofetch_config() {
       .contains("refs/heads/topic"),
     "topic should not have been pruned"
   );
+}
+
+/// Feature should prune branches in subprojects
+#[test]
+fn prunes_projects() {
+  let repo = TestRepo::new();
+  let home = repo.path().parent().unwrap();
+
+  let frontend = TestRepo::new();
+  let backend = TestRepo::new();
+  frontend.init_commit();
+  backend.init_commit();
+
+  repo
+    .feature(&[
+      "project",
+      "add",
+      "--repo",
+      frontend.path().to_str().unwrap(),
+      "frontend",
+    ])
+    .success();
+
+  repo
+    .feature(&[
+      "project",
+      "add",
+      "--repo",
+      backend.path().to_str().unwrap(),
+      "backend",
+    ])
+    .success();
+
+  for project in ["frontend", "backend"] {
+    let path = repo.path().join(project);
+
+    // new feature branch
+    cargo_bin_cmd!()
+      .current_dir(&path)
+      .env("HOME", home)
+      .args(["start", "topic"])
+      .assert()
+      .success();
+
+    // push once so the branch is prunable
+    Command::new("git")
+      .current_dir(&path)
+      .env("HOME", home)
+      .args(["push", "-u", "origin", "topic"])
+      .assert()
+      .success();
+
+    // switch off so the branch is prunable
+    Command::new("git")
+      .current_dir(&path)
+      .env("HOME", home)
+      .args(["switch", "main"])
+      .assert()
+      .success();
+  }
+
+  repo.feature(&["prune"]).success();
+
+  for project in ["frontend", "backend"] {
+    let path = repo.path().join(project);
+
+    // topic branches should be deleted
+    Command::new("git")
+      .current_dir(&path)
+      .env("HOME", home)
+      .args(["branch", "--format=%(refname) %(upstream)"])
+      .assert()
+      .stdout("refs/heads/main refs/remotes/origin/main\n");
+  }
 }

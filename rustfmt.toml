@@ -12,6 +12,5 @@ hex_literal_case = "Upper"
 
 overflow_delimited_expr = true
 
-comment_width = 100
 wrap_comments = true
 normalize_comments = true

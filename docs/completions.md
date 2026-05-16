@@ -93,30 +93,6 @@ To make sure commands do what you expect, you should:
 
 In other words, check the help outputs.
 
-# '=' Syntax
-
-All flags can have their value specified with an '=', like this:
-
-```bash
-feature start --from="main" ...
-```
-
-Some flags require this syntax. For example:
-
-```bash
-# valid
-feature show --no-summary=false main
-feature list -S=false main
-
-# invalid
-feature list --no-summary false main
-feature list -S false main
-```
-
-This is because these options in particular can be used without a value at all (which implies true). Parsing this would be ambiguous otherwise ("false" could be a valid revspec).
-
-These commands *do* support completions with the '=' syntax, since it's the only valid syntax.
-
 # Known Bugs
 
 When completing for a file or dir name, completions may not work properly if the name starts with an '='. I don't currently plan on fixing this since it's rare and would make the completion script significantly more complicated.

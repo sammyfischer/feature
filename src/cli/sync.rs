@@ -1,8 +1,14 @@
+use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
+
 use anyhow::{Result, anyhow};
 use console::style;
-use git2::{Branch, BranchType, Commit, Diff, Repository};
+use git2::{Branch, BranchType, Commit, Diff, ErrorClass, ErrorCode, Repository};
 
 use crate::cli::prune::prune_branches;
+use crate::config::projects::ProjectEntry;
+use crate::config::{self, Config};
 use crate::util::branch::{fetch_all, get_current_branch_name, hard_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::{DiffSummary, has_workdir_changes};
@@ -35,22 +41,16 @@ pub struct Args {
   pub no_fetch: Option<bool>,
 
   /// Don't prune after updating
-  #[arg(short = 'P', long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  #[arg(long, value_name = "SKIP", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_prune: Option<bool>,
+
+  /// Don't sync subprojects
+  #[arg(long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_projects: Option<bool>,
 }
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?;
-    let skip_fetch = match self.no_fetch {
-      Some(it) => it,
-      None => !data::get_feature_autofetch(&config)?,
-    };
-
-    if !skip_fetch {
-      fetch_all(&state.repo)?;
-    }
-
     if self.dry_run {
       println!(
         "{}",
@@ -58,8 +58,49 @@ impl Args {
       );
     }
 
-    let current_branch = get_current_branch_name(&state.repo)?;
-    let branches = state.repo.branches(Some(BranchType::Local))?;
+    println!("Syncing repo\u{2026}");
+    self.sync_repo(&state.repo, &state.config)?;
+    println!("{} repo", style("Synced").green());
+
+    let skip_projects = match self.no_projects {
+      Some(it) => it,
+      None => !data::get_sync_projects(&state.repo.config()?)?,
+    };
+
+    if !skip_projects {
+      // TODO: figure out a better way to organize output so it can be parallelized
+      let root = state.repo.workdir().unwrap_or_else(|| state.repo.path());
+      for (name, project) in &state.config.projects {
+        println!("\nSyncing project {}\u{2026}", style(name).cyan());
+
+        match self.sync_or_clone_project(root, project) {
+          Ok(_) => println!("{} project {}", style("Synced").green(), style(name).cyan()),
+          Err(e) => eprintln!(
+            "{} to sync {}: {}",
+            style("Failed").red(),
+            style(name).cyan(),
+            e
+          ),
+        };
+      }
+    }
+
+    Ok(())
+  }
+
+  fn sync_repo(&self, repo: &Repository, config: &Config) -> Result<()> {
+    let git_config = repo.config()?;
+    let skip_fetch = match self.no_fetch {
+      Some(it) => it,
+      None => !data::get_feature_autofetch(&git_config)?,
+    };
+
+    if !skip_fetch {
+      fetch_all(repo)?;
+    }
+
+    let current_branch = get_current_branch_name(repo)?;
+    let branches = repo.branches(Some(BranchType::Local))?;
 
     for (mut branch, _) in branches.flatten() {
       let branch_meta = BranchMeta::from_branch(&branch)?;
@@ -67,7 +108,7 @@ impl Args {
         .as_ref()
         .is_some_and(|it| *it == branch_meta.name());
 
-      let upstream = branch_meta.upstream(&state.repo)?;
+      let upstream = branch_meta.upstream(repo)?;
       let Some(upstream) = upstream else {
         // no upstream, nothing to update
         continue;
@@ -76,7 +117,7 @@ impl Args {
 
       if is_current {
         // check for local changes
-        if has_workdir_changes(&state.repo)? {
+        if has_workdir_changes(repo)? {
           println!(
             "{} {} due to local changes",
             style("Skipping").yellow(),
@@ -87,7 +128,7 @@ impl Args {
       }
 
       if let Err(e) = fast_forward(
-        &state.repo,
+        repo,
         &mut branch,
         &branch_meta,
         &upstream,
@@ -107,12 +148,41 @@ impl Args {
 
     let skip_prune = match self.no_prune {
       Some(it) => it,
-      None => !data::get_sync_prune(&config)?,
+      None => !data::get_sync_prune(&git_config)?,
     };
 
     if !skip_prune {
-      prune_branches(state, self.dry_run)?;
+      prune_branches(repo, config, self.dry_run)?;
     }
+    Ok(())
+  }
+
+  fn sync_or_clone_project(&self, root: &Path, project: &ProjectEntry) -> Result<()> {
+    match Repository::open(&project.path) {
+      // already cloned, sync it
+      Ok(repo) => {
+        let config = config::load_with_path(&project.path)?;
+        self.sync_repo(&repo, &config)?;
+      }
+
+      // doesn't exist, just clone and continue
+      Err(e)
+        if (e.class() == ErrorClass::Os && e.code() == ErrorCode::NotFound)
+          || (e.class() == ErrorClass::Repository && e.code() == ErrorCode::NotFound) =>
+      {
+        // make sure path exists
+        let path = root.join(&project.path);
+        match fs::create_dir_all(&path) {
+          Ok(_) => (),
+          Err(e) if e.kind() == ErrorKind::AlreadyExists => (),
+          Err(e) => return Err(e.into()),
+        }
+        Repository::clone(&project.url, &path)?;
+      }
+
+      Err(e) => return Err(e.into()),
+    };
+
     Ok(())
   }
 }

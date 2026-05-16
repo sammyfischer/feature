@@ -20,7 +20,7 @@ For example:
 Use "-S=false" to force the summary to appear.
 Use "-S" to force the summary to be hidden."#;
 
-#[derive(clap::Args, Clone, Debug)]
+#[derive(clap::Args, Debug)]
 #[command(
   about = "Show info about a commit",
   long_about = LONG_ABOUT,

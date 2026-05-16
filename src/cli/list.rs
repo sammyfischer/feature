@@ -33,6 +33,10 @@ pub struct Args {
   #[arg(short = 'B', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_base: Option<bool>,
 
+  /// Hides feature subprojects from output
+  #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+  pub no_projects: Option<bool>,
+
   /// Hides git submodules from output
   #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_modules: Option<bool>,
@@ -114,9 +118,25 @@ impl Args {
     let (rows, widths) = self.build_table(&state.repo, branches)?;
     self.print_table(&state.repo, &rows, widths)?;
 
+    let hide_projects = match self.no_projects {
+      Some(it) => it,
+      None => !data::get_feature_show_projects(&state.repo.config()?)?,
+    };
+
+    if !hide_projects {
+      for (name, project) in &state.config.projects {
+        let repo = Repository::open(&project.path)?;
+        let branches = repo.branches(Some(git2::BranchType::Local))?;
+
+        println!("\n{} {}", style("Project").bold(), style(name).cyan());
+        let (rows, widths) = self.build_table(&repo, branches)?;
+        self.print_table(&repo, &rows, widths)?;
+      }
+    }
+
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_list_modules(&state.repo.config()?)?,
+      None => !data::get_feature_show_modules(&state.repo.config()?)?,
     };
 
     if !hide_modules {
