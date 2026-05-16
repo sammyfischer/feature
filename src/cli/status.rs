@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{Commit, DiffOptions, Oid, Reference, Repository, Submodule};
+use git2::{Commit, DiffOptions, Oid, Reference, Repository};
+use rayon::join;
 
 use crate::config::projects::ProjectEntry;
 use crate::util::advice::{
@@ -209,29 +210,84 @@ impl Args {
       Some(it) => it,
       None => !data::get_feature_show_projects(&config)?,
     };
-
-    if !hide_projects {
-      let projects = &state.config.projects;
-      if !projects.is_empty() {
-        println!("\n{}", style("Projects").bold().blue());
-      }
-      for project in &state.config.projects {
-        println!("{}", self.display_project(&state.repo, project)?);
-      }
-    }
+    let projects = &state.config.projects;
 
     let hide_modules = match self.no_modules {
       Some(it) => it,
       None => !data::get_feature_show_modules(&config)?,
     };
+    let modules: Vec<_> = state
+      .repo
+      .submodules()?
+      .iter()
+      // can only share the names between threads
+      .map(|module| module.name_bytes().to_str_lossy_owned())
+      .collect();
 
-    if !hide_modules {
-      let modules = state.repo.submodules()?;
-      if !modules.is_empty() {
-        println!("\n{}", style("Modules").bold().magenta());
+    let repo_dir = state.repo.path().to_owned();
+    let work_dir = state.repo.workdir().map(|it| it.to_owned());
+
+    use rayon::prelude::*;
+    let (proj_results, mod_results) = join(
+      // iterate over projects
+      || -> Vec<Result<String>> {
+        if hide_projects {
+          return vec![];
+        }
+        projects
+          .par_iter()
+          .map(|project| -> Result<String> {
+            let repo = match &work_dir {
+              Some(work_dir) => {
+                let repo = Repository::open_bare(&repo_dir)?;
+                repo.set_workdir(work_dir, false)?;
+                repo
+              }
+              None => Repository::open(&repo_dir)?,
+            };
+            self.display_project(&repo, project)
+          })
+          .collect()
+      },
+      // over modules
+      || -> Vec<Result<String>> {
+        if hide_modules {
+          return vec![];
+        }
+        modules
+          .par_iter()
+          .map(|name| -> Result<String> {
+            let repo = match &work_dir {
+              Some(work_dir) => {
+                let repo = Repository::open_bare(&repo_dir)?;
+                repo.set_workdir(work_dir, false)?;
+                repo
+              }
+              None => Repository::open(&repo_dir)?,
+            };
+            self.display_module(&repo, name)
+          })
+          .collect()
+      },
+    );
+
+    if !proj_results.is_empty() {
+      println!("\n{}", style("Projects").bold().blue());
+      for result in proj_results {
+        match result {
+          Ok(out) => println!("{}", out),
+          Err(e) => eprint!("{}", e),
+        }
       }
-      for module in modules {
-        println!("{}", self.display_module(&state.repo, &module)?);
+    }
+
+    if !mod_results.is_empty() {
+      println!("\n{}", style("Modules").bold().magenta());
+      for result in mod_results {
+        match result {
+          Ok(out) => println!("{}", out),
+          Err(e) => eprintln!("{}", e),
+        }
       }
     }
 
@@ -293,12 +349,11 @@ impl Args {
   /// # Params
   /// - `repo` - The *parent* repo, not the submodule repo
   /// - `module` - The submodule, usually obtained from [Repository::submodules]
-  fn display_module(&self, repo: &Repository, module: &Submodule) -> Result<String> {
+  fn display_module(&self, repo: &Repository, mod_name: &str) -> Result<String> {
     let mut out = String::new();
+    out.push_str(&style(mod_name).cyan().to_string());
 
-    let name = module.name_bytes().to_str_lossy();
-    out.push_str(&style(name).cyan().to_string());
-
+    let module = repo.find_submodule(mod_name)?;
     let mod_repo = module.open()?;
 
     // committed state of submodule (commit parent expects module to be on)
