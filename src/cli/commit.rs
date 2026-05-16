@@ -82,8 +82,9 @@ struct CommitTarget<'repo> {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
+    let config = state.repo.config()?.snapshot()?;
     // if there's a pick active and the user has pick advice enabled
-    if get_pick_head(&state.repo)?.is_some() && data::get_advice_conflict(&state.repo.config()?)? {
+    if get_pick_head(&state.repo)?.is_some() && data::get_advice_conflict(&config)? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_PICK)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -92,8 +93,7 @@ impl Args {
     }
 
     // if there's a revert active and the user has revert advice enabled
-    if get_revert_head(&state.repo)?.is_some() && data::get_advice_conflict(&state.repo.config()?)?
-    {
+    if get_revert_head(&state.repo)?.is_some() && data::get_advice_conflict(&config)? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_REVERT)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -213,10 +213,7 @@ impl Args {
 
     let new_commit = state.repo.find_commit(new_id)?;
 
-    println!(
-      "{}",
-      display_commit_details(&new_commit, &diff, &state.repo.config()?)?
-    );
+    println!("{}", display_commit_details(&new_commit, &diff, &config)?);
 
     // committing during an active merge completes the merge, we should clean up the merge files
     if merge_head.is_some() {
@@ -269,7 +266,7 @@ impl Args {
     let new_commit = state.repo.find_commit(new_id)?;
     println!(
       "{}",
-      display_commit_details(&new_commit, &diff, &state.repo.config()?)?
+      display_commit_details(&new_commit, &diff, &state.repo.config()?.snapshot()?)?
     );
     Ok(())
   }
@@ -466,7 +463,7 @@ fn get_editor(repo: &Repository) -> Result<String> {
   };
 
   // 2. core.editor config var
-  let config = repo.config()?;
+  let config = repo.config()?.snapshot()?;
   match config.get_string("core.editor") {
     Ok(it) => return Ok(it),
     Err(e) if e.code() == ErrorCode::NotFound => {}

@@ -54,12 +54,12 @@ impl Args {
     use std::io::Write;
     let mut buf: Vec<u8> = Vec::new();
 
+    let config = state.repo.config()?.snapshot()?;
     let object = state
       .repo
       .revparse_single(self.revision.as_deref().unwrap_or("HEAD"))?;
 
     let commit = object.peel_to_commit()?;
-    let config = state.repo.config()?;
     writeln!(
       buf,
       "{}",
@@ -87,7 +87,6 @@ impl Args {
       None => None,
     };
 
-    let config = state.repo.config()?;
     let mut diff = state
       .repo
       .diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), None)?;

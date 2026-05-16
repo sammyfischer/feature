@@ -141,7 +141,7 @@ impl Args {
     let mut templater = Templater::new()
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
-        let config = state.repo.config().context("Failed to get git config")?;
+        let config = state.repo.config()?.snapshot()?;
         data::get_feature_user(&config)?
           .context("No value for feature.user. Set it with \"git config feature.user <username>\".")
       }))

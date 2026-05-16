@@ -43,6 +43,7 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
+    let config = state.repo.config()?.snapshot()?;
     if self.dry_run {
       println!(
         "{}",
@@ -56,7 +57,7 @@ impl Args {
 
     let skip_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_sync_projects(&state.repo.config()?)?,
+      None => !data::get_sync_projects(&config)?,
     };
 
     if !skip_projects {
@@ -76,7 +77,7 @@ impl Args {
   fn prune_repo(&self, repo: &Repository, config: &Config) -> Result<()> {
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
-      None => !data::get_feature_autofetch(&repo.config()?)?,
+      None => !data::get_feature_autofetch(&repo.config()?.snapshot()?)?,
     };
 
     if !skip_fetch {
