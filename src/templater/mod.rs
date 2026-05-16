@@ -115,7 +115,7 @@ impl<'values> LongVar<'values> {
 }
 
 /// State machine states
-#[derive(PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 enum State {
   /// Parsing unescaped characters
   Base,
@@ -170,76 +170,70 @@ impl<'values> Templater<'values> {
     self
   }
 
-  /// Build a new string where all variables in the template are replaced with their values.
+  /// Build a new string where all variables in the template are replaced with
+  /// their values.
   ///
-  /// Errors if an unrecognized variable is encountered, or if a variable is incomplete. A variable
-  /// is incomplete if:
-  /// 1. There's a '%' character at the end of the string, e.g. "replacement: %"
+  /// Errors if an unrecognized variable is encountered, a variable is
+  /// incomplete, or a lazy replacement errors. A variable is incomplete if:
+  /// 1. There's a '%' character at the end of the string, e.g. "template%"
   /// 2. There's an unclosed long variable name, e.g. "long variable: %(long"
   pub fn replace(&mut self, template: &str) -> Result<String> {
     // output buffer
     let mut out = String::new();
     // long variable name buffer
-    let mut buf = String::new();
+    let mut var_buf = String::new();
     // current state of the state machine
     let mut state = State::Base;
 
     for c in template.chars() {
-      match state {
-        State::Base => match c {
-          '%' => {
-            state = State::Variable;
-          }
-          _ => out.push(c),
-        },
+      match (state, c) {
+        (State::Base, '%') => {
+          state = State::Variable;
+        }
+        (State::Base, c) => {
+          out.push(c);
+        }
 
-        State::Variable => match c {
-          // literal %
-          '%' => {
-            out.push('%');
+        (State::Variable, '%') => {
+          out.push('%');
+          state = State::Base;
+        }
+        (State::Variable, '(') => {
+          state = State::LongVariable;
+        }
+        (State::Variable, c) => match self.short_vars.get_mut(&c) {
+          Some(value) => {
+            out.push_str(
+              value
+                .replace()
+                .with_context(|| format!("Failed when replacing: %{}", c))?,
+            );
             state = State::Base;
           }
-
-          // long variable
-          '(' => state = State::LongVariable,
-
-          // short variable
-          _ => match self.short_vars.get_mut(&c) {
-            Some(value) => {
-              out.push_str(
-                value
-                  .replace()
-                  .with_context(|| format!("Failed when replacing: %{}", c))?,
-              );
-              state = State::Base;
-            }
-            None => return Err(anyhow!("Unrecognized variable: %{}", c)),
-          },
+          None => return Err(anyhow!("Unrecognized variable: %{}", c)),
         },
 
-        State::LongVariable => match c {
-          // finished long var name, perform replacement
-          ')' => match self.long_vars.get_mut(&buf) {
-            Some(value) => {
-              out.push_str(
-                value
-                  .replace()
-                  .with_context(|| format!("Failed when replacing: %({})", &buf))?,
-              );
-              buf.clear();
-              state = State::Base;
-            }
-            None => return Err(anyhow!("Unrecognized variable: %({})", &buf)),
-          },
-
-          _ => buf.push(c),
+        (State::LongVariable, ')') => match self.long_vars.get_mut(&var_buf) {
+          Some(value) => {
+            out.push_str(
+              value
+                .replace()
+                .with_context(|| format!("Failed when replacing: %({})", &var_buf))?,
+            );
+            var_buf.clear();
+            state = State::Base;
+          }
+          None => return Err(anyhow!("Unrecognized variable: %({})", &var_buf)),
         },
+        (State::LongVariable, c) => {
+          var_buf.push(c);
+        }
       }
     }
 
     // reached end of template while parsing a long variable
     if state == State::LongVariable {
-      return Err(anyhow!("Incomplete variable: %({}", buf));
+      return Err(anyhow!("Incomplete variable: %({}", var_buf));
     }
 
     // template ended with a '%'
