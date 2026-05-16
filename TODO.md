@@ -25,6 +25,10 @@
 
 ## Features
 
+- hide authorship info
+  - add `feature.showAuthorship`
+  - would probably only hide it in status output, but could be a global setting so it applies anywhere I add it in the future
+  - doesn't need to hide author info for show/commit
 - submodules
   - `feature sync` should checkout modules to expected commit
 - auto merge/rebase

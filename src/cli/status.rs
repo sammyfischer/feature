@@ -258,7 +258,20 @@ impl Args {
     if let Some(head) = get_head(&proj_repo)? {
       let commit = head.peel_to_commit()?;
 
-      if head.is_branch() || head.is_remote() || head.is_tag() {
+      if head.is_branch() || head.is_remote() {
+        let branch_meta = BranchMeta::from_reference(&head)?;
+        out.push_str(&format!(" on {}", style(branch_meta.name()).green()));
+
+        if let Some(upstream) = branch_meta.upstream(&proj_repo)? {
+          let (ahead, behind) = get_ahead_behind(&proj_repo, &head, upstream.get())?;
+          out.push_str(&format!(
+            " {}{}{}",
+            style("[").dim(),
+            display_plus_minus(ahead, behind),
+            style("]").dim()
+          ));
+        }
+      } else if head.is_tag() {
         let name = head.shorthand_bytes().to_str_lossy();
         out.push_str(&format!(" on {}", style(name).green()));
       }

@@ -51,7 +51,8 @@ macro_rules! get_option {
 /// - `branch_name` - the shortname of the branch (use [BranchMeta::name] if available)
 pub fn get_feature_base(repo: &Repository, branch_name: &str) -> Result<Option<BranchMeta>> {
   match repo
-    .config()?.snapshot()?
+    .config()?
+    .snapshot()?
     .get_string(&format!("branch.{}.feature-base", &branch_name))
   {
     Ok(it) => Ok(Some(
