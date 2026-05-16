@@ -89,10 +89,10 @@ frontend succeeded
     Command::new("git")
       .current_dir(&path)
       .env("HOME", home)
-      .args(["branch", "--show-current"])
+      .args(["branch"])
       .assert()
       .success()
-      .stdout("topic\n");
+      .stdout("  main\n* topic\n");
 
     // set feature base
     Command::new("git")
@@ -103,4 +103,76 @@ frontend succeeded
       .success()
       .stdout("refs/remotes/origin/main\n");
   }
+}
+
+/// Feature should only exec commands in projects matching the filters
+#[test]
+fn respects_filter() {
+  let (repo, _frontend, _backend) = setup_multiproject();
+  let home = repo.path().parent().unwrap();
+
+  let database = TestRepo::new();
+  database.init_commit();
+  repo
+    .feature(&[
+      "project",
+      "add",
+      "--repo",
+      database.path().to_str().unwrap(),
+      "database",
+    ])
+    .success();
+
+  repo
+    .feature(&[
+      "project",
+      "each",
+      "--filter",
+      "frontend,back",
+      "feature",
+      "start",
+      "topic",
+    ])
+    .success()
+    .stdout(
+      r#"backend
+Created topic (from main)
+backend succeeded
+
+frontend
+Created topic (from main)
+frontend succeeded
+"#,
+    );
+
+  for project in ["frontend", "backend"] {
+    let path = repo.path().join(project);
+
+    // checked out to branch
+    Command::new("git")
+      .current_dir(&path)
+      .env("HOME", home)
+      .args(["branch"])
+      .assert()
+      .success()
+      .stdout("  main\n* topic\n");
+
+    // set feature base
+    Command::new("git")
+      .current_dir(&path)
+      .env("HOME", home)
+      .args(["config", "branch.topic.feature-base"])
+      .assert()
+      .success()
+      .stdout("refs/remotes/origin/main\n");
+  }
+
+  // database shouldn't have the branch
+  Command::new("git")
+    .current_dir(repo.path().join("database"))
+    .env("HOME", home)
+    .args(["branch"])
+    .assert()
+    .success()
+    .stdout("* main\n");
 }

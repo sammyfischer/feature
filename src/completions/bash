@@ -437,7 +437,7 @@ _feature() {
       ;;
 
     project_each)
-      local opts="--help"
+      local opts="--help -f --filter"
       local i
       local subcmd_start=0
       local seen=""
@@ -447,9 +447,17 @@ _feature() {
             seen="each"
             ;;
           "each,--help")
-            seen="--help"
             ;;
-          "each,"* | "--help,"*)
+          "each,-f" | "each,--filter")
+            seen="--filter"
+            ;;
+          "--filter,=")
+            seen="--filter="
+            ;;
+          "--filter,"* | "--filter=,"*)
+            seen="each"
+            ;;
+          "each,"*)
             subcmd_start=$i
             break
             ;;
