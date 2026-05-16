@@ -38,8 +38,6 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let mut config = state.repo.config()?;
-
     let branch = match &self.branch {
       Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
@@ -62,6 +60,8 @@ impl Args {
       }
     };
 
+    // get again as writable config
+    let mut config = state.repo.config()?;
     data::set_feature_base(&mut config, branch.name(), &feature_base_name)?;
 
     Ok(())

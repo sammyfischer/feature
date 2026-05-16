@@ -40,7 +40,7 @@ impl Args {
 
       // try to get config field
       None => {
-        let config = state.repo.config()?;
+        let config = state.repo.config()?.snapshot()?;
         data::get_format_graph(&config)?
       }
     };

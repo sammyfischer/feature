@@ -64,7 +64,7 @@ impl Args {
 
     let skip_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_sync_projects(&state.repo.config()?)?,
+      None => !data::get_sync_projects(&state.repo.config()?.snapshot()?)?,
     };
 
     if !skip_projects {
@@ -89,7 +89,7 @@ impl Args {
   }
 
   fn sync_repo(&self, repo: &Repository, config: &Config) -> Result<()> {
-    let git_config = repo.config()?;
+    let git_config = repo.config()?.snapshot()?;
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
       None => !data::get_feature_autofetch(&git_config)?,

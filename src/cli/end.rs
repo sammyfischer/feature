@@ -51,7 +51,7 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?;
+    let config = state.repo.config()?.snapshot()?;
 
     let branch = match &self.branch {
       Some(name) => BranchMeta::from_name_dwim(&state.repo, name)?,

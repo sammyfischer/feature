@@ -48,7 +48,7 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?;
+    let config = state.repo.config()?.snapshot()?;
     let head = get_head(&state.repo)?;
     let rebase_dir = get_rebase_dir(&state.repo);
 
@@ -371,7 +371,7 @@ impl Args {
     let mut opts = DiffOptions::new();
     let include = match self.no_untracked {
       Some(it) => !it,
-      None => data::get_status_untracked(&repo.config()?)?,
+      None => data::get_status_untracked(&repo.config()?.snapshot()?)?,
     };
     opts.include_untracked(include);
     let mut unstaged = repo.diff_index_to_workdir(None, Some(&mut opts))?;

@@ -110,6 +110,7 @@ impl Widths {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
+    let config = state.repo.config()?.snapshot()?;
     let branches = state
       .repo
       .branches(Some(git2::BranchType::Local))
@@ -120,7 +121,7 @@ impl Args {
 
     let hide_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_feature_show_projects(&state.repo.config()?)?,
+      None => !data::get_feature_show_projects(&config)?,
     };
 
     if !hide_projects {
@@ -136,7 +137,7 @@ impl Args {
 
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_feature_show_modules(&state.repo.config()?)?,
+      None => !data::get_feature_show_modules(&config)?,
     };
 
     if !hide_modules {
@@ -266,7 +267,7 @@ impl Args {
         }
       }
 
-      let config = repo.config()?;
+      let config = repo.config()?.snapshot()?;
 
       'hash: {
         if self.no_hash.unwrap_or(!data::get_list_hash(&config)?) {
