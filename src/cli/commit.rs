@@ -8,7 +8,7 @@ use std::process::Command;
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::{strip_ansi_codes, style};
-use git2::{Commit, Diff, DiffOptions, ErrorCode, Reference, Repository, Tree};
+use git2::{Commit, Diff, ErrorCode, MergeOptions, Reference, Repository, Tree};
 
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
@@ -151,13 +151,7 @@ impl Args {
 
     self.pre_commit(&state.repo)?;
 
-    let (tree, diff) = self.get_changes(
-      &state.repo,
-      match &target {
-        Some(target) => Some(&target.commit),
-        None => None,
-      },
-    )?;
+    let (tree, diff) = self.get_changes(&state.repo, target.as_ref())?;
     let sig = get_signature(&state.repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
 
     // get final msg
@@ -228,7 +222,7 @@ impl Args {
     let target = target.ok_or(anyhow!("No current commit to amend"))?;
     self.pre_commit(&state.repo)?;
 
-    let (tree, diff) = self.get_changes(&state.repo, Some(&target.commit))?;
+    let (tree, diff) = self.get_changes(&state.repo, Some(&target))?;
     let sig = state.repo.signature().context(NO_SIGNATURE_MSG)?;
 
     // get commit msg
@@ -278,51 +272,56 @@ impl Args {
   fn get_changes<'repo>(
     &self,
     repo: &'repo Repository,
-    target: Option<&Commit>,
+    target: Option<&CommitTarget>,
   ) -> Result<(Tree<'repo>, Diff<'repo>)> {
-    // compute changes to commit
-    let head = get_head(repo)?;
-    let base_tree = match head {
-      Some(head) => Some(head.peel_to_tree()?),
-      None => None,
-    };
-    let target_tree = match target {
-      Some(target) => Some(target.tree()?),
-      None => None,
+    let Some(target) = target else {
+      // simple case, committing to HEAD
+      let mut index = repo.index()?;
+      let tree_id = index.write_tree()?;
+      let tree = repo.find_tree(tree_id)?;
+
+      let head_tree = match get_head(repo)? {
+        Some(head) => Some(head.peel_to_tree()?),
+        None => None,
+      };
+
+      let mut diff = repo.diff_tree_to_tree(head_tree.as_ref(), Some(&tree), None)?;
+      diff.find_similar(None)?;
+      return Ok((tree, diff));
     };
 
-    let mut index = repo.index()?;
-    let index_tree = {
-      let id = index.write_tree()?;
+    // committing to another branch, compute changes with a merge
+    let head = get_head(repo)?
+      .context("Can't commit to a different branch when there are no commits yet!")?;
+    let mut stage = repo.index()?;
+
+    let head_tree = head.peel_to_tree()?;
+    let target_tree = target.commit.tree()?;
+    let staged_tree = {
+      let id = stage.write_tree()?;
       repo.find_tree(id)?
     };
 
-    let mut opts = DiffOptions::new();
-    opts.context_lines(0); // context lines will cause conflicts most of the time
-    let mut changes =
-      repo.diff_tree_to_tree(base_tree.as_ref(), Some(&index_tree), Some(&mut opts))?;
+    let mut opts = MergeOptions::new();
+    // favor staged changes
+    opts.file_favor(git2::FileFavor::Theirs);
+    let mut index = repo.merge_trees(&head_tree, &target_tree, &staged_tree, None)?;
 
-    let Some(target_tree) = target_tree else {
-      changes.find_similar(None)?;
-      return Ok((index_tree, changes));
-    };
+    if index.has_conflicts() {
+      return Err(anyhow!(
+        "The staged changes cannot be committed because they would result in a conflict. \
+        Check with \"git diff --cached {}\", and adjust staged changes accordingly.",
+        target.display_name
+      ));
+    }
 
-    let mut index = match repo.apply_to_tree(&target_tree, &changes, None) {
-      Ok(index) => Ok(index),
-      Err(e) if e.code() == ErrorCode::ApplyFail => Err(anyhow!(
-        "The staged changes cannot be committed because they would result in a conflict.\
-        Check with \"git diff --cached{}\", and adjust staged changes accordingly.",
-        match &self.to {
-          Some(to) => format!(" {}", to),
-          None => "".to_string(),
-        }
-      )),
-      Err(e) => Err(e.into()),
-    }?;
-    let id = index.write_tree_to(repo)?;
+    let index_tree_id = index.write_tree_to(repo)?;
+    let tree = repo.find_tree(index_tree_id)?;
 
-    changes.find_similar(None)?;
-    Ok((repo.find_tree(id)?, changes))
+    let mut diff = repo.diff_tree_to_tree(Some(&target_tree), Some(&tree), None)?;
+    diff.find_similar(None)?;
+
+    Ok((tree, diff))
   }
 
   /// Gets the parents of the new commit
