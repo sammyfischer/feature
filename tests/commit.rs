@@ -176,12 +176,12 @@ fn commits_to_target_branch() {
   repo.write_file(file_name, "B\n");
   repo.commit_all("B");
 
-  // commit X to topic2 from topic
+  // commit X to topic2 from topic (in a different file)
   repo
     .feature(&["start", "--stay", "--from", "main", "topic2"])
     .success();
-  repo.append_file(file_name, "X\n");
-  repo.git(&["add", file_name]).success();
+  repo.write_file("file2.txt", "X\n");
+  repo.git(&["add", "file2.txt"]).success();
   repo.feature(&["commit", "--to", "topic2", "X"]).success();
 
   // commits ended up in the right place
@@ -190,27 +190,20 @@ fn commits_to_target_branch() {
     "X\nA",
     "Commit X should have gone to topic2"
   );
-  assert!(
-    !repo.list_commit_subjects("topic").starts_with("X"),
+  assert_eq!(
+    repo.list_commit_subjects("topic"),
+    "B\nA",
     "Commit X should not have gone to topic"
   );
 
   // commits contain correct changes
   let cmd = repo
-    .git(&["show", &format!("topic2:{}", file_name)])
+    .git(&["show", &format!("topic2:{}", "file2.txt")])
     .success();
-  assert_eq!(
-    get_stdout!(cmd).trim(),
-    "A\nX",
-    "topic2 contains the wrong changes"
-  );
+  assert_eq!(get_stdout!(cmd), "X\n", "topic2 contains the wrong changes");
 
   let cmd = repo
     .git(&["show", &format!("topic:{}", file_name)])
     .success();
-  assert_eq!(
-    get_stdout!(cmd).trim(),
-    "B",
-    "topic contains the wrong changes"
-  );
+  assert_eq!(get_stdout!(cmd), "B\n", "topic contains the wrong changes");
 }

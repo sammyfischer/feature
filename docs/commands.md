@@ -37,7 +37,8 @@ feature commit --to feature1 separate concerns
 
 Commits staged changes to the current branch.
 
-With `--to`, attempts to resolve the argument to a ref and commits to that instead.
+With `--to`, attempts to apply staged changes to that branch instead. This safely checks if the changes would result in conflicts, and aborts if so.
+Works best when the changes in each branch are unrelated (in separate files, or far enough apart if they're in the same file).
 
 With `--amend`, amends the most recent commit by adding the staged changes, and optionally replaces the commit message.
 
