@@ -345,3 +345,111 @@ backend = {{ url = "{}", path = "backend" }}
     .assert()
     .stdout("A");
 }
+
+/// Sets up some git submodules. Doesn't initialize them
+fn setup_modules() -> (TestRepo, TestRepo, TestRepo) {
+  let repo = TestRepo::new();
+  let frontend = TestRepo::new();
+  let backend = TestRepo::new();
+  frontend.init_commit();
+  backend.init_commit();
+
+  for (module, path) in [
+    ("frontend", frontend.path().to_str().unwrap()),
+    ("backend", backend.path().to_str().unwrap()),
+  ] {
+    repo
+      .git(&[
+        "-c",
+        // this option is needed to clone submodules from local repos
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        &format!("../../..{}", path),
+        module,
+      ])
+      .success();
+  }
+
+  (repo, frontend, backend)
+}
+
+/// Feature should initialize submodules
+#[test]
+fn inits_modules() {
+  let (repo, frontend, backend) = setup_modules();
+  let home = repo.path().parent().unwrap();
+
+  repo.feature(&["sync"]).success();
+
+  for (module, remote_path) in [
+    ("frontend", frontend.path().to_str().unwrap().to_owned()),
+    ("backend", backend.path().to_str().unwrap().to_owned()),
+  ] {
+    // check that config was set
+    repo
+      .git(&["config", &format!("submodule.{}.url", module)])
+      .success()
+      .stdout(format!("{}\n", remote_path));
+
+    // check that repo exists
+    Command::new("git")
+      .current_dir(repo.path().join(module))
+      .env("HOME", home)
+      .args(["log", "--pretty=format:%s", "main"])
+      .assert()
+      .success()
+      .stdout("A");
+  }
+}
+
+/// Feature should update submodules
+#[test]
+fn updates_modules() {
+  let (repo, frontend, backend) = setup_modules();
+  let home = repo.path().parent().unwrap();
+  let file_name = "file.txt";
+
+  repo
+    .git(&["-c", "protocol.file.allow=always", "submodule", "init"])
+    .success();
+  // commit submodules at A
+  repo.commit_all("add submodules");
+
+  // new commits
+  frontend.write_file(file_name, "B\n");
+  frontend.commit_all("B");
+  backend.write_file(file_name, "B\n");
+  backend.commit_all("B");
+
+  // manually update each submodule
+  for module in ["frontend", "backend"] {
+    Command::new("git")
+      .current_dir(repo.path().join(module))
+      .env("HOME", home)
+      .args(["switch", "main"])
+      .assert()
+      .success();
+
+    Command::new("git")
+      .current_dir(repo.path().join(module))
+      .env("HOME", home)
+      .args(["pull"])
+      .assert()
+      .success();
+  }
+
+  // sync should bring them back to A
+  repo.feature(&["sync"]).success();
+
+  // check the commit they're on
+  for module in ["frontend", "backend"] {
+    Command::new("git")
+      .current_dir(repo.path().join(module))
+      .env("HOME", home)
+      .args(["show", "HEAD", "--pretty=format:%s", "--no-patch"])
+      .assert()
+      .success()
+      .stdout("A");
+  }
+}

@@ -117,6 +117,13 @@ If the value is a default git option that feature doesn't use, it will contain "
     # Whether to automatically prune during the sync command.
     prune = yes
 
+    # Sync all projects. The prune command shares this option.
+    projects = yes
+
+    # Sync all submodules. Similar to running `git submodule update --init` and
+    # `git submodule sync`.
+    modules = yes
+
 # Various formatting options used by feature
 [feature "format"]
     # The pretty format passed to the underlying "git log" call. Passed in as

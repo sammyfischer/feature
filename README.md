@@ -23,6 +23,7 @@ Read the files in `./contributing` to understand procedures and conventions used
 - [List of commands](./docs/commands.md)
 - [Config files](./docs/config.md)
 - [Completions](./docs/completions.md)
+- [What are feature projects?](./docs/projects.md)
 
 ## What is feature?
 
@@ -38,6 +39,7 @@ Feature uses these base branches automatically in places where it makes sense. F
 
 While feature's functionality is generally meant to work with the concept of feature and base branches, there are some commands that are useful in general:
 
+- `sync` - probably feature's most useful command. It's a general purpose command to sync the entire repo. This updates all branches to their upstreams, deletes unneeded branches, updates git submodules, and syncs each feature project.
 - `start` and `commit` take all trailing command line args and put them together to form a branch name or commit message, respectively.
 - `commit`, `status`, and `list` print a customized outupt that is much more detailed, compact, and colorful than git's default output
 
@@ -70,5 +72,5 @@ Here's a summary of the feature workflow:
 6. If some time has passed, or you know that there are new changes on the base branch, run `feature update`.
 7. Push changes to remote with `feature push`.
 8. Use your repository hosting service (GitHub, Gitlab, etc.) to bring the changes into the base branch.
-9. Switch back to the base branch with `git switch <base>`.
-10. Update and clean up branches with `feature sync`.
+9. Clean up feature branch and switch back to base with `feature end`.
+10. Update and clean up all branches with `feature sync`.
