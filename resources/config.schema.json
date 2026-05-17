@@ -15,6 +15,14 @@
       "type": "string",
       "default": "origin"
     },
+    "projects": {
+      "description": "Stores list of subprojects",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ProjectEntry"
+      },
+      "default": {}
+    },
     "protect": {
       "description": "List of branches to protect from force-pushes/deletion",
       "type": "array",
@@ -43,6 +51,21 @@
           ]
         }
       }
+    },
+    "ProjectEntry": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "path"
+      ]
     }
   }
 }
