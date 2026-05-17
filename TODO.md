@@ -2,6 +2,8 @@
 
 ## Housekeeping
 
+- sync
+  - clone/init modules if needed
 - support remaining commit hooks. order:
   - prepare-commit-msg (processing on msg, before editor is invoked)
   - commit-msg (post-processing on msg, after editor)

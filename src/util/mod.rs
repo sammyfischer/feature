@@ -1,5 +1,7 @@
 //! Helper functions that may be found useful in many places
 
+use std::path::Path;
+
 use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{
@@ -18,6 +20,33 @@ pub mod diff;
 pub mod display;
 pub mod string;
 pub mod term;
+
+/// Opens a repo given a `.git` dir. If the workdir is `None`, it's assumed to
+/// be the parent of repo_dir. If `Some`, the repo is assumed to be bare.
+///
+/// This is a useful way to open the same repo in multiple threads.
+/// ```
+/// // Get dirs from existing repo. These must be owned, since borrowing from
+/// // the repo means sharing partial references to the repo between threads.
+/// let repo_dir = repo.path().to_owned();
+/// let work_dir = repo.workdir().to_owned();
+///
+/// // in a thread context, open the repo
+/// let repo = open_repo_from_dirs(&repo_dir, work_dir.as_deref())?;
+/// ```
+///
+/// In general this is only safe if you're only reading from the repo in each
+/// thread.
+pub fn open_repo_from_dirs(repo_dir: &Path, work_dir: Option<&Path>) -> Result<Repository> {
+  match &work_dir {
+    Some(work_dir) => {
+      let repo = Repository::open_bare(repo_dir)?;
+      repo.set_workdir(work_dir, false)?;
+      Ok(repo)
+    }
+    None => Ok(Repository::open(repo_dir)?),
+  }
+}
 
 pub fn get_current_commit<'repo>(repo: &'repo Repository) -> Result<Option<Commit<'repo>>> {
   let head = match repo.head() {

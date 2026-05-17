@@ -1,12 +1,16 @@
-use anyhow::{Context, Result};
-use console::style;
-use git2::{Branch, BranchType, Commit, ErrorCode, Repository};
+use std::thread;
 
+use anyhow::Result;
+use console::style;
+use git2::{Branch, BranchType, ErrorCode, Repository};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
+use crate::cli::sync::{SyncAction, UpdateAction};
 use crate::config::{self, Config};
 use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
 use crate::util::branch_meta::BranchMeta;
-use crate::util::delete_config_section;
-use crate::util::display::trim_hash;
+use crate::util::string::ToStrLossyOwned;
+use crate::util::{delete_config_section, open_repo_from_dirs};
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
@@ -43,7 +47,6 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?.snapshot()?;
     if self.dry_run {
       println!(
         "{}",
@@ -51,30 +54,77 @@ impl Args {
       );
     }
 
-    println!("Pruning repo\u{2026}");
-    self.prune_repo(&state.repo, &state.config)?;
-    println!("{} repo", style("Pruned").green());
+    let repo_dir = state.repo.path().to_owned();
+    let work_dir = state.repo.workdir().to_owned();
+    let app_config = &state.config;
+    let git_config = state.repo.config()?.snapshot()?;
 
     let skip_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_sync_projects(&config)?,
+      None => !data::get_sync_projects(&git_config)?,
+    };
+    let proj_names: Vec<_> = if skip_projects {
+      Vec::new()
+    } else {
+      state
+        .config
+        .projects
+        .iter()
+        .map(|(name, _)| name.to_owned())
+        .collect()
     };
 
-    if !skip_projects {
-      // TODO: like sync, fix output
-      for (name, project) in &state.config.projects {
-        println!("\nPruning project {}\u{2026}", style(name).cyan());
-        let repo = Repository::open(&project.path)?;
-        let config = config::load_with_path(&project.path)?;
-        self.prune_repo(&repo, &config)?;
-        println!("{} project {}", style("Pruned").green(), style(name).cyan());
-      }
-    }
+    thread::scope(|scope| -> Result<_> {
+      let repo_thread = scope.spawn(|| {
+        let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+        self.prune_repo(&repo, app_config)
+      });
 
-    Ok(())
+      let proj_thread = scope.spawn(|| {
+        if skip_projects {
+          Vec::new()
+        } else {
+          app_config
+            .projects
+            .par_iter()
+            .map(|(_, project)| {
+              let repo = Repository::open(&project.path)?;
+              let config = config::load_with_path(&project.path)?;
+              self.prune_repo(&repo, &config)
+            })
+            .collect()
+        }
+      });
+
+      let repo_result = repo_thread.join().unwrap();
+      match repo_result {
+        Ok(action) => println!("{}", display_prune_action("repo", &action)),
+        Err(e) => eprintln!(
+          "{} to prune {}: {}",
+          style("Failed").red(),
+          style("repo").cyan(),
+          e
+        ),
+      }
+
+      let proj_results = proj_thread.join().unwrap();
+      for (name, result) in proj_names.iter().zip(proj_results) {
+        match result {
+          Ok(action) => println!("{}", display_prune_action(name, &action)),
+          Err(e) => eprintln!(
+            "{} to prune {}: {}",
+            style("Failed").red(),
+            style(name).cyan(),
+            e
+          ),
+        }
+      }
+
+      Ok(())
+    })
   }
 
-  fn prune_repo(&self, repo: &Repository, config: &Config) -> Result<()> {
+  fn prune_repo(&self, repo: &Repository, config: &Config) -> Result<SyncAction> {
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
       None => !data::get_feature_autofetch(&repo.config()?.snapshot()?)?,
@@ -84,22 +134,39 @@ impl Args {
       fetch_all(repo)?;
     }
 
-    prune_branches(repo, config, self.dry_run)
+    Ok(SyncAction::Sync(prune_branches(
+      repo,
+      config,
+      self.dry_run,
+    )?))
   }
 }
 
-pub fn prune_branches(repo: &Repository, config: &Config, dry_run: bool) -> Result<()> {
+pub fn prune_branches(
+  repo: &Repository,
+  config: &Config,
+  dry_run: bool,
+) -> Result<Vec<UpdateAction>> {
   let branches = repo.branches(Some(BranchType::Local))?;
   let current_name = get_current_branch_name(repo)?;
 
-  for (mut branch, _) in branches.flatten() {
-    if let Err(e) = safe_delete_branch(repo, config, &mut branch, current_name.as_deref(), dry_run)
-    {
-      eprintln!("{}", e);
-    }
-  }
+  let results: Vec<_> = branches
+    .flatten()
+    .map(|(mut branch, _)| {
+      match prune_branch(repo, config, &mut branch, current_name.as_deref(), dry_run) {
+        Ok(action) => action,
+        Err(e) => UpdateAction::Err {
+          name: branch
+            .name_bytes()
+            .map(|name| name.to_str_lossy_owned())
+            .unwrap_or("<unknown>".to_string()),
+          e: e.to_string(),
+        },
+      }
+    })
+    .collect();
 
-  Ok(())
+  Ok(results)
 }
 
 /// Deletes a branch if:
@@ -112,90 +179,100 @@ pub fn prune_branches(repo: &Repository, config: &Config, dry_run: bool) -> Resu
 /// Whether the delete operation occured. `false` means the delete didn't occur because the branch
 /// was determined to be unsafe to delete, rather than anything going wrong. An error implies that
 /// something went wrong.
-fn safe_delete_branch(
+fn prune_branch(
   repo: &Repository,
   config: &Config,
   branch: &mut Branch,
   current_branch_name: Option<&str>,
   dry_run: bool,
-) -> Result<bool> {
+) -> Result<UpdateAction> {
   let meta = BranchMeta::from_branch(branch)?;
+
+  // skip protected branches
+  if config.protect.iter().any(|it| it == meta.name()) {
+    return Ok(UpdateAction::None);
+  }
 
   // skip branches that have never been pushed
   match repo.branch_upstream_remote(meta.refname()) {
     Ok(_) => {}
-    Err(e) if e.code() == ErrorCode::NotFound => return Ok(false),
+    Err(e) if e.code() == ErrorCode::NotFound => return Ok(UpdateAction::None),
     Err(e) => return Err(e.into()),
-  }
-
-  // skip protected branches
-  if config.protect.iter().any(|it| it == meta.name()) {
-    return Ok(false);
-  }
-
-  // skip current branch
-  if current_branch_name.is_some_and(|it| it == meta.name()) {
-    // not necessarily an error, but the user should know that a non-protected branch was
-    // skipped and may manually need to be deleted
-    println!(
-      "{}",
-      style(format!(
-        "Skipping prune check for currently checked-out branch: {}",
-        meta.name()
-      ))
-      .dim()
-    );
-    return Ok(false);
   }
 
   // find base branch from db, else skip
   let base = match data::get_feature_base(repo, meta.name())? {
     Some(base) => base,
-    None => return Ok(false),
+    None => return Ok(UpdateAction::None),
   };
 
-  // detect if branch is merged (i.e. has no commits that aren't on its base)
-  let is_merged = is_merged(repo, branch.get(), &base.resolve(repo)?).with_context(|| {
-    format!(
-      "Failed to determine if {} is merged into {}",
-      meta.name(),
-      base.name()
-    )
-  })?;
-
-  if is_merged {
-    let commit = branch
-      .get()
-      .peel_to_commit()
-      .with_context(|| format!("Failed to get commit pointed to by {}", meta.name()))?;
-
-    // in dry-run mode, display output but don't delete
-    if dry_run {
-      display_deletion(meta.name(), &commit)?;
-      // still return true, this would've been a deletion
-      return Ok(true);
-    }
-
-    branch
-      .delete()
-      .with_context(|| format!("Failed to delete branch {}", meta.name()))?;
-
-    display_deletion(meta.name(), &commit)?;
-
-    // git2 can't remove entire config sections, but git provides a command to do so
-    let key = format!("branch.{}", &meta.name());
-    delete_config_section(&key)?;
+  // skip current branch
+  if current_branch_name.is_some_and(|it| it == meta.name()) {
+    // not necessarily an error, but the user should know that a non-protected branch was
+    // skipped and may manually need to be deleted
+    return Ok(UpdateAction::DeleteSkip {
+      name: meta.name().to_owned(),
+      reason: "currently checked-out".to_owned(),
+    });
   }
 
-  Ok(true)
+  // detect if branch is merged (i.e. has no commits that aren't on its base)
+  let is_merged = is_merged(repo, branch.get(), &base.resolve(repo)?)?;
+
+  if !is_merged {
+    return Ok(UpdateAction::None);
+  }
+
+  let commit = branch.get().peel_to_commit()?;
+
+  if !dry_run {
+    branch.delete()?;
+  }
+
+  // git2 can't remove entire config sections, but git provides a command to do so
+  let key = format!("branch.{}", &meta.name());
+  let _ = delete_config_section(&key);
+
+  Ok(UpdateAction::Delete {
+    name: meta.name().to_owned(),
+    old: commit.as_object().short_id()?.to_str_lossy_owned(),
+  })
 }
 
-fn display_deletion(branch_name: &str, commit: &Commit) -> Result<()> {
-  println!(
-    "{} {} {}",
-    style("Deleted").red(),
-    branch_name,
-    &style(&format!("(was {})", &trim_hash(commit)?)).dim()
-  );
-  Ok(())
+/// Displays this [SyncAction::Sync], but uses the word "Pruned" instead of
+/// "Synced".
+///
+/// # Panics
+/// This must only be called on a [SyncAction::Sync]. Panics when called on
+/// another other [SyncAction] type.
+pub fn display_prune_action(name: &str, action: &SyncAction) -> String {
+  match action {
+    SyncAction::Sync(updates) => {
+      let updates: Vec<_> = updates
+        .iter()
+        .filter_map(|update| {
+          if let UpdateAction::None = update {
+            None
+          } else {
+            Some(format!("  {}", update))
+          }
+        })
+        .collect();
+
+      let msg = if updates.is_empty() {
+        " up to date".to_string()
+      } else {
+        format!("\n{}", updates.join("\n"))
+      };
+
+      format!(
+        "{} {}:{}",
+        style("Pruned").bold().green(),
+        style(name).bold().cyan(),
+        msg
+      )
+    }
+
+    _ => panic!("Illegal SyncAction type"),
+  }
 }

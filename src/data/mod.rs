@@ -204,3 +204,8 @@ pub fn get_sync_prune(config: &Config) -> Result<bool> {
 pub fn get_sync_projects(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.sync.projects", true)
 }
+
+/// Gets `feature.sync.modules`. Defaults to `true`.
+pub fn get_sync_modules(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.sync.modules", true)
+}
