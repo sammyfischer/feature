@@ -1,11 +1,15 @@
+use std::thread;
+
 use anyhow::{Context, Result};
 use console::{Alignment, measure_text_width, pad_str, style, truncate_str};
 use git2::{Branch, Branches, Repository};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::util::branch::{
   get_ahead_behind, get_current_branch_name, get_upstream, get_worktree_branch_names,
 };
 use crate::util::display::{display_plus_minus, trim_hash};
+use crate::util::open_repo_from_dirs;
 use crate::util::string::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::{get_term_width, is_term};
 use crate::{App, data};
@@ -110,50 +114,109 @@ impl Widths {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?.snapshot()?;
-    let branches = state
-      .repo
-      .branches(Some(git2::BranchType::Local))
-      .context("Failed to get list of branches")?;
-
-    let (rows, widths) = self.build_table(&state.repo, branches)?;
-    self.print_table(&state.repo, &rows, widths)?;
+    let repo_dir = state.repo.path().to_owned();
+    let work_dir = state.repo.workdir().to_owned();
+    let app_config = &state.config;
+    let git_config = state.repo.config()?.snapshot()?;
 
     let hide_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_feature_show_projects(&config)?,
+      None => !data::get_feature_show_projects(&git_config)?,
     };
-
-    if !hide_projects {
-      for (name, project) in &state.config.projects {
-        let repo = Repository::open(&project.path)?;
-        let branches = repo.branches(Some(git2::BranchType::Local))?;
-
-        println!("\n{} {}", style("Project").bold(), style(name).cyan());
-        let (rows, widths) = self.build_table(&repo, branches)?;
-        self.print_table(&repo, &rows, widths)?;
-      }
-    }
 
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_feature_show_modules(&config)?,
+      None => !data::get_feature_show_modules(&git_config)?,
+    };
+    let mod_names: Vec<_> = if hide_modules {
+      Vec::new()
+    } else {
+      state
+        .repo
+        .submodules()?
+        .iter()
+        .map(|module| module.name_bytes().to_str_lossy_owned())
+        .collect()
     };
 
-    if !hide_modules {
-      let modules = state.repo.submodules()?;
-      for module in modules {
-        let name = module.name_bytes().to_str_lossy();
-        let repo = module.open()?;
-        let branches = repo.branches(Some(git2::BranchType::Local))?;
+    thread::scope(|scope| -> Result<_> {
+      let repo_thead = scope.spawn(|| {
+        let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+        let branches = repo
+          .branches(Some(git2::BranchType::Local))
+          .context("Failed to get list of branches")?;
 
-        println!("\n{} {}", style("Module").bold(), style(name).cyan());
         let (rows, widths) = self.build_table(&repo, branches)?;
-        self.print_table(&repo, &rows, widths)?;
-      }
-    }
+        self.display_table(&repo, &rows, widths)
+      });
 
-    Ok(())
+      let proj_thread = scope.spawn(|| {
+        if hide_projects {
+          Vec::new()
+        } else {
+          app_config
+            .projects
+            .par_iter()
+            .map(|(name, project)| -> Result<_> {
+              let mut out = format!("\n{} {}", style("Project").bold(), style(name).cyan());
+              let repo = Repository::open(&project.path)?;
+              let branches = repo.branches(Some(git2::BranchType::Local))?;
+
+              let (rows, widths) = self.build_table(&repo, branches)?;
+              out.push('\n');
+              out.push_str(&self.display_table(&repo, &rows, widths)?);
+              Ok(out)
+            })
+            .collect()
+        }
+      });
+
+      let mod_thread = scope.spawn(|| {
+        if hide_modules {
+          Vec::new()
+        } else {
+          mod_names
+            .par_iter()
+            .map(|name| -> Result<_> {
+              let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+              let module = repo.find_submodule(name)?;
+              let mod_repo = module.open()?;
+              let branches = mod_repo.branches(Some(git2::BranchType::Local))?;
+
+              let mut out = format!("\n{} {}", style("Module").bold(), style(name).cyan());
+              let (rows, widths) = self.build_table(&mod_repo, branches)?;
+              out.push('\n');
+              out.push_str(&self.display_table(&mod_repo, &rows, widths)?);
+              Ok(out)
+            })
+            .collect()
+        }
+      });
+
+      let repo_result = repo_thead.join().unwrap();
+      match repo_result {
+        Ok(out) => println!("{}", out),
+        Err(e) => eprintln!("{}", e),
+      }
+
+      let proj_results = proj_thread.join().unwrap();
+      for result in proj_results {
+        match result {
+          Ok(out) => println!("{}", out),
+          Err(e) => eprintln!("{}", e),
+        }
+      }
+
+      let mod_results = mod_thread.join().unwrap();
+      for result in mod_results {
+        match result {
+          Ok(out) => println!("{}", out),
+          Err(e) => eprintln!("{}", e),
+        }
+      }
+
+      Ok(())
+    })
   }
 
   fn build_row(&self, repo: &Repository, branch: &Branch) -> Result<Row> {
@@ -232,7 +295,10 @@ impl Args {
     Ok((rows, widths))
   }
 
-  fn print_table(&self, repo: &Repository, rows: &[Row], widths: Widths) -> Result<()> {
+  fn display_table(&self, repo: &Repository, rows: &[Row], widths: Widths) -> Result<String> {
+    use std::fmt::Write;
+    let mut out = String::new();
+
     let current = get_current_branch_name(repo)?;
     let wt_branches = get_worktree_branch_names(repo)?;
     let max_widths = Widths::max();
@@ -240,8 +306,8 @@ impl Args {
     let trunc_tail = "…";
     let term_width = get_term_width();
 
-    use std::fmt::Write;
     let mut buf = String::with_capacity(200);
+    let mut first = true;
 
     for (i, row) in rows.iter().enumerate() {
       buf.clear();
@@ -326,14 +392,19 @@ impl Args {
         write!(buf, " {}", &row.subject)?;
       }
 
-      if is_term() {
-        println!("{}", truncate_str(&buf, term_width, &line_tail));
+      if first {
+        first = false;
       } else {
-        println!("{}", &buf);
+        writeln!(out)?;
+      }
+      if is_term() {
+        write!(out, "{}", truncate_str(&buf, term_width, &line_tail))?;
+      } else {
+        write!(out, "{}", &buf)?;
       }
     }
 
-    Ok(())
+    Ok(out)
   }
 }
 

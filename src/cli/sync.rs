@@ -7,6 +7,7 @@ use anyhow::Result;
 use console::style;
 use git2::build::RepoBuilder;
 use git2::{Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, RemoteCallbacks, Repository};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::prune::prune_branches;
 use crate::config::projects::ProjectEntry;
@@ -163,7 +164,6 @@ impl Args {
 
       // SYNC ALL PROJECTS
       let proj_thread = scope.spawn(|| {
-        use rayon::prelude::*;
         if skip_projects {
           Vec::new()
         } else {
@@ -177,7 +177,6 @@ impl Args {
 
       // SYNC ALL MODULES
       let mod_thread = scope.spawn(|| {
-        use rayon::prelude::*;
         if skip_modules {
           Vec::new()
         } else {

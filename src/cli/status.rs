@@ -5,6 +5,7 @@ use std::{fs, thread};
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
 use git2::{Commit, DiffOptions, ErrorClass, ErrorCode, Oid, Reference, Repository};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::config::projects::ProjectEntry;
 use crate::util::advice::{
@@ -80,7 +81,6 @@ impl Args {
       });
 
       let proj_thread = scope.spawn(|| {
-        use rayon::prelude::*;
         if hide_projects {
           return Vec::new();
         }
@@ -95,7 +95,6 @@ impl Args {
       });
 
       let mod_thread = scope.spawn(|| {
-        use rayon::prelude::*;
         if hide_modules {
           return Vec::new();
         }
