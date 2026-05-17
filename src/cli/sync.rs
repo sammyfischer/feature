@@ -456,7 +456,7 @@ pub fn display_sync_action(name: &str, action: &SyncAction) -> String {
       style("Checked-out").bold().green(),
       style(name).bold().cyan(),
       new,
-      style!("was ({})", old)
+      style!("(was {})", old)
     ),
   }
 }
@@ -470,7 +470,7 @@ impl Display for UpdateAction {
           "{} {} {} | {}",
           style("Updated").green(),
           style(name).cyan(),
-          style!("was ({})", old).dim(),
+          style!("(was {})", old).dim(),
           changes.display_header()
         )
       }
@@ -491,7 +491,7 @@ impl Display for UpdateAction {
           "{} {} {}",
           style("Deleted").red(),
           style(name).cyan(),
-          style!("was ({})", old).dim()
+          style!("(was {})", old).dim()
         )
       }
 
