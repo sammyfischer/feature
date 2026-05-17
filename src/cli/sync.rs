@@ -1,12 +1,14 @@
 use std::fmt::Display;
 use std::io::ErrorKind;
-use std::path::Path;
 use std::{fs, thread};
 
 use anyhow::Result;
 use console::style;
 use git2::build::RepoBuilder;
-use git2::{Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, RemoteCallbacks, Repository};
+use git2::{
+  Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, RemoteCallbacks, Repository,
+  SubmoduleUpdateOptions,
+};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::prune::prune_branches;
@@ -63,14 +65,17 @@ pub struct Args {
 
 /// What happened in an attempt to sync a repo
 pub enum SyncAction {
-  /// For projects/modules, the repo was cloned
-  Clone,
-
   /// The repo's refs were synced
   Sync(Vec<UpdateAction>),
 
-  /// For modules, the repo was check-out somewhere else
-  Checkout { old: String, new: String },
+  /// For projects, the repo was cloned
+  ProjectInit,
+
+  ModuleInit,
+  ModuleUpdate {
+    old: String,
+    new: String,
+  },
 }
 
 /// What happened in an attempt to sync a particular branch in a repo
@@ -119,11 +124,6 @@ impl Args {
     let work_dir = state.repo.workdir().to_owned();
     let app_config = &state.config;
     let git_config = state.repo.config()?.snapshot()?;
-    let root = state
-      .repo
-      .workdir()
-      .unwrap_or_else(|| state.repo.path())
-      .to_owned();
 
     let skip_projects = match self.no_projects {
       Some(it) => it,
@@ -170,7 +170,7 @@ impl Args {
           app_config
             .projects
             .par_iter()
-            .map(|(_, project)| self.sync_or_clone_project(&root, project))
+            .map(|(_, project)| self.sync_or_clone_project(project))
             .collect()
         }
       });
@@ -191,7 +191,7 @@ impl Args {
                 }
                 None => Repository::open(&repo_dir)?,
               };
-              self.sync_module(&repo, mod_name)
+              self.update_module(&repo, mod_name)
             })
             .collect()
         }
@@ -277,7 +277,7 @@ impl Args {
     Ok(SyncAction::Sync(updates))
   }
 
-  fn sync_or_clone_project(&self, root: &Path, project: &ProjectEntry) -> Result<SyncAction> {
+  fn sync_or_clone_project(&self, project: &ProjectEntry) -> Result<SyncAction> {
     match Repository::open(&project.path) {
       // already cloned, sync it
       Ok(repo) => {
@@ -291,8 +291,7 @@ impl Args {
           || (e.class() == ErrorClass::Repository && e.code() == ErrorCode::NotFound) =>
       {
         // make sure path exists
-        let path = root.join(&project.path);
-        match fs::create_dir_all(&path) {
+        match fs::create_dir_all(&project.path) {
           Ok(_) => (),
           Err(e) if e.kind() == ErrorKind::AlreadyExists => (),
           Err(e) => return Err(e.into()),
@@ -305,35 +304,72 @@ impl Args {
         fetch_opts.remote_callbacks(remote_cbs);
         builder.fetch_options(fetch_opts);
 
-        builder.clone(&project.url, &path)?;
-        Ok(SyncAction::Clone)
+        builder.clone(&project.url, &project.path)?;
+        Ok(SyncAction::ProjectInit)
       }
 
       Err(e) => Err(e.into()),
     }
   }
 
-  /// Syncs a module by bringing it to the currently tracked commit
-  fn sync_module(&self, repo: &Repository, mod_name: &str) -> Result<Option<SyncAction>> {
-    let module = repo.find_submodule(mod_name)?;
-    let mod_repo = module.open()?;
+  /// Syncs a module similar to `git submodule update --init` and `git submodule sync`.
+  fn update_module(&self, repo: &Repository, mod_name: &str) -> Result<Option<SyncAction>> {
+    let mut module = repo.find_submodule(mod_name)?;
+    let mod_repo = match module.open() {
+      Ok(repo) => Some(repo),
+      Err(e)
+        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
+          && e.code() == ErrorCode::NotFound =>
+      {
+        None
+      }
+      Err(e) => return Err(e.into()),
+    };
 
-    let head_id = module.head_id();
-    let index_id = module.index_id();
+    // if repo, head_id, and index_id all exist, then get expected and actual commit (short ids)
+    let (expected, actual) = if let (Some(mod_repo), Some(expect_id), Some(actual_id)) =
+      (mod_repo.as_ref(), module.head_id(), module.index_id())
+    {
+      (
+        Some(
+          mod_repo
+            .find_commit(expect_id)?
+            .as_object()
+            .short_id()?
+            .to_str_lossy_owned(),
+        ),
+        Some(
+          mod_repo
+            .find_commit(actual_id)?
+            .as_object()
+            .short_id()?
+            .to_str_lossy_owned(),
+        ),
+      )
+    } else {
+      (None, None)
+    };
 
-    // checkout the expected commit
-    if let (Some(expected), Some(current)) = (head_id, index_id) {
-      let old_commit = mod_repo.find_commit(current)?;
-      let new_commit = mod_repo.find_commit(expected)?;
-      let tree = new_commit.tree()?;
-      mod_repo.checkout_tree(tree.as_object(), None)?;
+    let mut opts = SubmoduleUpdateOptions::new();
+    let mut fetch_opts = FetchOptions::new();
+    let mut remote_cbs = RemoteCallbacks::new();
+    remote_cbs.credentials(credentials_cb);
+    fetch_opts.remote_callbacks(remote_cbs);
+    opts.allow_fetch(true);
+    opts.fetch(fetch_opts);
+    module.update(true, Some(&mut opts))?;
 
-      Ok(Some(SyncAction::Checkout {
-        old: old_commit.as_object().short_id()?.to_str_lossy_owned(),
-        new: new_commit.as_object().short_id()?.to_str_lossy_owned(),
+    // sync submodule's remote url
+    module.sync()?;
+
+    // if we failed to get expected/actual before, assume it was just initialized
+    if let (Some(expected), Some(actual)) = (expected, actual) {
+      Ok(Some(SyncAction::ModuleUpdate {
+        old: actual,
+        new: expected,
       }))
     } else {
-      Ok(None)
+      Ok(Some(SyncAction::ModuleInit))
     }
   }
 
@@ -418,12 +454,6 @@ impl Args {
 
 pub fn display_sync_action(name: &str, action: &SyncAction) -> String {
   match action {
-    SyncAction::Clone => format!(
-      "{} {}",
-      style("Cloned").bold().green(),
-      style(name).bold().cyan()
-    ),
-
     SyncAction::Sync(updates) => {
       let updates: Vec<_> = updates
         .iter()
@@ -450,9 +480,21 @@ pub fn display_sync_action(name: &str, action: &SyncAction) -> String {
       )
     }
 
-    SyncAction::Checkout { old, new } => format!(
+    SyncAction::ProjectInit => format!(
+      "{} {}",
+      style("Cloned").bold().green(),
+      style(name).bold().cyan()
+    ),
+
+    SyncAction::ModuleInit => format!(
+      "{} {}",
+      style("Initialized").bold().green(),
+      style(name).bold().cyan()
+    ),
+
+    SyncAction::ModuleUpdate { old, new } => format!(
       "{} {} to {} {}",
-      style("Checked-out").bold().green(),
+      style("Updated").bold().green(),
       style(name).bold().cyan(),
       new,
       style!("(was {})", old)
