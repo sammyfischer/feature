@@ -7,6 +7,7 @@ use anyhow::Result;
 use console::style;
 use git2::build::RepoBuilder;
 use git2::{Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, RemoteCallbacks, Repository};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::prune::prune_branches;
 use crate::config::projects::ProjectEntry;
@@ -163,7 +164,6 @@ impl Args {
 
       // SYNC ALL PROJECTS
       let proj_thread = scope.spawn(|| {
-        use rayon::prelude::*;
         if skip_projects {
           Vec::new()
         } else {
@@ -177,7 +177,6 @@ impl Args {
 
       // SYNC ALL MODULES
       let mod_thread = scope.spawn(|| {
-        use rayon::prelude::*;
         if skip_modules {
           Vec::new()
         } else {
@@ -456,7 +455,7 @@ pub fn display_sync_action(name: &str, action: &SyncAction) -> String {
       style("Checked-out").bold().green(),
       style(name).bold().cyan(),
       new,
-      style!("was ({})", old)
+      style!("(was {})", old)
     ),
   }
 }
@@ -470,7 +469,7 @@ impl Display for UpdateAction {
           "{} {} {} | {}",
           style("Updated").green(),
           style(name).cyan(),
-          style!("was ({})", old).dim(),
+          style!("(was {})", old).dim(),
           changes.display_header()
         )
       }
@@ -491,7 +490,7 @@ impl Display for UpdateAction {
           "{} {} {}",
           style("Deleted").red(),
           style(name).cyan(),
-          style!("was ({})", old).dim()
+          style!("(was {})", old).dim()
         )
       }
 
