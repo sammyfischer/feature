@@ -1,10 +1,10 @@
 use std::fmt::Write;
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::{fs, thread};
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{Commit, DiffOptions, Oid, Reference, Repository, Submodule};
+use git2::{Commit, DiffOptions, ErrorClass, ErrorCode, Oid, Reference, Repository};
 
 use crate::config::projects::ProjectEntry;
 use crate::util::advice::{
@@ -20,9 +20,9 @@ use crate::util::diff::DiffSummary;
 use crate::util::display::{
   display_commit_compact, display_plus_minus, display_signature, trim_hash,
 };
-use crate::util::get_signature;
 use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::util::term::{get_term_width, is_term};
+use crate::util::{get_signature, open_repo_from_dirs};
 use crate::{App, data, opt_advice};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -48,53 +48,150 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?.snapshot()?;
-    let head = get_head(&state.repo)?;
-    let rebase_dir = get_rebase_dir(&state.repo);
+    let repo_dir = state.repo.path().to_owned();
+    let work_dir = state.repo.workdir().to_owned();
+    let app_config = &state.config;
+    let git_config = &state.repo.config()?.snapshot()?;
+
+    let hide_projects = match self.no_projects {
+      Some(it) => it,
+      None => !data::get_feature_show_projects(git_config)?,
+    };
+
+    let hide_modules = match self.no_modules {
+      Some(it) => it,
+      None => !data::get_feature_show_modules(git_config)?,
+    };
+    let mod_names: Vec<_> = if hide_modules {
+      Vec::new()
+    } else {
+      state
+        .repo
+        .submodules()?
+        .iter()
+        .map(|module| module.name_bytes().to_str_lossy_owned())
+        .collect()
+    };
+
+    thread::scope(|scope| -> Result<_> {
+      let repo_thread = scope.spawn(|| {
+        let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+        self.display_main_repo(&repo)
+      });
+
+      let proj_thread = scope.spawn(|| {
+        use rayon::prelude::*;
+        if hide_projects {
+          return Vec::new();
+        }
+        app_config
+          .projects
+          .par_iter()
+          .map(|project| -> Result<String> {
+            let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+            self.display_project(&repo, project)
+          })
+          .collect()
+      });
+
+      let mod_thread = scope.spawn(|| {
+        use rayon::prelude::*;
+        if hide_modules {
+          return Vec::new();
+        }
+        mod_names
+          .par_iter()
+          .map(|name| -> Result<String> {
+            let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+            self.display_module(&repo, name)
+          })
+          .collect()
+      });
+
+      let repo_result = repo_thread.join().unwrap();
+      match repo_result {
+        Ok(out) => println!("{}", out),
+        Err(e) => eprintln!("{}", e),
+      }
+
+      let proj_results = proj_thread.join().unwrap();
+      if !proj_results.is_empty() {
+        println!("\n{}", style("Projects").bold().blue());
+        for result in proj_results {
+          match result {
+            Ok(out) => println!("{}", out),
+            Err(e) => eprintln!("{}", e),
+          }
+        }
+      }
+
+      let mod_results = mod_thread.join().unwrap();
+      if !mod_results.is_empty() {
+        println!("\n{}", style("Modules").bold().magenta());
+        for result in mod_results {
+          match result {
+            Ok(out) => println!("{}", out),
+            Err(e) => eprintln!("{}", e),
+          }
+        }
+      }
+
+      Ok(())
+    })
+  }
+
+  /// Displays main repo status
+  fn display_main_repo(&self, repo: &Repository) -> Result<String> {
+    use std::fmt::Write;
+    let mut out = String::new();
+    let config = repo.config()?.snapshot()?;
+    let head = get_head(repo)?;
+    let rebase_dir = get_rebase_dir(repo);
 
     let (header, advice) = if let Some(dir) = rebase_dir.as_ref() {
       (
-        display_rebase_header(&state.repo, dir)?,
+        display_rebase_header(repo, dir)?,
         opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
       )
-    } else if is_merge_active(&state.repo) {
+    } else if is_merge_active(repo) {
       (
-        display_merge_header(&state.repo)?,
+        display_merge_header(repo)?,
         opt_advice!(data::get_advice_conflict(&config)?, MERGE_CONFLICT_ADVICE),
       )
-    } else if is_pick_active(&state.repo) {
+    } else if is_pick_active(repo) {
       (
-        display_pick_header(&state.repo)?,
+        display_pick_header(repo)?,
         opt_advice!(data::get_advice_conflict(&config)?, PICK_CONFLICT_ADVICE),
       )
-    } else if is_revert_active(&state.repo) {
+    } else if is_revert_active(repo) {
       (
-        display_revert_header(&state.repo)?,
+        display_revert_header(repo)?,
         opt_advice!(data::get_advice_conflict(&config)?, REVERT_CONFLICT_ADVICE),
       )
-    } else if is_bisect_active(&state.repo) {
+    } else if is_bisect_active(repo) {
       (
-        display_bisect_header(&state.repo)?,
+        display_bisect_header(repo)?,
         opt_advice!(data::get_advice_status(&config)?, BISECT_ADVICE),
       )
     } else {
       (
-        display_normal_header(state, head.as_ref())?,
+        display_normal_header(repo, head.as_ref())?,
         opt_advice!(data::get_advice_status(&config)?, STATUS_ADVICE),
       )
     };
 
-    println!("{}", header);
+    write!(out, "{}", header)?;
 
     // signature/author info
-    println!(
-      "{}",
-      display_signature(get_signature(&state.repo)?.as_ref())
-    );
+    write!(
+      out,
+      "\n{}",
+      display_signature(get_signature(repo)?.as_ref())
+    )?;
 
     // print advice in new paragraph above diffs
     if let Some(advice) = advice {
-      println!("\n{}", advice);
+      write!(out, "\n\n{}", advice)?;
     }
 
     // get current tree to diff from
@@ -108,69 +205,57 @@ impl Args {
 
     // conflicted changes
     if rebase_dir.is_some()
-      || is_merge_active(&state.repo)
-      || is_pick_active(&state.repo)
-      || is_revert_active(&state.repo)
+      || is_merge_active(repo)
+      || is_pick_active(repo)
+      || is_revert_active(repo)
     {
       let tree = tree
         .as_ref()
         .context("There must be a current commit during a rebase")?;
 
-      let diff = state.repo.diff_tree_to_index(Some(tree), None, None)?;
+      let diff = repo.diff_tree_to_index(Some(tree), None, None)?;
       let summary = DiffSummary::new(&diff)?.conflicts();
 
-      println!(
-        "\n{} - {}",
+      write!(
+        out,
+        "\n\n{} - {}",
         style("Conflicts").yellow(),
         if summary.num_files != 0 {
           summary.display_conflicts()
         } else {
           style("none").green().to_string()
         }
-      );
+      )?;
     }
 
-    if is_pick_active(&state.repo) {
+    if is_pick_active(repo) {
       // cherry picks are weird bc they show no diff with head when you stage changes. to show
       // meaningful changes you have to diff with the picked commit
-      let pick_head = state.repo.find_reference("CHERRY_PICK_HEAD")?;
+      let pick_head = repo.find_reference("CHERRY_PICK_HEAD")?;
       let pick_tree = pick_head.peel_to_tree()?;
 
-      let diff = state
-        .repo
-        .diff_tree_to_index(Some(&pick_tree), None, None)?;
+      let diff = repo.diff_tree_to_index(Some(&pick_tree), None, None)?;
       let summary = DiffSummary::new(&diff)?.non_conflicts();
 
       if summary.num_files != 0 {
-        println!("\n{} - {}", style("Resolved").green(), summary);
+        write!(out, "\n\n{} - {}", style("Resolved").green(), summary)?;
       }
       // cherry picked changes have no difference with head (except for conflicts), so the remaining
       // diffs can be skipped
-      return Ok(());
+      return Ok(out);
     }
 
     // staged changes
-    let mut diff = state
-      .repo
+    let mut diff = repo
       .diff_tree_to_index(tree.as_ref(), None, None)
       .context("Failed to get staged changes")?;
     diff.find_similar(None)?;
-
-    match DiffSummary::new(&diff) {
-      Ok(summary) => {
-        // filter out conflicted files
-        let summary = summary.non_conflicts();
-        if summary.num_files != 0 {
-          println!("\n{} - {}", style("Staged").green(), summary);
-        }
-      }
-      Err(_) => {
-        println!("\nFailed to get summary of staged changes");
-      }
-    };
+    let summary = DiffSummary::new(&diff)?.non_conflicts();
+    if summary.num_files != 0 {
+      write!(out, "\n\n{} - {}", style("Staged").green(), summary)?;
+    }
 
     // unstaged changes
-
     let hide_untracked = match self.no_untracked {
       Some(it) => it,
       None => !data::get_status_untracked(&config)?,
@@ -184,58 +269,17 @@ impl Args {
       Some(opts)
     };
 
-    let mut diff = state
-      .repo
+    let mut diff = repo
       .diff_index_to_workdir(None, opts.as_mut())
       .context("Failed to get unstaged changes")?;
     diff.find_similar(None)?;
-
-    match DiffSummary::new(&diff) {
-      Ok(it) => {
-        let it = it.non_conflicts();
-        if it.num_files != 0 {
-          println!();
-          print!("{} - ", style("Unstaged").red());
-          println!("{}", it)
-        }
-      }
-      Err(_) => {
-        println!();
-        println!("Failed to get summary of unstaged changes");
-      }
-    };
-
-    let hide_projects = match self.no_projects {
-      Some(it) => it,
-      None => !data::get_feature_show_projects(&config)?,
-    };
-
-    if !hide_projects {
-      let projects = &state.config.projects;
-      if !projects.is_empty() {
-        println!("\n{}", style("Projects").bold().blue());
-      }
-      for project in &state.config.projects {
-        println!("{}", self.display_project(&state.repo, project)?);
-      }
+    let summary = DiffSummary::new(&diff)?.non_conflicts();
+    if summary.num_files != 0 {
+      write!(out, "\n\n{} - ", style("Unstaged").red())?;
+      write!(out, "{}", summary)?;
     }
 
-    let hide_modules = match self.no_modules {
-      Some(it) => it,
-      None => !data::get_feature_show_modules(&config)?,
-    };
-
-    if !hide_modules {
-      let modules = state.repo.submodules()?;
-      if !modules.is_empty() {
-        println!("\n{}", style("Modules").bold().magenta());
-      }
-      for module in modules {
-        println!("{}", self.display_module(&state.repo, &module)?);
-      }
-    }
-
-    Ok(())
+    Ok(out)
   }
 
   /// Builds output for a particular subproject
@@ -253,7 +297,17 @@ impl Args {
 
     out.push_str(&style(name).cyan().to_string());
 
-    let proj_repo = Repository::open(&project.path)?;
+    let proj_repo = match Repository::open(&project.path) {
+      Ok(it) => it,
+      Err(e)
+        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
+          && e.code() == ErrorCode::NotFound =>
+      {
+        out.push_str(" not initialized");
+        return Ok(out);
+      }
+      Err(e) => return Err(e.into()),
+    };
 
     if let Some(head) = get_head(&proj_repo)? {
       let commit = head.peel_to_commit()?;
@@ -293,13 +347,23 @@ impl Args {
   /// # Params
   /// - `repo` - The *parent* repo, not the submodule repo
   /// - `module` - The submodule, usually obtained from [Repository::submodules]
-  fn display_module(&self, repo: &Repository, module: &Submodule) -> Result<String> {
+  fn display_module(&self, repo: &Repository, mod_name: &str) -> Result<String> {
     let mut out = String::new();
+    out.push_str(&style(mod_name).cyan().to_string());
 
-    let name = module.name_bytes().to_str_lossy();
-    out.push_str(&style(name).cyan().to_string());
+    let module = repo.find_submodule(mod_name)?;
 
-    let mod_repo = module.open()?;
+    let mod_repo = match module.open() {
+      Ok(it) => it,
+      Err(e)
+        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
+          && e.code() == ErrorCode::NotFound =>
+      {
+        out.push_str(" not initialized");
+        return Ok(out);
+      }
+      Err(e) => return Err(e.into()),
+    };
 
     // committed state of submodule (commit parent expects module to be on)
     let head_id = module.head_id();
@@ -413,7 +477,7 @@ impl Args {
 /// Displays a header when there is no other active operation (e.g. rebase/merge conflicts). Shows
 /// current branch, commit it points to, and upstream/base info if available. Unlike the others,
 /// this header takes up to 3 lines.
-fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String> {
+fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<String> {
   let mut out = String::with_capacity(80);
   let mut branch = None;
 
@@ -439,7 +503,7 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
 
     // head points to nothing, no commits in repo
     None => {
-      let head = state.repo.find_reference("HEAD")?;
+      let head = repo.find_reference("HEAD")?;
       let symbolic_ref = head
         .symbolic_target_bytes()
         .expect("HEAD points to nothing. Is the .git/HEAD file corrupt or missing?")
@@ -466,7 +530,7 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
   if head.is_some_and(|it| it.is_branch()) {
     let branch = branch.expect("Should be checked out to a branch");
     // we don't fetch, so we can use this ref multiple times
-    let branch_ref = branch.resolve(&state.repo)?;
+    let branch_ref = branch.resolve(repo)?;
 
     let mut rows: Vec<[String; 2]> = Vec::with_capacity(2);
     // the label is either "Upstream" or "Base", these are printed with alignment so the branch
@@ -474,10 +538,10 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
     let mut label_width = 0usize;
 
     // upstream row
-    let upstream = branch.upstream(&state.repo)?;
+    let upstream = branch.upstream(repo)?;
     if let Some(upstream) = upstream {
       let upstream = BranchMeta::from_branch(&upstream)?;
-      let (a, b) = get_ahead_behind(&state.repo, &branch_ref, &upstream.resolve(&state.repo)?)
+      let (a, b) = get_ahead_behind(repo, &branch_ref, &upstream.resolve(repo)?)
         .context("Failed to get ahead/behind for upstream")?;
 
       let row = [
@@ -495,9 +559,9 @@ fn display_normal_header(state: &App, head: Option<&Reference>) -> Result<String
     }
 
     // base row
-    let base = data::get_feature_base(&state.repo, branch.name())?;
+    let base = data::get_feature_base(repo, branch.name())?;
     if let Some(base) = base {
-      let (a, b) = get_ahead_behind(&state.repo, &branch_ref, &base.resolve(&state.repo)?)
+      let (a, b) = get_ahead_behind(repo, &branch_ref, &base.resolve(repo)?)
         .context("Failed to get ahead/behind for base")?;
 
       let row = [
