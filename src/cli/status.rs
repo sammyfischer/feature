@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{Commit, DiffOptions, Oid, Reference, Repository};
+use git2::{Commit, DiffOptions, ErrorClass, ErrorCode, Oid, Reference, Repository};
 use rayon::join;
 
 use crate::config::projects::ProjectEntry;
@@ -309,7 +309,17 @@ impl Args {
 
     out.push_str(&style(name).cyan().to_string());
 
-    let proj_repo = Repository::open(&project.path)?;
+    let proj_repo = match Repository::open(&project.path) {
+      Ok(it) => it,
+      Err(e)
+        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
+          && e.code() == ErrorCode::NotFound =>
+      {
+        out.push_str(" not initialized");
+        return Ok(out);
+      }
+      Err(e) => return Err(e.into()),
+    };
 
     if let Some(head) = get_head(&proj_repo)? {
       let commit = head.peel_to_commit()?;
@@ -354,7 +364,18 @@ impl Args {
     out.push_str(&style(mod_name).cyan().to_string());
 
     let module = repo.find_submodule(mod_name)?;
-    let mod_repo = module.open()?;
+
+    let mod_repo = match module.open() {
+      Ok(it) => it,
+      Err(e)
+        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
+          && e.code() == ErrorCode::NotFound =>
+      {
+        out.push_str(" not initialized");
+        return Ok(out);
+      }
+      Err(e) => return Err(e.into()),
+    };
 
     // committed state of submodule (commit parent expects module to be on)
     let head_id = module.head_id();
