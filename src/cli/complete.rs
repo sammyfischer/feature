@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use git2::{BranchType, Repository};
 
 use crate::App;
@@ -60,6 +60,7 @@ impl Args {
     let remotes = repo.remotes()?;
 
     for remote in remotes.iter().flatten() {
+      let remote = remote.context("Remote names must be valid utf-8")?;
       if remote.starts_with(prefix) {
         names.push(remote.to_string());
       }
@@ -86,6 +87,7 @@ impl Args {
 
     // then tags
     for tag in repo.tag_names(None)?.iter().flatten() {
+      let tag = tag.context("Tag names must be valid utf-8")?;
       names.push(tag.to_string());
     }
 

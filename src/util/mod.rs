@@ -69,8 +69,9 @@ pub fn find_tag_at_commit<'repo>(
 ) -> Result<Option<Tag<'repo>>> {
   let tags = repo.tag_names(None)?;
 
-  for tag_name in tags.iter().flatten() {
-    let reference = repo.find_reference(&format!("refs/tags/{}", tag_name))?;
+  for name in tags.iter().flatten() {
+    let name = name.context("Tag names must be valid utf-8")?;
+    let reference = repo.find_reference(&format!("refs/tags/{}", name))?;
     let tag = reference.peel_to_tag()?;
     let tag_commit = reference.peel_to_commit()?;
 
@@ -107,41 +108,49 @@ pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<
   }
 }
 
-/// The callback used in fetches/pushes to handle authentication
-pub fn credentials_cb(
-  url: &str,
-  username_from_url: Option<&str>,
-  allowed_types: CredentialType,
-) -> Result<Cred, git2::Error> {
-  if allowed_types.contains(CredentialType::SSH_KEY) {
-    return Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"));
-  }
-
-  if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
-    if let Ok(cred) =
-      Cred::credential_helper(&git2::Config::open_default()?, url, username_from_url)
-    {
-      return Ok(cred);
+/// Gets the callback used in fetches/pushes to handle authentication
+pub fn get_credentials_cb()
+-> impl FnMut(&str, Option<&str>, CredentialType) -> core::result::Result<Cred, git2::Error> {
+  let mut tried_agent = false;
+  move |url: &str,
+        username_from_url: Option<&str>,
+        allowed_types: CredentialType|
+        -> core::result::Result<Cred, git2::Error> {
+    if allowed_types.contains(CredentialType::USERNAME) {
+      return Cred::username(username_from_url.unwrap_or("git"));
     }
 
-    // fallback to git token env var
-    let token = std::env::var("GIT_TOKEN").map_err(|_| {
-      git2::Error::from_str(
-        "Failed to find credentials. Try setting the GIT_TOKEN environment variable",
-      )
-    })?;
+    if allowed_types.contains(CredentialType::SSH_KEY) && !tried_agent {
+      tried_agent = true;
+      return Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"));
+    }
 
-    return Cred::userpass_plaintext(username_from_url.unwrap_or("git"), &token);
+    if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
+      if let Ok(cred) =
+        Cred::credential_helper(&git2::Config::open_default()?, url, username_from_url)
+      {
+        return Ok(cred);
+      }
+
+      // fallback to git token env var
+      let token = std::env::var("GIT_TOKEN").map_err(|_| {
+        git2::Error::from_str(
+          "Failed to find credentials. Try setting the GIT_TOKEN environment variable",
+        )
+      })?;
+
+      return Cred::userpass_plaintext(username_from_url.unwrap_or("git"), &token);
+    }
+
+    if allowed_types.contains(CredentialType::DEFAULT) {
+      return Cred::default();
+    }
+
+    Err(git2::Error::from_str(&format!(
+      "No supported credential type for {}",
+      url
+    )))
   }
-
-  if allowed_types.contains(CredentialType::DEFAULT) {
-    return Cred::default();
-  }
-
-  Err(git2::Error::from_str(&format!(
-    "No supported credential type for {}",
-    url
-  )))
 }
 
 /// Gets the callback used in pushes when a reference is updated
@@ -152,7 +161,7 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
     }
 
     let name = name.trim_prefix_opt("refs/remotes/");
-    let zero = Oid::zero();
+    let zero = Oid::ZERO_SHA1;
 
     match (old_id, new_id) {
       (old, new) if old == zero && new != zero => {
@@ -201,7 +210,7 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
 pub fn get_push_callbacks<'cbs>(repo: &'cbs Repository) -> RemoteCallbacks<'cbs> {
   let mut cbs = RemoteCallbacks::new();
 
-  cbs.credentials(credentials_cb);
+  cbs.credentials(get_credentials_cb());
 
   // called on each remote tracking branch that's updated
   cbs.update_tips(get_update_tips_cb(repo));

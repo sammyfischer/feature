@@ -1,6 +1,6 @@
 //! Helper functions for branches and references
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use git2::{
   AutotagOption, Branch, BranchType, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid,
   Reference, RemoteCallbacks, Repository, ResetType,
@@ -9,7 +9,7 @@ use git2::{
 use crate::util::branch_meta::BranchMeta;
 use crate::util::display::trim_hash;
 use crate::util::string::ToStrLossyOwned;
-use crate::util::{credentials_cb, get_current_commit};
+use crate::util::{get_credentials_cb, get_current_commit};
 
 pub fn get_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
   match repo.head() {
@@ -125,6 +125,7 @@ pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
   let mut names = Vec::new();
 
   for name in repo.worktrees()?.iter().flatten() {
+    let name = name.context("Worktree names must be valid utf-8")?;
     let wt = repo.find_worktree(name)?;
     let wt_repo = Repository::open_from_worktree(&wt)?;
     let branch = get_current_branch_name(&wt_repo)?;
@@ -152,14 +153,11 @@ pub fn fetch_all(repo: &Repository) -> Result<()> {
   let remotes = repo.remotes()?;
   let mut results: Vec<Result<()>> = Vec::with_capacity(remotes.len());
 
-  for remote_name in &remotes {
-    let Some(remote_name) = remote_name else {
-      continue;
-    };
-
-    let mut remote = repo.find_remote(remote_name)?;
+  for name in remotes.iter().flatten() {
+    let name = name.context("Remote names must be valid utf-8")?;
+    let mut remote = repo.find_remote(name)?;
     let mut cbs = RemoteCallbacks::new();
-    cbs.credentials(credentials_cb);
+    cbs.credentials(get_credentials_cb());
 
     let mut opts = FetchOptions::new();
     opts.remote_callbacks(cbs);
@@ -169,7 +167,7 @@ pub fn fetch_all(repo: &Repository) -> Result<()> {
     results.push(
       remote
         .fetch(
-          &[format!("+refs/heads/*:refs/remotes/{}/*", remote_name)],
+          &[format!("+refs/heads/*:refs/remotes/{}/*", name)],
           Some(&mut opts),
           None,
         )
@@ -209,7 +207,7 @@ pub fn fetch_upstream_branch(repo: &Repository, branch: &BranchMeta) -> Result<(
 
   let mut opts = FetchOptions::new();
   let mut cbs = RemoteCallbacks::new();
-  cbs.credentials(credentials_cb);
+  cbs.credentials(get_credentials_cb());
   opts.remote_callbacks(cbs);
 
   remote.fetch(&[&refspec], Some(&mut opts), None)?;

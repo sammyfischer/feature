@@ -221,7 +221,8 @@ impl AddArgs {
       .iter()
       .flatten()
       .next()
-      .context("Couldn't find a remote url to use!")?;
+      .context("Couldn't find a remote url to use!")?
+      .context("Remote names must be valid utf-8")?;
 
     let remote = repo.find_remote(remote_name)?;
     let url = remote.url().context("Remote url is not valid utf-8!")?;
