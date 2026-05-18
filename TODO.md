@@ -9,8 +9,6 @@
   - post-commit
   - post-rewrite (after amend/rebase only)
 - custom zsh completions, maybe fish too
-- update is buggy and weird
-  - tests need to be way more rigorous so I can get this to work once and for all
 - show
   - handle merge commits in different ways (currently shows diff against first parent)
 - improve test environment
