@@ -453,8 +453,11 @@ impl LsArgs {
 
 impl EachArgs {
   pub fn run(&self, state: &App) -> Result<()> {
+    let root = state.repo.workdir().unwrap_or_else(|| state.repo.path());
     let mut first = true;
-    // run sequentially rather than in parallel bc we have no knowledge of the command being run
+
+    // run sequentially rather than in parallel bc we have no knowledge of the
+    // command being run
     for (name, project) in &state.config.projects {
       // if any filters were specified
       if !self.filter.is_empty() {
@@ -475,9 +478,16 @@ impl EachArgs {
       let args: Vec<&String> = cmd_line.collect();
 
       let st = Command::new(cmd)
+        .current_dir(root.join(&project.path))
         .args(args)
-        .current_dir(&project.path)
-        .status()?;
+        .status()
+        .with_context(|| {
+          format!(
+            "Failed to run project '{}' (path: {})",
+            name,
+            project.path.to_string_lossy()
+          )
+        })?;
 
       if st.success() {
         println!("{} {}", style(name).cyan(), style("succeeded").green());

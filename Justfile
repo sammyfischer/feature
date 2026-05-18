@@ -14,10 +14,10 @@ test target="":
   #!/usr/bin/env bash
   if [ -n "{{target}}" ]; then
     echo "Testing {{target}}"
-    cargo test --quiet --test {{target}}
+    cargo test --test {{target}} --all-features
   else
     echo "Testing all"
-    cargo test --quiet
+    cargo test --all-features
   fi
 
 schema:
