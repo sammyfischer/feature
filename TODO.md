@@ -20,9 +20,10 @@
 
 ## Features
 
-- hide authorship info
-  - add `feature.showAuthorship`
-  - would probably only hide it in status output, but could be a global setting so it applies anywhere I add it in the future
+- projects
+  - projects should search upward for config file
+  - would need to detect if they are projects, maybe a git config key (`feature.isProject = true`)?
+
   - doesn't need to hide author info for show/commit
 - auto merge/rebase
   - when branches have diverged, preventing a push, check if a merge/rebase would result in conflicts, then do it automatically

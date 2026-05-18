@@ -93,6 +93,10 @@ pub fn get_feature_autofetch(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.autofetch", true)
 }
 
+/// Gets `feature.showAuthorship`. Defaults to `true`.
+pub fn get_feature_show_authorship(config: &Config) -> Result<bool> {
+  get_option!(config, get_bool, "feature.showAuthorship", true)
+}
 /// Gets `feature.showProjects`. Defaults to `true`.
 pub fn get_feature_show_projects(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.showProjects", true)

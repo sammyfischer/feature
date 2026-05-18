@@ -82,6 +82,11 @@ If the value is a default git option that feature doesn't use, it will contain "
     # Show submodules in commands where it isn't the main output.
     showModules = yes
 
+    # Show authorship info (user.name and user.email) in commands where it's
+    # not specifically relevant. It will still be visible when commit objects
+    # are displayed, e.g. after committing and in the show command.
+    showAuthorship = yes
+
 # Config for the end command
 [feature "end"]
     # Whether to try deleting the branch from remote when calling "feature end".

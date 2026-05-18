@@ -181,12 +181,14 @@ impl Args {
 
     write!(out, "{}", header)?;
 
-    // signature/author info
-    write!(
-      out,
-      "\n{}",
-      display_signature(get_signature(repo)?.as_ref())
-    )?;
+    if data::get_feature_show_authorship(&config)? {
+      // signature/author info
+      write!(
+        out,
+        "\n{}",
+        display_signature(get_signature(repo)?.as_ref())
+      )?;
+    }
 
     // print advice in new paragraph above diffs
     if let Some(advice) = advice {
@@ -293,6 +295,7 @@ impl Args {
   ) -> Result<String> {
     let mut out = String::new();
     let (name, project) = project;
+    let config = repo.config()?.snapshot()?;
 
     out.push_str(&style(name).cyan().to_string());
 
@@ -334,7 +337,9 @@ impl Args {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
-      out.push_str(&self.display_different_signature(repo, &proj_repo)?);
+      if data::get_feature_show_authorship(&config)? {
+        out.push_str(&self.display_different_signature(repo, &proj_repo)?);
+      }
       out.push_str(&self.display_subrepo_changes(&proj_repo, &commit)?);
     };
 
@@ -350,6 +355,7 @@ impl Args {
     let mut out = String::new();
     out.push_str(&style(mod_name).cyan().to_string());
 
+    let config = repo.config()?.snapshot()?;
     let module = repo.find_submodule(mod_name)?;
 
     let mod_repo = match module.open() {
@@ -405,7 +411,9 @@ impl Args {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
-      out.push_str(&self.display_different_signature(repo, &mod_repo)?);
+      if data::get_feature_show_authorship(&config)? {
+        out.push_str(&self.display_different_signature(repo, &mod_repo)?);
+      }
       out.push_str(&self.display_subrepo_changes(&mod_repo, &commit)?);
     };
 
@@ -540,7 +548,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     let upstream = branch.upstream(repo)?;
     if let Some(upstream) = upstream {
       let upstream = BranchMeta::from_branch(&upstream)?;
-      let (a, b) = get_ahead_behind(repo, &branch_ref, &upstream.resolve(repo)?)
+      let (a, b) = get_ahead_behind(repo, &upstream.resolve(repo)?, &branch_ref)
         .context("Failed to get ahead/behind for upstream")?;
 
       let row = [
@@ -560,7 +568,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     // base row
     let base = data::get_feature_base(repo, branch.name())?;
     if let Some(base) = base {
-      let (a, b) = get_ahead_behind(repo, &branch_ref, &base.resolve(repo)?)
+      let (a, b) = get_ahead_behind(repo, &base.resolve(repo)?, &branch_ref)
         .context("Failed to get ahead/behind for base")?;
 
       let row = [
