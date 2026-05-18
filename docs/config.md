@@ -68,6 +68,12 @@ If the value is a default git option that feature doesn't use, it will contain "
 # ========================================
 
 [feature]
+    # This should not be edited manually. Feature uses this to determine if the
+    # current repo is a project. If it is, it searches up the directory tree to
+    # find a project-level config file. This allows projects to inherit the
+    # parent's config.
+    project = false
+
     # The name to use if branch template contains "%(user)". If not specified,
     # and the template contains "%(user)", creating a branch will error.
     user = username

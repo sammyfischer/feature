@@ -271,13 +271,13 @@ fn display_success(
   let mut out = String::with_capacity(100);
 
   let branch_name = match rebase.orig_head_name() {
-    Some(name) => style(
+    Ok(Some(name)) => style(
       name
         .trim_prefix_opt("refs/remotes/")
         .trim_prefix_opt("refs/heads/"),
     )
     .blue(),
-    None => style("unknown").red(),
+    _ => style("unknown").red(),
   };
 
   let base_name = fs::read_to_string(repo.path().join("rebase-merge/onto"))?;

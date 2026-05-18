@@ -20,11 +20,6 @@
 
 ## Features
 
-- projects
-  - projects should search upward for config file
-  - would need to detect if they are projects, maybe a git config key (`feature.isProject = true`)?
-
-  - doesn't need to hide author info for show/commit
 - auto merge/rebase
   - when branches have diverged, preventing a push, check if a merge/rebase would result in conflicts, then do it automatically
   - use default git push config to determine whether to merge or rebase

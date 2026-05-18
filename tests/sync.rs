@@ -276,24 +276,25 @@ backend = {{ url = "{}", path = "backend" }}
   repo.write_file(".gitignore", "frontend\nbackend\n");
 
   // sync should auto clone
-  let cmd = repo.feature(&["sync"]).success();
-  println!("Sync stdout:\n{}", get_stdout!(cmd));
-  println!("Sync stderr:\n{}", get_stderr!(cmd));
+  repo.feature(&["sync"]).success();
 
-  // repos should exist now with all the commits
-  Command::new("git")
-    .current_dir(repo.path().join("frontend"))
-    .env("HOME", home)
-    .args(["log", "--pretty=format:%s", "main"])
-    .assert()
-    .stdout("A");
+  for project in ["frontend", "backend"] {
+    // repos should exist now with all the commits
+    Command::new("git")
+      .current_dir(repo.path().join(project))
+      .env("HOME", home)
+      .args(["log", "--pretty=format:%s", "main"])
+      .assert()
+      .stdout("A");
 
-  Command::new("git")
-    .current_dir(repo.path().join("backend"))
-    .env("HOME", home)
-    .args(["log", "--pretty=format:%s", "main"])
-    .assert()
-    .stdout("A");
+    // feature.project should be set
+    Command::new("git")
+      .current_dir(repo.path().join(project))
+      .env("HOME", home)
+      .args(["config", "feature.project"])
+      .assert()
+      .stdout("true\n");
+  }
 }
 
 /// Feature should clone the project into the existing dir

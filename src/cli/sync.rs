@@ -18,7 +18,7 @@ use crate::util::branch::{fetch_all, get_current_branch_name, hard_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::{DiffSummary, has_workdir_changes};
 use crate::util::string::ToStrLossyOwned;
-use crate::util::{credentials_cb, open_repo_from_dirs};
+use crate::util::{get_credentials_cb, open_repo_from_dirs};
 use crate::{App, data, style};
 
 const LONG_ABOUT: &str = r"Updates all branches with their remotes (if they have one), then prunes merged
@@ -281,8 +281,10 @@ impl Args {
     match Repository::open(&project.path) {
       // already cloned, sync it
       Ok(repo) => {
-        let config = config::load_with_path(&project.path)?;
-        self.sync_repo(&repo, &config)
+        let app_config = config::load_with_path(&project.path)?;
+        let mut git_config = repo.config()?;
+        git_config.set_bool("feature.project", true)?;
+        self.sync_repo(&repo, &app_config)
       }
 
       // doesn't exist, just clone and continue
@@ -300,11 +302,13 @@ impl Args {
         let mut builder = RepoBuilder::new();
         let mut fetch_opts = FetchOptions::new();
         let mut remote_cbs = RemoteCallbacks::new();
-        remote_cbs.credentials(credentials_cb);
+        remote_cbs.credentials(get_credentials_cb());
         fetch_opts.remote_callbacks(remote_cbs);
         builder.fetch_options(fetch_opts);
 
-        builder.clone(&project.url, &project.path)?;
+        let repo = builder.clone(&project.url, &project.path)?;
+        let mut config = repo.config()?;
+        config.set_bool("feature.project", true)?;
         Ok(SyncAction::ProjectInit)
       }
 
@@ -353,7 +357,7 @@ impl Args {
     let mut opts = SubmoduleUpdateOptions::new();
     let mut fetch_opts = FetchOptions::new();
     let mut remote_cbs = RemoteCallbacks::new();
-    remote_cbs.credentials(credentials_cb);
+    remote_cbs.credentials(get_credentials_cb());
     fetch_opts.remote_callbacks(remote_cbs);
     opts.allow_fetch(true);
     opts.fetch(fetch_opts);
