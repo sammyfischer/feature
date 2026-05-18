@@ -83,6 +83,11 @@ pub fn set_feature_base(config: &mut Config, branch_name: &str, base_refname: &s
   Ok(())
 }
 
+/// Gets `feature.project`
+pub fn get_feature_project(config: &Config) -> Result<Option<bool>> {
+  get_option!(config, get_bool, "feature.project")
+}
+
 /// Gets `feature.user`
 pub fn get_feature_user(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.user")

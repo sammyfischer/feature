@@ -29,11 +29,6 @@ pub struct App {
 
 impl App {
   pub fn new(args: Args) -> Result<Option<Self>> {
-    let (config, config_path) = match args.config {
-      Some(path) => (config::load_with_path(&path)?, path),
-      None => (config::load()?, config::project::path()),
-    };
-
     // completions command ignores git dir entirely
     if let Command::Completions(args) = args.command {
       args.run()?;
@@ -52,6 +47,52 @@ impl App {
       }
       Err(e) => Err(e.into()),
     }?;
+
+    let (config, config_path) = match args.config {
+      // always use command-specified file
+      Some(path) => (config::load_with_path(&path)?, path),
+
+      None => {
+        let git_config = repo.config()?.snapshot()?;
+
+        // if this repo is a project
+        if data::get_feature_project(&git_config)?.is_some_and(|it| it) {
+          let mut cursor = Some(
+            repo
+              .workdir()
+              .unwrap_or_else(|| repo.path())
+              .canonicalize()?,
+          );
+
+          let file = 'file: {
+            // search up for local config file
+            while let Some(dir) = cursor {
+              // if we found another git dir, assume it's the parent repo
+              if dir.join(".git").exists() {
+                let file = dir.join("feature.toml");
+
+                // if local config exists in parent
+                if file.exists() {
+                  break 'file Some(file);
+                }
+              }
+
+              cursor = dir.parent().map(|path| path.to_owned());
+            }
+
+            // found nothing
+            None
+          };
+
+          match file {
+            Some(file) => (config::load_with_path(&file)?, file.to_owned()),
+            None => (config::load()?, config::project::path()),
+          }
+        } else {
+          (config::load()?, config::project::path())
+        }
+      }
+    };
 
     Ok(Some(Self {
       config,

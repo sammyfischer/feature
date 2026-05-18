@@ -281,8 +281,10 @@ impl Args {
     match Repository::open(&project.path) {
       // already cloned, sync it
       Ok(repo) => {
-        let config = config::load_with_path(&project.path)?;
-        self.sync_repo(&repo, &config)
+        let app_config = config::load_with_path(&project.path)?;
+        let mut git_config = repo.config()?;
+        git_config.set_bool("feature.project", true)?;
+        self.sync_repo(&repo, &app_config)
       }
 
       // doesn't exist, just clone and continue
@@ -304,7 +306,9 @@ impl Args {
         fetch_opts.remote_callbacks(remote_cbs);
         builder.fetch_options(fetch_opts);
 
-        builder.clone(&project.url, &project.path)?;
+        let repo = builder.clone(&project.url, &project.path)?;
+        let mut config = repo.config()?;
+        config.set_bool("feature.project", true)?;
         Ok(SyncAction::ProjectInit)
       }
 
