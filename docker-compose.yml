@@ -1,0 +1,9 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: localhost/feature-test
+    volumes:
+      - .:/workspace
+    command: cargo test -- --nocapture

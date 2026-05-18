@@ -69,18 +69,8 @@ fn creates_branch_in_each() {
   let home = repo.path().parent().unwrap();
 
   repo
-    .feature(&["project", "each", "feature", "start", "topic"])
-    .success()
-    .stdout(
-      r#"backend
-Created topic (from main)
-backend succeeded
-
-frontend
-Created topic (from main)
-frontend succeeded
-"#,
-    );
+    .feature(&["project", "each", "git", "switch", "-c", "topic"])
+    .success();
 
   for project in ["frontend", "backend"] {
     let path = repo.path().join(project);
@@ -93,15 +83,6 @@ frontend succeeded
       .assert()
       .success()
       .stdout("  main\n* topic\n");
-
-    // set feature base
-    Command::new("git")
-      .current_dir(&path)
-      .env("HOME", home)
-      .args(["config", "branch.topic.feature-base"])
-      .assert()
-      .success()
-      .stdout("refs/remotes/origin/main\n");
   }
 }
 
@@ -129,21 +110,12 @@ fn respects_filter() {
       "each",
       "--filter",
       "frontend,back",
-      "feature",
-      "start",
+      "git",
+      "switch",
+      "-c",
       "topic",
     ])
-    .success()
-    .stdout(
-      r#"backend
-Created topic (from main)
-backend succeeded
-
-frontend
-Created topic (from main)
-frontend succeeded
-"#,
-    );
+    .success();
 
   for project in ["frontend", "backend"] {
     let path = repo.path().join(project);
@@ -156,15 +128,6 @@ frontend succeeded
       .assert()
       .success()
       .stdout("  main\n* topic\n");
-
-    // set feature base
-    Command::new("git")
-      .current_dir(&path)
-      .env("HOME", home)
-      .args(["config", "branch.topic.feature-base"])
-      .assert()
-      .success()
-      .stdout("refs/remotes/origin/main\n");
   }
 
   // database shouldn't have the branch

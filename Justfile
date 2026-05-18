@@ -5,7 +5,7 @@ set shell := ["bash", "-c"]
 help:
   just --list
 
-# run app (forwards args to app, not cargo)
+# run app (forwards args)
 run *args:
   cargo run -- {{args}}
 
@@ -19,16 +19,6 @@ test target="":
     echo "Testing all"
     cargo test --all-features
   fi
-
-schema:
-  just run config schema > resources/config.schema.json
-
-comp:
-  just run completions bash > resources/completions.bash
-  just run completions elvish > resources/completions.elvish
-  just run completions fish > resources/completions.fish
-  just run completions powershell > resources/completions.pwsh
-  just run completions zsh > resources/completions.zsh
 
 # format with dprint
 fmt:
@@ -45,8 +35,36 @@ check:
   cargo check
   just test
 
+# generate schema
+schema:
+  just run config schema > resources/config.schema.json
+
+# generate shell completions
+comp:
+  just run completions bash > resources/completions.bash
+  just run completions elvish > resources/completions.elvish
+  just run completions fish > resources/completions.fish
+  just run completions powershell > resources/completions.pwsh
+  just run completions zsh > resources/completions.zsh
+
+# build test container
+container-build:
+  podman build -t localhost/feature-test .
+
+# run tests in container
+container-test:
+  #!/usr/bin/env bash
+  docker=$(which docker || which podman)
+  "$docker" compose run --rm test
+
 # check for compliance, generate up-to-date resources
-release: check schema
+release:
+  just fmt
+  just lint
+  cargo check
+  just container-build
+  just container-test
+  just schema
 
 tag:
   #!/usr/bin/env bash
@@ -60,7 +78,7 @@ tag:
 
   tag="v${version}"
   git tag "$tag"
-  echo "Push tag with \"git push origin $tag\""
+  echo "Created tag: $tag"
 
 install:
   cargo install --path .
