@@ -548,7 +548,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     let upstream = branch.upstream(repo)?;
     if let Some(upstream) = upstream {
       let upstream = BranchMeta::from_branch(&upstream)?;
-      let (a, b) = get_ahead_behind(repo, &branch_ref, &upstream.resolve(repo)?)
+      let (a, b) = get_ahead_behind(repo, &upstream.resolve(repo)?, &branch_ref)
         .context("Failed to get ahead/behind for upstream")?;
 
       let row = [
@@ -568,7 +568,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     // base row
     let base = data::get_feature_base(repo, branch.name())?;
     if let Some(base) = base {
-      let (a, b) = get_ahead_behind(repo, &branch_ref, &base.resolve(repo)?)
+      let (a, b) = get_ahead_behind(repo, &base.resolve(repo)?, &branch_ref)
         .context("Failed to get ahead/behind for base")?;
 
       let row = [
