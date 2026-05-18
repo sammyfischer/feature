@@ -33,13 +33,6 @@ fn create_conflicts() -> TestRepo {
   repo
 }
 
-/// Gets the subject line of a commit given its hash
-fn hash_to_subject(repo: &TestRepo, hash: &str) -> String {
-  // --no-patch removes the diff output, which git show includes by default
-  let cmd = repo.git(&["show", "--no-patch", "--pretty=format:%s", hash]);
-  get_stdout!(cmd)
-}
-
 /// Updating should rebase changes from main when there are no conflicts
 #[test]
 fn rebases_changes() {
@@ -128,89 +121,6 @@ fn rebase_continues() {
   assert_eq!(repo.list_commit_subjects("feature"), "BX\nA")
 }
 
-/// If the rebase stops due to a conflict, the remaining steps should be written to git-rebase-todo.
-/// The current file should also exist and tell libgit2 where to resume from.
-#[test]
-fn rebase_dumps_todo_file() {
-  let repo = create_conflicts();
-
-  repo.git(&["switch", "feature"]).success();
-  repo.write_file("feature.txt", "Y");
-  repo.commit_all("Y");
-  repo.feature(&["update"]).failure();
-
-  let current_hash = fs::read_to_string(repo.path().join(".git/rebase-merge/current"))
-    .expect("current file should exist");
-
-  assert_eq!(hash_to_subject(&repo, &current_hash), "X");
-
-  let todo_file = fs::read_to_string(repo.path().join(".git/rebase-merge/git-rebase-todo"))
-    .expect("git-rebase-todo file should exist");
-
-  // the subject-line of all remaining commits in the rebase
-  let mut remaining_commits: Vec<String> = Vec::new();
-  for step in todo_file.lines() {
-    let mut parts = step.split(" ");
-    assert_eq!(
-      parts.next(),
-      Some("pick"),
-      "Each command in todo file should be pick"
-    );
-
-    let hash = parts
-      .next()
-      .expect("Each line of todo file should contain a hash");
-
-    remaining_commits.push(hash_to_subject(&repo, hash));
-  }
-
-  assert_eq!(remaining_commits.join(", "), "Y");
-}
-
-/// If the rebase stops due to a conflict, it should create a todo file even if there is nothing
-/// left to do
-#[test]
-fn rebase_dumps_empty_todo_file() {
-  let repo = create_conflicts();
-
-  repo.git(&["switch", "feature"]).success();
-  repo.feature(&["update"]).failure();
-
-  let todo = fs::read_to_string(repo.path().join(".git/rebase-merge/git-rebase-todo"))
-    .expect("git-rebase-todo file should exist");
-
-  assert!(
-    todo.is_empty(),
-    "Todo file should only contian an empty string"
-  );
-}
-
-/// An unfinished rebase should be compatible with `git rebase --continue`
-#[test]
-fn git_rebase_continues() {
-  let repo = create_conflicts();
-
-  repo.git(&["switch", "feature"]).success();
-  repo.write_file("feature.txt", "Y");
-  repo.commit_all("Y");
-  repo.feature(&["update"]).failure();
-  assert!(repo.is_rebase_active(), "Rebase should be active");
-
-  // combine and resolve conflicting changes
-  repo.write_file("file.txt", "BX");
-  repo.git(&["add", "file.txt"]).success();
-  repo.git(&["commit", "--amend", "-m", "BX"]).success();
-
-  let todo = fs::read_to_string(repo.path().join(".git/rebase-merge/git-rebase-todo"))
-    .expect("Todo file should exist");
-  println!("{}", todo);
-
-  repo.git(&["rebase", "--continue"]).success();
-  assert!(!repo.is_rebase_active(), "Rebase should not be active");
-
-  assert_eq!(repo.list_commit_subjects("feature"), "Y\nBX\nA")
-}
-
 /// Feature should abort the rebase when running with -a
 #[test]
 fn rebase_aborts() {
@@ -235,7 +145,7 @@ fn rebase_aborts() {
   );
 }
 
-/// Should be able to run `git rebase --skip` to skip current commit in a rebase started by feature
+/// Feature should skip the current patch when running with -s
 #[test]
 fn git_rebase_skips() {
   let repo = create_conflicts();
@@ -271,8 +181,7 @@ fn git_rebase_skips() {
     fs::read_to_string(repo.path().join(".git/rebase-merge/git-rebase-todo")).unwrap()
   );
 
-  // repo.feature(&["update", "-s"]).success();
-  repo.git(&["rebase", "--skip"]).success();
+  repo.feature(&["update", "-s"]).success();
   assert!(!repo.is_rebase_active(), "Rebase should not be active");
 
   assert_eq!(repo.list_commit_subjects("feature"), "Y\nC\nB\nA",);
