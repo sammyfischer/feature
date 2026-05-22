@@ -69,11 +69,20 @@ impl Display for DisplayCommitMessageLevel {
   }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DisplayTimeOptions {
   /// False for absolute, true for relative
   pub relative: bool,
-  pub fmt: Option<String>,
+  pub fmt: String,
+}
+
+impl Default for DisplayTimeOptions {
+  fn default() -> Self {
+    Self {
+      relative: Default::default(),
+      fmt: "%b %d, %Y at %I:%M %p".to_string(),
+    }
+  }
 }
 
 /// Displays formatted info about a commit
@@ -171,12 +180,12 @@ pub fn display_time(time: &Time, options: &DisplayTimeOptions) -> Result<String>
   if options.relative {
     display_time_relative(time)
   } else {
-    display_time_absolute(time, options.fmt.as_deref())
+    display_time_absolute(time, &options.fmt)
   }
 }
 
 /// `fmt` is passed to chronos as-is. Defaults to "%b %d, %Y at %I:%M %p", which looks like "May 11, 2026 at 4:44 PM"
-fn display_time_absolute(time: &Time, fmt: Option<&str>) -> Result<String> {
+fn display_time_absolute(time: &Time, fmt: &str) -> Result<String> {
   let tz = FixedOffset::east_opt(time.offset_minutes() * 60)
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
@@ -185,7 +194,6 @@ fn display_time_absolute(time: &Time, fmt: Option<&str>) -> Result<String> {
     .single()
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
-  let fmt = fmt.unwrap_or("%b %d, %Y at %I:%M %p");
   Ok(date.format(fmt).to_string())
 }
 
