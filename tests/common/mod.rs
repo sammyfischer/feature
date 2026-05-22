@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
-use std::fs::{self};
+use std::fs::{self, OpenOptions, Permissions};
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
@@ -45,6 +46,29 @@ pub struct TestRepo {
 pub struct TestRemote {
   dir: PathBuf,
   home: TempDir,
+}
+
+/// Type of commit hook
+pub enum Hook {
+  PrepareMsg,
+  CommitMsg,
+  PreCommit,
+  PostCommit,
+  PostRewrite,
+}
+
+impl Hook {
+  /// Gets the file name of the commit hook
+  pub fn name(&self) -> String {
+    match self {
+      Hook::PrepareMsg => "prepare-commit-msg",
+      Hook::CommitMsg => "commit-msg",
+      Hook::PreCommit => "pre-commit",
+      Hook::PostCommit => "post-commit",
+      Hook::PostRewrite => "post-rewrite",
+    }
+    .to_string()
+  }
 }
 
 impl TestRepo {
@@ -163,6 +187,19 @@ impl TestRepo {
     self.write_file(file_name, "A");
     self.git(&["add", file_name]).success();
     self.git(&["commit", "-m", "A"]).success();
+  }
+
+  /// Writes the script to the commit hook file
+  pub fn install_hook(&self, hook: Hook, script: &str) {
+    let path = self.dir.join(".git/hooks").join(hook.name());
+    let mut file = OpenOptions::new()
+      .create(true)
+      .truncate(true)
+      .write(true)
+      .open(&path)
+      .unwrap();
+    file.set_permissions(Permissions::from_mode(0o775)).unwrap();
+    file.write(script.as_bytes()).unwrap();
   }
 
   pub fn get_current_branch(&self) -> String {
