@@ -119,9 +119,14 @@ pub fn get_format_graph(config: &Config) -> Result<Option<String>> {
   get_option!(config, get_string, "feature.format.graph")
 }
 
-/// Gets `feature.format.date`
-pub fn get_format_date(config: &Config) -> Result<Option<String>> {
-  get_option!(config, get_string, "feature.format.date")
+/// Gets `feature.format.date`. Defaults to `"%b %d, %Y at %I:%M %p"`.
+pub fn get_format_date(config: &Config) -> Result<String> {
+  get_option!(
+    config,
+    get_string,
+    "feature.format.date",
+    "%b %d, %Y at %I:%M %p".to_string()
+  )
 }
 
 /// Gets `feature.format.relative`. Defaults to `false`.

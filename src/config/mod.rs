@@ -120,7 +120,12 @@ pub mod project {
   /// Saves an entire default config to the project directory
   pub fn save_default() -> Result<()> {
     let path = self::path();
-    let config = Config::default();
+    let mut config = Config::default();
+
+    // branch.template's default is None, but this is an example config so it
+    // should have some value
+    config.branch.template = Some("%s".to_string());
+
     let toml_raw = toml::to_string_pretty(&config)?;
 
     let mut file = File::create(&path)?;
