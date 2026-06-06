@@ -49,7 +49,8 @@ comp:
 
 # build test container
 container-build:
-  podman build -t localhost/feature-test .
+  docker=$(which docker || which podman)
+  "$docker" build -t localhost/feature-test .
 
 # run tests in container
 container-test:
