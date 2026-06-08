@@ -8,8 +8,8 @@ use crate::common::{TestRemote, TestRepo};
 
 mod common;
 
-/// Creates a local and remote repo, pushes main to remote with an initial commit, and then creates
-/// a feature branch locally and commits to it
+/// Creates a local and remote repo, pushes main to remote with an initial
+/// commit, and then creates a feature branch locally and commits to it
 fn create_upstream_and_feature_branch() -> (TestRepo, TestRemote) {
   let (local, remote) = TestRepo::new_with_remote();
   local.init_commit();
@@ -23,7 +23,8 @@ fn create_upstream_and_feature_branch() -> (TestRepo, TestRemote) {
   (local, remote)
 }
 
-/// Pushing should use the already-existing with a name that differs from the current branch name
+/// Pushing should use the already-existing with a name that differs from the
+/// current branch name
 #[test]
 fn pushes_to_upstream_with_different_name() {
   let (local, _remote) = create_upstream_and_feature_branch();
@@ -47,8 +48,8 @@ fn pushes_to_upstream_with_different_name() {
   assert!(text.contains("refs/heads/feature1 refs/remotes/origin/feature1-remote"));
 }
 
-/// Pushing for the first time should create a new remote-tracking branch with the same name as the
-/// branch
+/// Pushing for the first time should create a new remote-tracking branch with
+/// the same name as the branch
 #[test]
 fn creates_upstream() {
   let (local, _remote) = create_upstream_and_feature_branch();
@@ -195,7 +196,8 @@ fn pushes_to_different_remote() {
   );
 }
 
-/// If a branch has an existing upstream other than default, it should push to that with no args
+/// If a branch has an existing upstream other than default, it should push to
+/// that with no args
 #[test]
 fn pushes_to_existing_different_remote() {
   let local = TestRepo::new();
@@ -305,7 +307,8 @@ fn pushes_in_bare_repo() {
   assert_eq!(remote.list_commit_subjects("main").trim(), "B\nA");
 }
 
-/// Push should fail if upstream branch is diverged, even when the user hasn't fetched
+/// Push should fail if upstream branch is diverged, even when the user hasn't
+/// fetched
 #[test]
 fn fails_when_upstream_diverges() {
   let (local, remote) = TestRepo::new_with_remote();
@@ -340,7 +343,8 @@ fn fails_when_upstream_diverges() {
   );
 }
 
-/// Push should fail if base branch is diverged, even when the user hasn't fetched
+/// Push should fail if base branch is diverged, even when the user hasn't
+/// fetched
 #[test]
 fn fails_when_base_diverges() {
   let (local, remote) = TestRepo::new_with_remote();

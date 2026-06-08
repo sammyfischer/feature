@@ -39,7 +39,8 @@ pub enum ConfigCommand {
   /// Creates a config file with default values
   Create,
 
-  /// Get the value of some config keys. These are the values that feature will use at runtime
+  /// Get the value of some config keys. These are the values that feature will
+  /// use at runtime
   Get(GetArgs),
 
   /// Prints an entire schema of the config to stdout

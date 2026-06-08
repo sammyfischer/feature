@@ -1,5 +1,5 @@
-//! Helper functions to display formatted strings. Diff-realted display functions can be found in
-//! [super::diff]
+//! Helper functions to display formatted strings. Diff-realted display
+//! functions can be found in [super::diff]
 
 use std::fmt::Display;
 
@@ -97,8 +97,8 @@ impl Default for DisplayTimeOptions {
 /// ```
 pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result<String> {
   use std::fmt::Write;
-  // around 60 chars for hash/time/author, another 80 for message (most of the time this will only
-  // be a subject line)
+  // around 60 chars for hash/time/author, another 80 for message (most of the
+  // time this will only be a subject line)
   let mut out = String::with_capacity(140);
 
   // hash
@@ -149,15 +149,16 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
   Ok(out)
 }
 
-/// A very concise format meant to be displayed on one line (although not guaranteed to be). Unlike,
-/// [display_commit], there are no configuration options.
+/// A very concise format meant to be displayed on one line (although not
+/// guaranteed to be). Unlike, [display_commit], there are no configuration
+/// options.
 ///
 /// ```txt
 /// abcd123 (Author Name, 5 minutes ago) implemented change
 /// ```
 ///
-/// The hash is yellow, the parenthesized author/time is dim white (so just gray) and the subject
-/// line is white.
+/// The hash is yellow, the parenthesized author/time is dim white (so just
+/// gray) and the subject line is white.
 pub fn display_commit_compact(commit: &Commit) -> Result<String> {
   Ok(format!(
     "{} {} {}",
@@ -184,7 +185,8 @@ pub fn display_time(time: &Time, options: &DisplayTimeOptions) -> Result<String>
   }
 }
 
-/// `fmt` is passed to chronos as-is. Defaults to "%b %d, %Y at %I:%M %p", which looks like "May 11, 2026 at 4:44 PM"
+/// `fmt` is passed to chronos as-is. Defaults to "%b %d, %Y at %I:%M %p", which
+/// looks like "May 11, 2026 at 4:44 PM"
 fn display_time_absolute(time: &Time, fmt: &str) -> Result<String> {
   let tz = FixedOffset::east_opt(time.offset_minutes() * 60)
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
@@ -236,7 +238,8 @@ fn display_time_relative(time: &Time) -> Result<String> {
   })
 }
 
-/// Displays two numbers like `+p -m` where the first part is green and the second part is red.
+/// Displays two numbers like `+p -m` where the first part is green and the
+/// second part is red.
 ///
 /// This is used to print ahead/behind and insertions/deletions.
 pub fn display_plus_minus(plus: usize, minus: usize) -> String {

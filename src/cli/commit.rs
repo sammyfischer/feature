@@ -15,11 +15,19 @@ use git2::{Commit, Diff, ErrorCode, MergeOptions, Oid, Reference, Repository, Tr
 
 use crate::util::advice::NO_SIGNATURE_MSG;
 use crate::util::branch::{
-  get_current_branch_name, get_head, get_merge_head, get_pick_head, get_revert_head,
+  get_current_branch_name,
+  get_head,
+  get_merge_head,
+  get_pick_head,
+  get_revert_head,
 };
 use crate::util::diff::{DiffSummary, has_index_changes};
 use crate::util::display::{
-  DisplayCommitMessageLevel, DisplayCommitOptions, DisplayTimeOptions, display_commit, display_hash,
+  DisplayCommitMessageLevel,
+  DisplayCommitOptions,
+  DisplayTimeOptions,
+  display_commit,
+  display_hash,
 };
 use crate::util::string::{ToStrLossy, ToStrLossyOwned};
 use crate::util::term::get_user_confirmation;
@@ -76,7 +84,8 @@ pub struct Args {
 struct CommitTarget<'repo> {
   commit: Commit<'repo>,
 
-  /// Something user-friendly to print (ideally branch name, maybe tag or short hash)
+  /// Something user-friendly to print (ideally branch name, maybe tag or short
+  /// hash)
   display_name: String,
 
   /// The ref to update. Will be None if we're not committing to a branch
@@ -293,7 +302,8 @@ impl Args {
 
     println!("{}", display_commit_details(&new_commit, &diff, &config)?);
 
-    // committing during an active merge completes the merge, we should clean up the merge files
+    // committing during an active merge completes the merge, we should clean up the
+    // merge files
     if merge_head.is_some() {
       state.repo.cleanup_state()?;
     }
@@ -568,7 +578,8 @@ impl Args {
     let script = repo.path().join("hooks").join("post-commit");
 
     if script.exists() {
-      // post-commit doesn't affect outcome of commit, nor does it do any meaningful processing
+      // post-commit doesn't affect outcome of commit, nor does it do any meaningful
+      // processing
       let mut cmd = Command::new(script).spawn()?;
 
       let status = cmd.wait()?;
@@ -688,8 +699,10 @@ struct MsgSource {
 /// Builds the content of COMMIT_EDITMSG before it's opened in an editor
 ///
 /// # Params
-/// - `initial` - the pre-filled commit message (should usually end with a newline)
-/// - `to` - a user-friendly name for where the commit is being applied. None when there are no commits in the repo
+/// - `initial` - the pre-filled commit message (should usually end with a
+///   newline)
+/// - `to` - a user-friendly name for where the commit is being applied. None
+///   when there are no commits in the repo
 /// - `diff` - the changes in the commit
 ///
 /// # Returns
@@ -761,7 +774,8 @@ fn display_merge_header(
   Ok(format!("{} {} into {}", style("Merged").green(), from, to))
 }
 
-/// Displays the remaining commit details in the same format as `feature show`, with two exceptions:
+/// Displays the remaining commit details in the same format as `feature show`,
+/// with two exceptions:
 /// 1. The time is always absolute
 /// 2. It always displays the entire commit message
 fn display_commit_details(
@@ -769,18 +783,15 @@ fn display_commit_details(
   diff: &Diff,
   config: &git2::Config,
 ) -> Result<String> {
-  let commit_output = display_commit(
-    commit,
-    &DisplayCommitOptions {
-      time: DisplayTimeOptions {
-        // relative is not useful, commit just occured
-        relative: false,
-        fmt: data::get_format_date(config)?,
-      },
-      // want the user to see the entire message just for reference
-      message: DisplayCommitMessageLevel::Full,
+  let commit_output = display_commit(commit, &DisplayCommitOptions {
+    time: DisplayTimeOptions {
+      // relative is not useful, commit just occured
+      relative: false,
+      fmt: data::get_format_date(config)?,
     },
-  )?;
+    // want the user to see the entire message just for reference
+    message: DisplayCommitMessageLevel::Full,
+  })?;
 
   let summary = DiffSummary::new(diff)?;
   Ok(format!("{}\n\n{}", commit_output, summary))

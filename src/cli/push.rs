@@ -165,8 +165,8 @@ impl Args {
       ),
     };
 
-    // the destination should be as it appears on remote, which is why it starts with refs/heads/
-    // instead of refs/remotes/
+    // the destination should be as it appears on remote, which is why it starts
+    // with refs/heads/ instead of refs/remotes/
     //
     // upstream_name is of the form remote/branch
     write!(

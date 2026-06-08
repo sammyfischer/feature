@@ -2,7 +2,8 @@ use crate::common::TestRepo;
 
 mod common;
 
-/// If the base branch has no upstream, feature should set it as the feature-base
+/// If the base branch has no upstream, feature should set it as the
+/// feature-base
 #[test]
 fn sets_base() {
   let repo = TestRepo::new();
@@ -14,7 +15,8 @@ fn sets_base() {
   assert_eq!(get_stdout!(cmd).trim(), "refs/heads/main");
 }
 
-/// If the base branch has an upstream, feature should set the upstream as the feature-base
+/// If the base branch has an upstream, feature should set the upstream as the
+/// feature-base
 #[test]
 fn sets_base_using_upstream() {
   let (local, _remote) = TestRepo::new_with_remote();

@@ -357,7 +357,8 @@ impl RmArgs {
     Ok(())
   }
 
-  /// Removes the entry from the project config file and return's the path of the subproject.
+  /// Removes the entry from the project config file and return's the path of
+  /// the subproject.
   fn remove_config_entry(&self, config_path: &Path) -> Result<String> {
     let mut file = OpenOptions::new()
       .read(true)

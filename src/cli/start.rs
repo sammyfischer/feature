@@ -40,7 +40,8 @@ with the "--from <BRANCH>" option."#;
   disable_help_subcommand = true
 )]
 pub struct Args {
-  /// Display the branch name, after joining args and performing template replacements
+  /// Display the branch name, after joining args and performing template
+  /// replacements
   #[arg(long)]
   pub dry_run: bool,
 

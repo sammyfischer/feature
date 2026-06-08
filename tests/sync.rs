@@ -95,7 +95,8 @@ fn dry_run_doesnt_update() {
   );
 }
 
-/// Should respect the --no-prune cli option, and the prune = false config option
+/// Should respect the --no-prune cli option, and the prune = false config
+/// option
 #[test]
 fn respects_no_prune() {
   let (local, _remote) = TestRepo::new_with_remote();

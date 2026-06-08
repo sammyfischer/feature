@@ -5,7 +5,8 @@ use crate::common::TestRepo;
 
 mod common;
 
-/// Should delete branches with upstreams that are redundant (behind or equal to their base)
+/// Should delete branches with upstreams that are redundant (behind or equal to
+/// their base)
 #[test]
 fn deletes_merged_branches() {
   let (local, _remote) = TestRepo::new_with_remote();
@@ -13,7 +14,8 @@ fn deletes_merged_branches() {
 
   local.git(&["push", "-u", "origin", "main"]).success();
 
-  // create branches. don't commit so that their commit history is identical to main
+  // create branches. don't commit so that their commit history is identical to
+  // main
   for branch in ["feature1", "feature2"] {
     local.feature(&["start", branch]).success();
     local.git(&["switch", "main"]).success();
@@ -71,7 +73,8 @@ fn preserves_unpushed_branches() {
 
   local.git(&["push", "-u", "origin", "main"]).success();
 
-  // create branches. don't commit so that their commit history is identical to main
+  // create branches. don't commit so that their commit history is identical to
+  // main
   for branch in ["feature1", "feature2"] {
     local.feature(&["start", branch]).success();
     local.git(&["switch", "main"]).success();
@@ -93,7 +96,8 @@ fn preserves_unpushed_branches() {
   }
 }
 
-/// Running with --dry-run should print candidates but not delete any branches or modify config
+/// Running with --dry-run should print candidates but not delete any branches
+/// or modify config
 #[test]
 fn dry_run_doesnt_delete() {
   let (local, _remote) = TestRepo::new_with_remote();

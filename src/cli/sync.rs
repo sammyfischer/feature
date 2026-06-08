@@ -7,7 +7,13 @@ use anyhow::Result;
 use console::style;
 use git2::build::RepoBuilder;
 use git2::{
-  Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, RemoteCallbacks, Repository,
+  Branch,
+  BranchType,
+  ErrorClass,
+  ErrorCode,
+  FetchOptions,
+  RemoteCallbacks,
+  Repository,
   SubmoduleUpdateOptions,
 };
 use indicatif::{ProgressBar, ProgressStyle};
@@ -44,7 +50,8 @@ Submodules get synced by checking-out to their tracked commit.";
   disable_help_subcommand = true
 )]
 pub struct Args {
-  /// Display output but don't modify any branches. Will still fetch all remotes.
+  /// Display output but don't modify any branches. Will still fetch all
+  /// remotes.
   #[arg(long)]
   pub dry_run: bool,
 
@@ -328,7 +335,8 @@ impl Args {
     }
   }
 
-  /// Syncs a module similar to `git submodule update --init` and `git submodule sync`.
+  /// Syncs a module similar to `git submodule update --init` and `git submodule
+  /// sync`.
   fn update_module(&self, repo: &Repository, mod_name: &str) -> Result<Option<SyncAction>> {
     let mut module = repo.find_submodule(mod_name)?;
     let mod_repo = match module.open() {
@@ -342,7 +350,8 @@ impl Args {
       Err(e) => return Err(e.into()),
     };
 
-    // if repo, head_id, and index_id all exist, then get expected and actual commit (short ids)
+    // if repo, head_id, and index_id all exist, then get expected and actual commit
+    // (short ids)
     let (expected, actual) = if let (Some(mod_repo), Some(expect_id), Some(actual_id)) =
       (mod_repo.as_ref(), module.head_id(), module.index_id())
     {
@@ -449,7 +458,8 @@ impl Args {
 
     if !dry_run {
       if is_current {
-        // to update the current branch, we also need to update HEAD. this is just a hard reset
+        // to update the current branch, we also need to update HEAD. this is just a
+        // hard reset
         hard_reset(repo, upstream.get())?;
       } else {
         // for other branches, we just move them to the upstream commit

@@ -26,7 +26,8 @@ fn deletes_current_branch() {
   );
 }
 
-/// End should delete the specified non-current branch, and remain checked-out to the current branch.
+/// End should delete the specified non-current branch, and remain checked-out
+/// to the current branch.
 #[test]
 fn deletes_non_current_branch() {
   let repo = TestRepo::new();
@@ -66,7 +67,8 @@ fn uses_specified_base() {
 
   repo.feature(&["start", "other-topic"]).success();
 
-  // this would succeed for topic, since they point to the same commit. but other-topic is ahead of main
+  // this would succeed for topic, since they point to the same commit. but
+  // other-topic is ahead of main
   let cmd = repo.feature(&["end", "--base", "main"]).failure();
   assert_eq!(
     get_stderr!(cmd).trim(),

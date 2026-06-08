@@ -37,7 +37,8 @@ pub struct DiffSummary {
 }
 
 impl DiffSummary {
-  /// Iterates through the diff and summarizes the information into a new [DiffSummary]
+  /// Iterates through the diff and summarizes the information into a new
+  /// [DiffSummary]
   pub fn new(diff: &Diff) -> Result<Self> {
     let mut summary = DiffSummary {
       num_files: 0,
@@ -52,8 +53,8 @@ impl DiffSummary {
     summary.insertions = stats.insertions();
     summary.deletions = stats.deletions();
 
-    // we need a raw pointer to unsafely access `files` in multiple callbacks, but since these
-    // callbacks are synchronous it's fine
+    // we need a raw pointer to unsafely access `files` in multiple callbacks, but
+    // since these callbacks are synchronous it's fine
     let files_ptr: *mut Vec<DiffFileSummary> = &mut summary.files;
 
     diff.foreach(
@@ -122,7 +123,8 @@ impl DiffSummary {
     }
   }
 
-  /// Creates a new diff summary out of the non-conflicted files in this summary.
+  /// Creates a new diff summary out of the non-conflicted files in this
+  /// summary.
   pub fn non_conflicts(&self) -> Self {
     let mut conflicted_files: Vec<DiffFileSummary> = Vec::new();
     for file in &self.files {
@@ -140,8 +142,8 @@ impl DiffSummary {
     }
   }
 
-  /// Default display format for the header line. Shows number of files changed and total
-  /// insertions/deletions
+  /// Default display format for the header line. Shows number of files changed
+  /// and total insertions/deletions
   pub fn display_header(&self) -> String {
     format!(
       "{} {} changed {}{}{}",
@@ -153,8 +155,8 @@ impl DiffSummary {
     )
   }
 
-  /// Displays a header similar to the default except the text says "n conflicted files". Assumes
-  /// this summary only contains conflicted files.
+  /// Displays a header similar to the default except the text says "n
+  /// conflicted files". Assumes this summary only contains conflicted files.
   pub fn display_conflict_header(&self) -> String {
     let num = self.num_files;
     format!(
@@ -164,8 +166,8 @@ impl DiffSummary {
     )
   }
 
-  /// Displays with the default format, but uses the conflict header. Assumes this summary contains
-  /// only conflicted files.
+  /// Displays with the default format, but uses the conflict header. Assumes
+  /// this summary contains only conflicted files.
   pub fn display_conflicts(&self) -> String {
     let mut out = self.display_conflict_header();
     for file in &self.files {
@@ -176,8 +178,8 @@ impl DiffSummary {
 }
 
 impl Display for DiffSummary {
-  /// Default format to display an entire summary. Shows the default header line, with each file in
-  /// a row below it, tabbed over by two spaces
+  /// Default format to display an entire summary. Shows the default header
+  /// line, with each file in a row below it, tabbed over by two spaces
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", self.display_header())?;
     for file in &self.files {
@@ -192,20 +194,20 @@ pub struct DiffFileSummary {
   /// The type of change that occured to the file
   pub status: Delta,
 
-  /// The name of the file. This is the old filename for delete, and the new name for everything
-  /// else
+  /// The name of the file. This is the old filename for delete, and the new
+  /// name for everything else
   pub name: String,
 
-  /// For similarity detection, this is the old name of the file. This is set for renames and
-  /// copies
+  /// For similarity detection, this is the old name of the file. This is set
+  /// for renames and copies
   pub similar_old: String,
 
-  /// The number of line insertions. This is only meaningful for some statuses, but there will
-  /// always be a value
+  /// The number of line insertions. This is only meaningful for some statuses,
+  /// but there will always be a value
   pub insertions: usize,
 
-  /// The number of line deletions. This is only meaningful for some statuses, but there will
-  /// always be a value
+  /// The number of line deletions. This is only meaningful for some statuses,
+  /// but there will always be a value
   pub deletions: usize,
 }
 

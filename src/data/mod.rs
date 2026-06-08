@@ -4,10 +4,9 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueEnum;
 use git2::{Config, ErrorClass, ErrorCode, Repository};
 
-use crate::{
-  config::PageWhen,
-  util::{branch_meta::BranchMeta, display::DisplayCommitMessageLevel},
-};
+use crate::config::PageWhen;
+use crate::util::branch_meta::BranchMeta;
+use crate::util::display::DisplayCommitMessageLevel;
 
 /// Generates the function to get a variable from git config.
 ///
@@ -24,7 +23,8 @@ use crate::{
 /// ```
 /// The returned value won't be an option, and if not found will use `default`.
 ///
-/// In both forms, `config` is an instance of [git2::Config] and `getter` is one of the getter functions defined it.
+/// In both forms, `config` is an instance of [git2::Config] and `getter` is one
+/// of the getter functions defined it.
 ///
 /// `key` is always a string.
 macro_rules! get_option {
@@ -48,7 +48,8 @@ macro_rules! get_option {
 /// Gets the feature-base of a branch.
 ///
 /// # Params
-/// - `branch_name` - the shortname of the branch (use [BranchMeta::name] if available)
+/// - `branch_name` - the shortname of the branch (use [BranchMeta::name] if
+///   available)
 pub fn get_feature_base(repo: &Repository, branch_name: &str) -> Result<Option<BranchMeta>> {
   match repo
     .config()?
@@ -172,7 +173,8 @@ pub fn get_list_base(config: &Config) -> Result<bool> {
 
 // SHOW
 
-/// Gets `feature.show.message`. Defaults to [DisplayCommitMessageLevel::default()].
+/// Gets `feature.show.message`. Defaults to
+/// [DisplayCommitMessageLevel::default()].
 pub fn get_show_message(config: &Config) -> Result<DisplayCommitMessageLevel> {
   let value = (get_option!(config, get_str, "feature.show.message") as Result<Option<&str>>)?;
   Ok(match value {

@@ -19,7 +19,8 @@ impl BranchMeta {
     &self.refname
   }
 
-  /// The shorthand name of the branch, e.g. "main" for local, "origin/main" for remote
+  /// The shorthand name of the branch, e.g. "main" for local, "origin/main" for
+  /// remote
   #[inline]
   pub fn name(&self) -> &str {
     &self.name
@@ -53,8 +54,9 @@ impl BranchMeta {
     self.ty == BranchType::Remote
   }
 
-  /// Given a remote branch, splits the name of the remote and the rest of the branch. Given a local
-  /// branch, returns a clone of the name and None as the remote.
+  /// Given a remote branch, splits the name of the remote and the rest of the
+  /// branch. Given a local branch, returns a clone of the name and None as
+  /// the remote.
   ///
   /// # Returns
   ///
@@ -99,8 +101,8 @@ impl BranchMeta {
     Ok(Self { refname, name, ty })
   }
 
-  /// Creates a [BranchMeta] from the refname of a branch. Needs a repository to search for the
-  /// matching branch.
+  /// Creates a [BranchMeta] from the refname of a branch. Needs a repository to
+  /// search for the matching branch.
   pub fn from_refname(repo: &Repository, refname: &str) -> Result<Self> {
     let reference = repo.find_reference(refname)?;
     let name = reference.shorthand_bytes().to_str_lossy_owned();
