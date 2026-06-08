@@ -6,11 +6,7 @@
   - template file that is used when -m is unspecified
 - custom zsh completions, maybe fish too
 - show
-  - handle merge commits in different ways (currently shows diff against first parent)
-- improve test environment
-  - make one home dir in each test, create all repos and dirs inside it
-- run git gc every now and then
-  - maybe in write commands like sync
+  - option for different display methods for merge commits (currently only supports first-parent)
 
 ## Features
 
@@ -19,9 +15,10 @@
   - use default git push config to determine whether to merge or rebase
 - release / version tags
   - maybe a single command to create and push a tag
+  - command to create a new tag incremented by major, minor, or patch
 - stash
   - more intuitive options to stash (--all => workdir/index, --unstaged => workdir, --staged => index)
-  - action should be a flag, not positional (and should --push by default)
+  - if action is optional, it should be a flat (--push by default), otherwise positional is fine
   - concatenate args as message
   - pretty output
 - simplified worktree command

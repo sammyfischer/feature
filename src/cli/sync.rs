@@ -1,5 +1,6 @@
 use std::fmt::Display;
 use std::io::ErrorKind;
+use std::time::Duration;
 use std::{fs, thread};
 
 use anyhow::Result;
@@ -9,6 +10,7 @@ use git2::{
   Branch, BranchType, ErrorClass, ErrorCode, FetchOptions, RemoteCallbacks, Repository,
   SubmoduleUpdateOptions,
 };
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::prune::prune_branches;
@@ -156,6 +158,14 @@ impl Args {
     };
 
     thread::scope(|scope| -> Result<_> {
+      // begin spinner
+      let spinner_style = ProgressStyle::with_template("{spinner:.cyan} {msg} {elapsed}")?
+        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✓"]);
+      let progress = ProgressBar::new_spinner().with_style(spinner_style);
+
+      progress.set_message("Syncing:");
+      progress.enable_steady_tick(Duration::from_millis(100));
+
       // SYNC PARENT REPO
       let repo_thread = scope.spawn(|| {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
@@ -199,6 +209,10 @@ impl Args {
 
       // collect and display
       let main_result = repo_thread.join().unwrap();
+      let proj_results = proj_thread.join().unwrap();
+      let mod_results = mod_thread.join().unwrap();
+      progress.finish_with_message("Synced in");
+
       match main_result {
         Ok(action) => println!("{}", display_sync_action("repo", &action)),
         Err(e) => eprintln!(
@@ -209,7 +223,6 @@ impl Args {
         ),
       }
 
-      let proj_results = proj_thread.join().unwrap();
       for result in proj_names.iter().zip(proj_results) {
         let (name, result) = result;
         match result {
@@ -218,7 +231,6 @@ impl Args {
         }
       }
 
-      let mod_results = mod_thread.join().unwrap();
       for result in mod_names.iter().zip(mod_results) {
         let (name, result) = result;
         match result {

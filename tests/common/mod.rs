@@ -199,7 +199,7 @@ impl TestRepo {
       .open(&path)
       .unwrap();
     file.set_permissions(Permissions::from_mode(0o775)).unwrap();
-    file.write(script.as_bytes()).unwrap();
+    file.write_all(script.as_bytes()).unwrap();
   }
 
   pub fn get_current_branch(&self) -> String {
