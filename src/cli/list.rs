@@ -6,7 +6,10 @@ use git2::{Branch, Branches, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::util::branch::{
-  get_ahead_behind, get_current_branch_name, get_upstream, get_worktree_branch_names,
+  get_ahead_behind,
+  get_current_branch_name,
+  get_upstream,
+  get_worktree_branch_names,
 };
 use crate::util::display::{display_plus_minus, trim_hash};
 use crate::util::open_repo_from_dirs;

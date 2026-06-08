@@ -9,17 +9,29 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::config::projects::ProjectEntry;
 use crate::util::advice::{
-  BISECT_ADVICE, MERGE_CONFLICT_ADVICE, PICK_CONFLICT_ADVICE, REBASE_CONFLICT_ADVICE,
-  REVERT_CONFLICT_ADVICE, STATUS_ADVICE,
+  BISECT_ADVICE,
+  MERGE_CONFLICT_ADVICE,
+  PICK_CONFLICT_ADVICE,
+  REBASE_CONFLICT_ADVICE,
+  REVERT_CONFLICT_ADVICE,
+  STATUS_ADVICE,
 };
 use crate::util::branch::{
-  find_branch_at_commit, get_ahead_behind, get_current_branch_or_commit, get_head, get_merge_head,
-  get_pick_head, get_revert_head,
+  find_branch_at_commit,
+  get_ahead_behind,
+  get_current_branch_or_commit,
+  get_head,
+  get_merge_head,
+  get_pick_head,
+  get_revert_head,
 };
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
 use crate::util::display::{
-  display_commit_compact, display_plus_minus, display_signature, trim_hash,
+  display_commit_compact,
+  display_plus_minus,
+  display_signature,
+  trim_hash,
 };
 use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::util::term::{get_term_width, is_term};
@@ -230,8 +242,8 @@ impl Args {
     }
 
     if is_pick_active(repo) {
-      // cherry picks are weird bc they show no diff with head when you stage changes. to show
-      // meaningful changes you have to diff with the picked commit
+      // cherry picks are weird bc they show no diff with head when you stage changes.
+      // to show meaningful changes you have to diff with the picked commit
       let pick_head = repo.find_reference("CHERRY_PICK_HEAD")?;
       let pick_tree = pick_head.peel_to_tree()?;
 
@@ -241,8 +253,8 @@ impl Args {
       if summary.num_files != 0 {
         write!(out, "\n\n{} - {}", style("Resolved").green(), summary)?;
       }
-      // cherry picked changes have no difference with head (except for conflicts), so the remaining
-      // diffs can be skipped
+      // cherry picked changes have no difference with head (except for conflicts), so
+      // the remaining diffs can be skipped
       return Ok(out);
     }
 
@@ -420,7 +432,8 @@ impl Args {
     Ok(out)
   }
 
-  /// Displays appednable signature (tabbed on a new line) only if it differs from parent
+  /// Displays appednable signature (tabbed on a new line) only if it differs
+  /// from parent
   fn display_different_signature(&self, parent: &Repository, child: &Repository) -> Result<String> {
     let mut out = String::new();
     let parent_sig = get_signature(parent)?;
@@ -481,9 +494,9 @@ impl Args {
   }
 }
 
-/// Displays a header when there is no other active operation (e.g. rebase/merge conflicts). Shows
-/// current branch, commit it points to, and upstream/base info if available. Unlike the others,
-/// this header takes up to 3 lines.
+/// Displays a header when there is no other active operation (e.g. rebase/merge
+/// conflicts). Shows current branch, commit it points to, and upstream/base
+/// info if available. Unlike the others, this header takes up to 3 lines.
 fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<String> {
   let mut out = String::with_capacity(80);
   let mut branch = None;
@@ -540,8 +553,8 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     let branch_ref = branch.resolve(repo)?;
 
     let mut rows: Vec<[String; 2]> = Vec::with_capacity(2);
-    // the label is either "Upstream" or "Base", these are printed with alignment so the branch
-    // names are lined up
+    // the label is either "Upstream" or "Base", these are printed with alignment so
+    // the branch names are lined up
     let mut label_width = 0usize;
 
     // upstream row
@@ -612,8 +625,8 @@ fn get_rebase_dir(repo: &Repository) -> Option<PathBuf> {
   Some(dir)
 }
 
-/// Displays a header line for an active rebase. Includes the source and destination branches, and
-/// the current progress.
+/// Displays a header line for an active rebase. Includes the source and
+/// destination branches, and the current progress.
 fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   let msgnum =
     fs::read_to_string(dir.join("msgnum")).context("Failed to get current step number")?;

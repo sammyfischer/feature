@@ -5,7 +5,10 @@ use git2::ErrorCode;
 use crate::config::PageWhen;
 use crate::util::diff::{DiffSummary, get_formatted_diff};
 use crate::util::display::{
-  DisplayCommitMessageLevel, DisplayCommitOptions, DisplayTimeOptions, display_commit,
+  DisplayCommitMessageLevel,
+  DisplayCommitOptions,
+  DisplayTimeOptions,
+  display_commit,
 };
 use crate::util::string::ToStrLossy;
 use crate::util::term::{is_term, paginate};
@@ -44,7 +47,8 @@ pub struct Args {
   #[arg(long, value_name = "WHEN")]
   pub paging: Option<PageWhen>,
 
-  /// The git revision string, e.g. HEAD^2, commit hash, branch name. See "man gitrevisions".
+  /// The git revision string, e.g. HEAD^2, commit hash, branch name. See "man
+  /// gitrevisions".
   #[arg(value_name = "REVISION", value_hint = ValueHint::Other)]
   pub revision: Option<String>,
 }
@@ -63,16 +67,13 @@ impl Args {
     writeln!(
       buf,
       "{}",
-      display_commit(
-        &commit,
-        &DisplayCommitOptions {
-          message: self.message.unwrap_or(data::get_show_message(&config)?),
-          time: DisplayTimeOptions {
-            relative: data::get_format_relative(&config)?,
-            fmt: data::get_format_date(&config)?
-          }
+      display_commit(&commit, &DisplayCommitOptions {
+        message: self.message.unwrap_or(data::get_show_message(&config)?),
+        time: DisplayTimeOptions {
+          relative: data::get_format_relative(&config)?,
+          fmt: data::get_format_date(&config)?
         }
-      )?
+      })?
     )?;
 
     let parent = match commit.parent(0) {

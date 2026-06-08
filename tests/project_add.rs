@@ -1,4 +1,5 @@
-use std::{fs, process::Command};
+use std::fs;
+use std::process::Command;
 
 use assert_cmd::assert::OutputAssertExt;
 
@@ -133,7 +134,8 @@ frontend = {{ url = "{}", path = "modules/frontend" }}
   assert_eq!(ignore, "modules/frontend\n");
 }
 
-/// When a gitignore file exists with entries but doesn't end in a newline, feature should add one
+/// When a gitignore file exists with entries but doesn't end in a newline,
+/// feature should add one
 #[test]
 fn writes_newline_to_gitignore() {
   let repo = TestRepo::new();

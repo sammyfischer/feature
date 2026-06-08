@@ -1,5 +1,5 @@
-//! Representation of the cli config. Use [load] to get the entire flattened config struct. Includes
-//! modules to work with specific config levels.
+//! Representation of the cli config. Use [load] to get the entire flattened
+//! config struct. Includes modules to work with specific config levels.
 
 use std::fmt::Display;
 use std::path::Path;
@@ -70,8 +70,8 @@ pub fn load() -> Result<Config> {
   load_with_path(&project::path())
 }
 
-/// Loads a layered config, using the given path as the project-level config file. The global config
-/// file cannot be changed.
+/// Loads a layered config, using the given path as the project-level config
+/// file. The global config file cannot be changed.
 pub fn load_with_path(project: &Path) -> Result<Config> {
   // load defaults
   let mut figment = Figment::new().merge(Serialized::defaults(Config::default()));
@@ -145,8 +145,8 @@ pub mod user {
 
   use crate::config::{Config, get_schema_url};
 
-  /// Returns the config file located in the platform's standard config directory
-  /// # Errors
+  /// Returns the config file located in the platform's standard config
+  /// directory # Errors
   /// Returns an error if the config directory cannot be obtained.
   pub fn path() -> Result<PathBuf> {
     let mut path = dirs::config_dir().ok_or(anyhow!("Failed to find user config directory",))?;

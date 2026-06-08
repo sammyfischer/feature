@@ -16,7 +16,8 @@ pub fn get_term_width() -> usize {
   cols as usize
 }
 
-/// Configues a yes/no prompt and gets user input. Prompts with "no" as the default.
+/// Configues a yes/no prompt and gets user input. Prompts with "no" as the
+/// default.
 pub fn get_user_confirmation(prompt: &str) -> Result<bool> {
   let result = Confirm::new()
     .default(false)

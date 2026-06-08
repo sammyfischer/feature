@@ -69,8 +69,9 @@ impl Args {
     Ok(names)
   }
 
-  /// Find reasonable revspecs that match the given prefix. This searches local branches, remote
-  /// branches, tags, and finally special rev names (e.g. HEAD).
+  /// Find reasonable revspecs that match the given prefix. This searches local
+  /// branches, remote branches, tags, and finally special rev names (e.g.
+  /// HEAD).
   fn find_matching_revs(&self, repo: &Repository) -> Result<Vec<String>> {
     let prefix = &self.value;
     let mut names = Vec::with_capacity(100);

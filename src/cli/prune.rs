@@ -32,7 +32,8 @@ base contains the branch's commit history already).";
   disable_help_subcommand = true
 )]
 pub struct Args {
-  /// Display output but don't delete any branches. Will still fetch all remotes.
+  /// Display output but don't delete any branches. Will still fetch all
+  /// remotes.
   #[arg(long)]
   dry_run: bool,
 
@@ -176,9 +177,9 @@ pub fn prune_branches(
 /// - it was pushed to a remote before
 ///
 /// # Returns
-/// Whether the delete operation occured. `false` means the delete didn't occur because the branch
-/// was determined to be unsafe to delete, rather than anything going wrong. An error implies that
-/// something went wrong.
+/// Whether the delete operation occured. `false` means the delete didn't occur
+/// because the branch was determined to be unsafe to delete, rather than
+/// anything going wrong. An error implies that something went wrong.
 fn prune_branch(
   repo: &Repository,
   config: &Config,
@@ -208,8 +209,8 @@ fn prune_branch(
 
   // skip current branch
   if current_branch_name.is_some_and(|it| it == meta.name()) {
-    // not necessarily an error, but the user should know that a non-protected branch was
-    // skipped and may manually need to be deleted
+    // not necessarily an error, but the user should know that a non-protected
+    // branch was skipped and may manually need to be deleted
     return Ok(UpdateAction::DeleteSkip {
       name: meta.name().to_owned(),
       reason: "currently checked-out".to_owned(),

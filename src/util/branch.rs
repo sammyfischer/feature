@@ -2,8 +2,18 @@
 
 use anyhow::{Context, Result, anyhow};
 use git2::{
-  AutotagOption, Branch, BranchType, ErrorCode, FetchOptions, FetchPrune, ObjectType, Oid,
-  Reference, RemoteCallbacks, Repository, ResetType,
+  AutotagOption,
+  Branch,
+  BranchType,
+  ErrorCode,
+  FetchOptions,
+  FetchPrune,
+  ObjectType,
+  Oid,
+  Reference,
+  RemoteCallbacks,
+  Repository,
+  ResetType,
 };
 
 use crate::util::branch_meta::BranchMeta;
@@ -43,7 +53,8 @@ pub fn get_revert_head<'repo>(repo: &'repo Repository) -> Result<Option<Referenc
   }
 }
 
-/// Iterates through all local and remote branches to find one that points to the given commit
+/// Iterates through all local and remote branches to find one that points to
+/// the given commit
 pub fn find_branch_at_commit<'repo>(
   repo: &'repo Repository,
   commit_id: &Oid,
@@ -60,8 +71,8 @@ pub fn find_branch_at_commit<'repo>(
   Ok(None)
 }
 
-/// Get the name of the current branch, or the trimmed hash if the repo is in detached HEAD, or None
-/// if the repo is empty
+/// Get the name of the current branch, or the trimmed hash if the repo is in
+/// detached HEAD, or None if the repo is empty
 pub fn get_current_branch_or_commit(repo: &Repository) -> Result<Option<String>> {
   Ok(match get_current_branch_name(repo) {
     Err(e) => return Err(e),
@@ -242,7 +253,8 @@ pub fn is_merged(repo: &Repository, branch: &Reference, base: &Reference) -> Res
     return Ok(true);
   }
 
-  // whether branch is a descendant of base. if it is, then there are newer unmerged commits
+  // whether branch is a descendant of base. if it is, then there are newer
+  // unmerged commits
   let is_descendant = repo.graph_descendant_of(branch_commit, base_commit)?;
   Ok(!is_descendant)
 }

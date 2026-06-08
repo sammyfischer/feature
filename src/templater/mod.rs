@@ -1,26 +1,30 @@
 //! An extremely simple template replacement language.
 //!
-//! The template replacer scans through a string, replacing the variables with their acutal values.
-//! It does so by pushing characters as they appear, until reaching a variable. It then looks up the
-//! replacement value and pushes that to the output. The replacer's error handling behavior can be
-//! customized to either:
+//! The template replacer scans through a string, replacing the variables with
+//! their acutal values. It does so by pushing characters as they appear, until
+//! reaching a variable. It then looks up the replacement value and pushes that
+//! to the output. The replacer's error handling behavior can be customized to
+//! either:
 //!
 //! # Template variables
 //!
-//! There are two types of template variables: short and long. Short replacements are a `%` followed
-//! by a single character. Long replacements are a `%` followed by parenthesized characters, e.g.
-//! `%(replacement)`.
+//! There are two types of template variables: short and long. Short
+//! replacements are a `%` followed by a single character. Long replacements are
+//! a `%` followed by parenthesized characters, e.g. `%(replacement)`.
 //!
-//! There is one special case: `%%`. This is a short replacement that always evaluates to a `%` in
-//! the output string. Consequently, `%` cannot be used as a user-defined short variable.
+//! There is one special case: `%%`. This is a short replacement that always
+//! evaluates to a `%` in the output string. Consequently, `%` cannot be used as
+//! a user-defined short variable.
 //!
 //! # Error handling
 //!
-//! The behavior of the replacer when it encounters an unrecognized variable can be customized to:
+//! The behavior of the replacer when it encounters an unrecognized variable can
+//! be customized to:
 //! 1. Fail immediately
-//! 2. Continue building the string, but collect errors (containing the invalid variable name and
-//!    position in the resulting string)
-//! 3. Treat the invalid variable as literal characters and push them to the outupt string
+//! 2. Continue building the string, but collect errors (containing the invalid
+//!    variable name and position in the resulting string)
+//! 3. Treat the invalid variable as literal characters and push them to the
+//!    outupt string
 
 use std::collections::HashMap;
 
@@ -71,9 +75,9 @@ impl<'values> ShortVar<'values> {
     }
   }
 
-  /// Create a new lazily-evaluated variable. The value is computed on first replacement, and
-  /// cached for subsequent replacements. The return value of `replacement` must outlive the
-  /// [Templater].
+  /// Create a new lazily-evaluated variable. The value is computed on first
+  /// replacement, and cached for subsequent replacements. The return value of
+  /// `replacement` must outlive the [Templater].
   pub fn lazy(name: char, replacement: impl Fn() -> Result<String> + 'values) -> Self {
     Self {
       name,
@@ -100,9 +104,9 @@ impl<'values> LongVar<'values> {
     }
   }
 
-  /// Create a new lazily-evaluated variable. The value is computed on first replacement, and
-  /// cached for subsequent replacements. The return value of `replacement` must outlive the
-  /// [Templater].
+  /// Create a new lazily-evaluated variable. The value is computed on first
+  /// replacement, and cached for subsequent replacements. The return value of
+  /// `replacement` must outlive the [Templater].
   pub fn lazy(name: &str, replacement: impl Fn() -> Result<String> + 'values) -> Self {
     Self {
       name: name.to_string(),
@@ -125,18 +129,20 @@ enum State {
   LongVariable,
 }
 
-/// An instance of the templater. Use [Templater::new] to create an instance, and chain
-/// [Templater::short] and [Templater::long] calls to define variables.
+/// An instance of the templater. Use [Templater::new] to create an instance,
+/// and chain [Templater::short] and [Templater::long] calls to define
+/// variables.
 ///
-/// Use [Templater::replace] to replace the configured variables in the given template. This can be
-/// called multiple times for the same templater. For this reason, it's recommended to configure
-/// each unique templater once, and reuse it in any context where the same exact variables are
-/// supported. It's especially recommended to not define templates in loops.
+/// Use [Templater::replace] to replace the configured variables in the given
+/// template. This can be called multiple times for the same templater. For this
+/// reason, it's recommended to configure each unique templater once, and reuse
+/// it in any context where the same exact variables are supported. It's
+/// especially recommended to not define templates in loops.
 ///
-/// The `'values` lifetime is the expected lifetime of any local variable used inside closures for
-/// lazily evaluated variables. In general this should be inferred by the compiler, but pay close
-/// attention to local variables you use inside closures and make sure they outlive the entire
-/// templater instance.
+/// The `'values` lifetime is the expected lifetime of any local variable used
+/// inside closures for lazily evaluated variables. In general this should be
+/// inferred by the compiler, but pay close attention to local variables you use
+/// inside closures and make sure they outlive the entire templater instance.
 pub struct Templater<'values> {
   short_vars: HashMap<char, Box<dyn Replace<'values> + 'values>>,
   long_vars: HashMap<String, Box<dyn Replace<'values> + 'values>>,
@@ -152,19 +158,21 @@ impl<'values> Templater<'values> {
     }
   }
 
-  /// Add a new short variable to the templater. Short variables appear as "%c" in template strings,
-  /// where 'c' is the name of the variable.
+  /// Add a new short variable to the templater. Short variables appear as "%c"
+  /// in template strings, where 'c' is the name of the variable.
   ///
-  /// Generally, you'll use [ShortVar::eager] or [ShortVar::lazy] as the argument to this function.
+  /// Generally, you'll use [ShortVar::eager] or [ShortVar::lazy] as the
+  /// argument to this function.
   pub fn short(mut self, var: ShortVar<'values>) -> Self {
     self.short_vars.insert(var.name, var.value);
     self
   }
 
-  /// Add a new long variable to the templater. Long variables appear as "%(name)" in template
-  /// strings, where "name" is the name of the variable.
+  /// Add a new long variable to the templater. Long variables appear as
+  /// "%(name)" in template strings, where "name" is the name of the variable.
   ///
-  /// Generally, you'll use [LongVar::eager] or [LongVar::lazy] as the argument to this function.
+  /// Generally, you'll use [LongVar::eager] or [LongVar::lazy] as the argument
+  /// to this function.
   pub fn long(mut self, var: LongVar<'values>) -> Self {
     self.long_vars.insert(var.name, var.value);
     self

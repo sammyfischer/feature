@@ -36,14 +36,12 @@
   },
 
   // https://dprint.dev/plugins/toml/config/
-  "toml": {
-  },
+  "toml": {},
 
   // https://malva.netlify.app/
   "malva": {
     "ignoreCommentDirective": "dprint-ignore",
     "ignoreFileCommentDirective": "dprint-ignore-file",
-
     "operatorLinebreak": "before",
     "trailingComma": true,
     "formatComments": true,
@@ -53,13 +51,12 @@
   "markup": {
     "ignoreCommentDirective": "dprint-ignore",
     "ignoreFileCommentDirective": "dprint-ignore-file",
-
     "formatComments": true,
     "maxAttrsPerLine": 1,
     "component.selfClosing": true,
     "doctypeKeywordCase": "lower",
 
-    // vue (not using vue, but I want to have a config for all projects)
+    // vue
     "vBindStyle": "short",
     "vOnStyle": "short",
     "vSlotStyle": "vSlot",
@@ -83,11 +80,12 @@
 
   // external formatters
   "exec": {
-    // use rustfmt for rust files
+    "cwd": "${configDir}",
     "commands": [
+      // rust
       {
-        "command": "rustfmt",
-        "exts": "rs",
+        "command": "rustfmt +nightly",
+        "exts": ["rs"],
         "cacheKeyFiles": [
           "rustfmt.toml",
           "rust-toolchain.toml",
@@ -117,7 +115,7 @@
     "https://plugins.dprint.dev/toml-0.7.0.wasm",
     "https://plugins.dprint.dev/g-plane/markup_fmt-v0.25.3.wasm",
     "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.5.1.wasm",
-    "https://plugins.dprint.dev/exec-0.6.0.json@a054130d458f124f9b5c91484833828950723a5af3f8ff2bd1523bd47b83b364",
     "https://plugins.dprint.dev/g-plane/malva-v0.15.1.wasm",
+    "https://plugins.dprint.dev/exec-0.6.2.json@df98f54ffd3092b8a841aedd6d098a2651f16d0a796a40535774f1a8b4b9d463",
   ],
 }

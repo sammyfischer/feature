@@ -96,7 +96,8 @@ fn merge_commit_has_both_parents() {
   );
 }
 
-/// When no commit message is specified, default to MERGE_MSG if a merge is active
+/// When no commit message is specified, default to MERGE_MSG if a merge is
+/// active
 #[test]
 fn merge_commit_uses_merge_msg() {
   let repo = TestRepo::new();
@@ -122,7 +123,8 @@ fn merge_commit_uses_merge_msg() {
   repo.feature(&["commit"]).success();
 
   let cmd = repo.git(&["show", "HEAD", "--no-patch", "--pretty=format:%s"]);
-  // the actual message may depend on git config, but starts with should be pretty good
+  // the actual message may depend on git config, but starts with should be pretty
+  // good
   assert!(
     get_stdout!(cmd)
       .trim()

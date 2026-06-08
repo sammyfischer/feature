@@ -52,7 +52,8 @@ impl ToStrLossy for Vec<u8> {
 }
 
 pub trait TrimPrefix {
-  /// Trims a prefix from a string and returns a slice. If the string doesn't contain the prefix, returns the whole slice.
+  /// Trims a prefix from a string and returns a slice. If the string doesn't
+  /// contain the prefix, returns the whole slice.
   fn trim_prefix_opt(&self, prefix: &str) -> &str;
 }
 

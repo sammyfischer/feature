@@ -5,7 +5,15 @@ use std::path::Path;
 use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{
-  Commit, Cred, CredentialType, ErrorCode, Oid, RemoteCallbacks, Repository, Signature, Tag,
+  Commit,
+  Cred,
+  CredentialType,
+  ErrorCode,
+  Oid,
+  RemoteCallbacks,
+  Repository,
+  Signature,
+  Tag,
 };
 
 use crate::util::branch::find_branch_at_commit;
@@ -231,8 +239,8 @@ pub fn get_push_callbacks<'cbs>(repo: &'cbs Repository) -> RemoteCallbacks<'cbs>
     Ok(())
   });
 
-  // this is arbitrary text sent by the server. on github/gitlab, this usually contains info on
-  // how to create a pull request for newly pushed branches
+  // this is arbitrary text sent by the server. on github/gitlab, this usually
+  // contains info on how to create a pull request for newly pushed branches
   cbs.sideband_progress(|bytes| {
     print!("{}", bytes.to_str_lossy());
     true

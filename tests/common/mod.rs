@@ -107,7 +107,8 @@ impl TestRepo {
     this
   }
 
-  /// Creates a repo and a remote. Adds the remote to the local repo with the name "origin"
+  /// Creates a repo and a remote. Adds the remote to the local repo with the
+  /// name "origin"
   pub fn new_with_remote() -> (Self, TestRemote) {
     let local = Self::new();
     let remote = TestRemote::new();
@@ -207,8 +208,8 @@ impl TestRepo {
     get_stdout!(cmd).trim().to_string()
   }
 
-  /// Gets a list of branches and their upstream tracking branch, via `git branch
-  /// --format='%(refname) %(upstream)'`. The format looks like:
+  /// Gets a list of branches and their upstream tracking branch, via `git
+  /// branch --format='%(refname) %(upstream)'`. The format looks like:
   ///
   /// ```txt
   /// refs/heads/main refs/remotes/origin/main
@@ -274,7 +275,8 @@ impl TestRemote {
     this
   }
 
-  /// Runs commands with the --git-dir argument specified, since this repository is bare
+  /// Runs commands with the --git-dir argument specified, since this repository
+  /// is bare
   pub fn git(&self, args: &[&str]) -> Assert {
     Command::new("git")
       .current_dir(self.path())

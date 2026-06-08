@@ -69,7 +69,8 @@ fn uses_specified_dir_and_worktree() {
   assert_eq!(get_stdout!(cmd).trim(), "A");
 }
 
-/// Specifying --worktree in the command line should error if no --git-dir is specified
+/// Specifying --worktree in the command line should error if no --git-dir is
+/// specified
 #[test]
 fn worktree_requires_git_dir() {
   let repo = TestRepo::new();
@@ -107,7 +108,8 @@ fn setup_feature_project() -> (TestRepo, TestRepo) {
   (repo, project_remote)
 }
 
-/// If the current repo is a feature project, it should try searching for a parent config
+/// If the current repo is a feature project, it should try searching for a
+/// parent config
 #[test]
 fn project_searches_upward() {
   let (repo, _project) = setup_feature_project();

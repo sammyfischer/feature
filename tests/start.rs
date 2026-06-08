@@ -29,7 +29,8 @@ fn empty_branch_name_fails() {
   repo.feature(&["start", ""]).failure();
 }
 
-/// If the user specifies `--from` as a valid base, then start should start from that branch
+/// If the user specifies `--from` as a valid base, then start should start from
+/// that branch
 #[test]
 fn starts_from_specified_base() {
   let repo = TestRepo::new();
@@ -57,7 +58,8 @@ fn starts_from_specified_base() {
   assert_eq!(repo.get_current_branch(), "main-feature");
 }
 
-/// If the base branch has no upstream, feature should set it as the feature-base
+/// If the base branch has no upstream, feature should set it as the
+/// feature-base
 #[test]
 fn sets_feature_base() {
   let repo = TestRepo::new();
@@ -68,7 +70,8 @@ fn sets_feature_base() {
   assert_eq!(get_stdout!(cmd).trim(), "refs/heads/main");
 }
 
-/// If the base branch has an upstream, feature should set the upstream as the feature-base
+/// If the base branch has an upstream, feature should set the upstream as the
+/// feature-base
 #[test]
 fn sets_feature_base_using_remote() {
   let (local, _remote) = TestRepo::new_with_remote();
@@ -164,7 +167,8 @@ Caused by:
     );
 }
 
-/// Dry run mode only prints the would-be branch name, and doesn't create or switch to a branch
+/// Dry run mode only prints the would-be branch name, and doesn't create or
+/// switch to a branch
 #[test]
 fn dry_run_prints_branch() {
   let repo = TestRepo::new();
@@ -196,8 +200,8 @@ template = "%(user)%(sep)%(base)%(sep)%s"
   );
 
   // with config file options
-  // by not switching back to main, we're effectively testing that feature didn't create and switch
-  // to the new branch
+  // by not switching back to main, we're effectively testing that feature didn't
+  // create and switch to the new branch
   let cmd = repo
     .feature(&["start", "--dry-run", "new", "branch"])
     .success();

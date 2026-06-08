@@ -1,4 +1,5 @@
-//! Defines the main cli structure, most simple commands, and several helper functions and macros.
+//! Defines the main cli structure, most simple commands, and several helper
+//! functions and macros.
 
 use std::path::PathBuf;
 

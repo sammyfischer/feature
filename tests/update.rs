@@ -4,8 +4,8 @@ use crate::common::TestRepo;
 
 mod common;
 
-/// Creates a test repo with a main and feature branch that currently have conflicts. Leaves
-/// repository checked out to main.
+/// Creates a test repo with a main and feature branch that currently have
+/// conflicts. Leaves repository checked out to main.
 ///
 /// Creates branches with this structure:
 /// ```txt
@@ -14,8 +14,8 @@ mod common;
 ///   X <- feature
 /// ```
 ///
-/// Where commits B and X modify `file.txt`, entirely replacing the contents with "B"
-/// and "X" respectively.
+/// Where commits B and X modify `file.txt`, entirely replacing the contents
+/// with "B" and "X" respectively.
 fn create_conflicts() -> TestRepo {
   let repo = TestRepo::new();
   let file_name = "file.txt";
@@ -171,7 +171,8 @@ fn git_rebase_skips() {
   //          \
   //           Y' <- feature
   //
-  // Where Y' is an arbitrary name for the commit. The commit message of Y' is still "Y"
+  // Where Y' is an arbitrary name for the commit. The commit message of Y' is
+  // still "Y"
 
   repo.feature(&["update"]).failure();
   assert!(repo.is_rebase_active(), "Rebase should be active");

@@ -38,7 +38,8 @@ impl App {
     let repo = match Self::find_repo(args.git_dir.as_deref(), args.work_tree.as_deref()) {
       Ok(repo) => Ok(repo) as Result<Repository>,
       Err(e) if e.class() == ErrorClass::Repository && e.code() == ErrorCode::NotFound => {
-        // complete command should print an empty list (i.e. nothing) if no repo is found
+        // complete command should print an empty list (i.e. nothing) if no repo is
+        // found
         if let Command::Complete(_) = args.command {
           return Ok(None);
         }

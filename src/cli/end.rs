@@ -3,7 +3,11 @@ use console::style;
 use git2::{PushOptions, Repository};
 
 use crate::util::branch::{
-  fetch_upstream_branch, find_local_of_upstream, get_current_branch_name, is_merged, switch,
+  fetch_upstream_branch,
+  find_local_of_upstream,
+  get_current_branch_name,
+  is_merged,
+  switch,
 };
 use crate::util::branch_meta::BranchMeta;
 use crate::util::display::trim_hash;
