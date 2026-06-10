@@ -12,7 +12,7 @@ use crate::util::branch::{
 use crate::util::branch_meta::BranchMeta;
 use crate::util::display::trim_hash;
 use crate::util::string::ToStrLossy;
-use crate::util::{delete_config_section, get_push_callbacks};
+use crate::util::{PushOutput, delete_config_section, get_push_callbacks};
 use crate::{App, data, style};
 
 const LONG_ABOUT: &str = r#"Safely deletes a feature branch, checking if it's merged into its base. If
@@ -160,11 +160,13 @@ fn delete_upstream(repo: &Repository, branch: &BranchMeta) -> Result<()> {
     let remote_name = remote_name.to_str_lossy();
     let mut remote = repo.find_remote(&remote_name)?;
 
-    let mut opts = PushOptions::new();
-    opts.remote_callbacks(get_push_callbacks(repo));
-
-    // the callbacks handle printing relevant output
-    remote.push(&[&refspec], Some(&mut opts))?;
+    let mut output = PushOutput::new();
+    {
+      let mut opts = PushOptions::new();
+      opts.remote_callbacks(get_push_callbacks(repo, &mut output)?);
+      remote.push(&[&refspec], Some(&mut opts))?;
+    }
+    output.print();
 
     // delete local copy
     upstream.delete()?;

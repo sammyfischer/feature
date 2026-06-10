@@ -7,6 +7,12 @@ use anyhow::{Context, Result, anyhow};
 use console::Term;
 use dialoguer::Confirm;
 
+/// Tick strings to use for loading spinners
+pub const TICK_STRINGS: [&str; 11] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✓"];
+
+/// Characters to use for progress bars
+pub const PROGRESS_CHARS: &str = "=> ";
+
 pub fn is_term() -> bool {
   Term::stdout().is_term()
 }
