@@ -1,6 +1,8 @@
 //! Helper functions that may be found useful in many places
 
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
@@ -10,15 +12,18 @@ use git2::{
   CredentialType,
   ErrorCode,
   Oid,
+  PackBuilderStage,
   RemoteCallbacks,
   Repository,
   Signature,
   Tag,
 };
+use indicatif::{BinaryBytes, HumanCount, MultiProgress, ProgressBar, ProgressStyle};
 
 use crate::util::branch::find_branch_at_commit;
 use crate::util::display::{display_hash, trim_hash};
 use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
+use crate::util::term::{PROGRESS_CHARS, TICK_STRINGS};
 use crate::{await_child, git};
 
 pub mod advice;
@@ -161,9 +166,103 @@ pub fn get_credentials_cb()
   }
 }
 
-/// Gets the callback used in pushes when a reference is updated
-pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool {
-  |name: &str, old_id: Oid, new_id: Oid| -> bool {
+/// Buffers that contain push info
+pub struct PushOutput {
+  /// Each branch that was updated in the local repository
+  pub updates: Rc<RefCell<String>>,
+
+  /// Each branch that failed to push
+  pub rejections: Rc<RefCell<String>>,
+
+  /// Arbitrary server reponse
+  pub server: Rc<RefCell<String>>,
+}
+
+impl PushOutput {
+  pub fn new() -> Self {
+    PushOutput {
+      updates: Rc::new(RefCell::new(String::new())),
+      rejections: Rc::new(RefCell::new(String::new())),
+      server: Rc::new(RefCell::new(String::new())),
+    }
+  }
+
+  /// Prints output to stdout
+  pub fn print(self) {
+    if let Some(updates) = Rc::into_inner(self.updates) {
+      print!("{}", updates.into_inner());
+    }
+    if let Some(rejections) = Rc::into_inner(self.rejections) {
+      print!("{}", rejections.into_inner());
+    }
+    if let Some(response) = Rc::into_inner(self.server) {
+      print!("{}", response.into_inner());
+    }
+  }
+}
+
+/// Gets fully configured push callbacks
+pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
+  repo: &'repo Repository,
+  bufs: &'cbs mut PushOutput,
+) -> Result<RemoteCallbacks<'cbs>> {
+  use std::fmt::Write;
+
+  let multi = MultiProgress::new();
+  let mut cbs = RemoteCallbacks::new();
+
+  cbs.credentials(get_credentials_cb());
+
+  let pack_progress = multi.add(ProgressBar::new_spinner().with_style(
+    ProgressStyle::with_template("{spinner:.cyan} {elapsed} {msg}")?.tick_strings(&TICK_STRINGS),
+  ));
+
+  cbs.pack_progress(move |stage, current, total| {
+    pack_progress.set_message(format!(
+      "{}: {}/{}",
+      match stage {
+        PackBuilderStage::AddingObjects => "Counting objects",
+        PackBuilderStage::Deltafication => "Compressing objects",
+      },
+      current,
+      total
+    ));
+
+    // Finish the spinner once packing completes
+    if current == total && total > 0 {
+      pack_progress.finish_with_message(format!("Packed {} objects", HumanCount(total as u64)));
+    }
+  });
+
+  let transfer_progress = multi.add(
+    ProgressBar::new(0).with_style(
+      ProgressStyle::with_template("{spinner:.cyan} {elapsed} [{bar:40.cyan}] {msg}")?
+        .progress_chars(PROGRESS_CHARS)
+        .tick_strings(&TICK_STRINGS),
+    ),
+  );
+
+  cbs.push_transfer_progress(move |current, total, bytes| {
+    if transfer_progress.length().is_none() || transfer_progress.length() == Some(0) {
+      transfer_progress.set_length(total as u64);
+    }
+
+    transfer_progress.set_position(current as u64);
+
+    if current != total {
+      transfer_progress.set_message(format!("{}/{} objects", current, total));
+    } else {
+      transfer_progress.finish_with_message(format!(
+        "{} objects ({})",
+        HumanCount(total as u64),
+        BinaryBytes(bytes as u64)
+      ));
+    }
+  });
+
+  // called on each remote tracking branch that's updated
+  let update_buf = bufs.updates.clone();
+  cbs.update_tips(move |name: &str, old_id: Oid, new_id: Oid| -> bool {
     if old_id == new_id {
       return true;
     }
@@ -176,7 +275,13 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
         if let Ok(new_commit) = repo.find_commit(new_id)
           && let Ok(hash) = display_hash(&new_commit)
         {
-          println!("{} {} {}", style("Created").green(), name, hash);
+          let _ = writeln!(
+            update_buf.borrow_mut(),
+            "{} {} {}",
+            style("Created").green(),
+            name,
+            hash
+          );
         };
       }
 
@@ -184,7 +289,8 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
         if let Ok(old_commit) = repo.find_commit(old_id)
           && let Ok(hash) = trim_hash(&old_commit)
         {
-          println!(
+          let _ = writeln!(
+            update_buf.borrow_mut(),
             "{} {} {}",
             style("Deleted").red(),
             name,
@@ -199,7 +305,8 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
           && let Ok(old_commit) = repo.find_commit(old)
           && let Ok(old_hash) = display_hash(&old_commit)
         {
-          println!(
+          let _ = writeln!(
+            update_buf.borrow_mut(),
             "{} {} {} -> {}",
             style("Updated").green(),
             name,
@@ -211,23 +318,15 @@ pub fn get_update_tips_cb(repo: &Repository) -> impl Fn(&str, Oid, Oid) -> bool 
     }
 
     true
-  }
-}
-
-/// Gets fully configured push callbacks
-pub fn get_push_callbacks<'cbs>(repo: &'cbs Repository) -> RemoteCallbacks<'cbs> {
-  let mut cbs = RemoteCallbacks::new();
-
-  cbs.credentials(get_credentials_cb());
-
-  // called on each remote tracking branch that's updated
-  cbs.update_tips(get_update_tips_cb(repo));
+  });
 
   // print error if push fails
-  cbs.push_update_reference(|refname, status| {
+  let rejection_buf = bufs.rejections.clone();
+  cbs.push_update_reference(move |refname, status| {
     // a status of Some means push was rejected
     if let Some(msg) = status {
-      eprintln!(
+      let _ = writeln!(
+        rejection_buf.borrow_mut(),
         "{} to {} {}: {}",
         style("Push").red(),
         refname,
@@ -241,12 +340,13 @@ pub fn get_push_callbacks<'cbs>(repo: &'cbs Repository) -> RemoteCallbacks<'cbs>
 
   // this is arbitrary text sent by the server. on github/gitlab, this usually
   // contains info on how to create a pull request for newly pushed branches
-  cbs.sideband_progress(|bytes| {
-    print!("{}", bytes.to_str_lossy());
+  let response_buf = bufs.server.clone();
+  cbs.sideband_progress(move |bytes| {
+    let _ = write!(response_buf.borrow_mut(), "{}", bytes.to_str_lossy());
     true
   });
 
-  cbs
+  Ok(cbs)
 }
 
 /// Deletes an entire section from git config

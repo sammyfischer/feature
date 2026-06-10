@@ -26,6 +26,7 @@ use crate::util::branch::{fetch_all, get_current_branch_name, hard_reset};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::{DiffSummary, has_workdir_changes};
 use crate::util::string::ToStrLossyOwned;
+use crate::util::term::TICK_STRINGS;
 use crate::util::{get_credentials_cb, open_repo_from_dirs};
 use crate::{App, data, style};
 
@@ -166,10 +167,10 @@ impl Args {
 
     thread::scope(|scope| -> Result<_> {
       // begin spinner
-      let spinner_style = ProgressStyle::with_template("{spinner:.cyan} {msg} {elapsed}")?
-        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✓"]);
-      let progress = ProgressBar::new_spinner().with_style(spinner_style);
-
+      let progress = ProgressBar::new_spinner().with_style(
+        ProgressStyle::with_template("{spinner:.cyan} {msg} {elapsed}")?
+          .tick_strings(&TICK_STRINGS),
+      );
       progress.set_message("Syncing:");
       progress.enable_steady_tick(Duration::from_millis(100));
 

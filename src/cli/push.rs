@@ -8,7 +8,7 @@ use git2::{Branch, BranchType, ErrorClass, ErrorCode, PushOptions, Repository};
 use crate::util::branch::{fetch_upstream_branch, get_ahead_behind};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
-use crate::util::get_push_callbacks;
+use crate::util::{PushOutput, get_push_callbacks};
 use crate::{App, data, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
@@ -143,10 +143,6 @@ impl Args {
       None
     };
 
-    // prepare actual push
-    let mut opts = PushOptions::new();
-    opts.remote_callbacks(get_push_callbacks(&state.repo));
-
     // build the refspec
     let mut refspec = String::with_capacity(40);
     if self.force {
@@ -184,9 +180,19 @@ impl Args {
       .find_remote(&remote_name)
       .with_context(|| format!("Failed to get reference to remote {}", remote_name))?;
 
-    remote
-      .push(&[&refspec], Some(&mut opts))
-      .context("Failed to push")?;
+    // perform push and display output
+    let mut output = PushOutput::new();
+    {
+      let mut opts = PushOptions::new();
+      opts.remote_callbacks(get_push_callbacks(&state.repo, &mut output)?);
+
+      remote
+        .push(&[&refspec], Some(&mut opts))
+        .context("Failed to push")?;
+
+      // drop opts after push
+    }
+    output.print();
 
     print!(
       "{} {} to {}",
