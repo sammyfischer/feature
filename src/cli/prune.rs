@@ -98,17 +98,24 @@ impl Args {
       });
 
       let repo_result = repo_thread.join().unwrap();
+      let proj_results = proj_thread.join().unwrap();
+
+      let repo_name = work_dir
+        .unwrap_or(&repo_dir)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "repo".to_string());
+
       match repo_result {
-        Ok(action) => println!("{}", display_prune_action("repo", &action)),
+        Ok(action) => println!("{}", display_prune_action(&repo_name, &action)),
         Err(e) => eprintln!(
           "{} to prune {}: {}",
           style("Failed").red(),
-          style("repo").cyan(),
+          style(&repo_name).cyan(),
           e
         ),
       }
 
-      let proj_results = proj_thread.join().unwrap();
       for (name, result) in proj_names.iter().zip(proj_results) {
         match result {
           Ok(action) => println!("{}", display_prune_action(name, &action)),
@@ -269,7 +276,7 @@ pub fn display_prune_action(name: &str, action: &SyncAction) -> String {
       format!(
         "{} {}:{}",
         style("Pruned").bold().green(),
-        style(name).bold().cyan(),
+        style(name).cyan(),
         msg
       )
     }

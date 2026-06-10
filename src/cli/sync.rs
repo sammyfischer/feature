@@ -221,12 +221,18 @@ impl Args {
       let mod_results = mod_thread.join().unwrap();
       progress.finish_with_message("Synced in");
 
+      let repo_name = work_dir
+        .unwrap_or(&repo_dir)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "repo".to_string());
+
       match main_result {
-        Ok(action) => println!("{}", display_sync_action("repo", &action)),
+        Ok(action) => println!("{}", display_sync_action(&repo_name, &action)),
         Err(e) => eprintln!(
           "{} to sync {}: {}",
           style("Failed"),
-          style("repo").cyan(),
+          style(&repo_name).cyan(),
           e
         ),
       }
@@ -502,27 +508,27 @@ pub fn display_sync_action(name: &str, action: &SyncAction) -> String {
       format!(
         "{} {}:{}",
         style("Synced").bold().green(),
-        style(name).bold().cyan(),
+        style(name).cyan(),
         msg
       )
     }
 
     SyncAction::ProjectInit => format!(
-      "{} {}",
+      "{} project {}",
       style("Cloned").bold().green(),
-      style(name).bold().cyan()
+      style(name).cyan()
     ),
 
     SyncAction::ModuleInit => format!(
-      "{} {}",
+      "{} module {}",
       style("Initialized").bold().green(),
-      style(name).bold().cyan()
+      style(name).cyan()
     ),
 
     SyncAction::ModuleUpdate { old, new } => format!(
-      "{} {} to {} {}",
+      "{} module {} to {} {}",
       style("Updated").bold().green(),
-      style(name).bold().cyan(),
+      style(name).cyan(),
       new,
       style!("(was {})", old)
     ),
@@ -537,7 +543,7 @@ impl Display for UpdateAction {
           f,
           "{} {} {} | {}",
           style("Updated").green(),
-          style(name).cyan(),
+          name,
           style!("(was {})", old).dim(),
           changes.display_header()
         )
@@ -558,7 +564,7 @@ impl Display for UpdateAction {
           f,
           "{} {} {}",
           style("Deleted").red(),
-          style(name).cyan(),
+          name,
           style!("(was {})", old).dim()
         )
       }
