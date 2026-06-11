@@ -1,11 +1,19 @@
 use std::thread;
+use std::time::Duration;
 
 use anyhow::Result;
 use console::style;
 use git2::{Branch, BranchType, ErrorCode, Repository};
+use indicatif::{MultiProgress, ProgressBar};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::cli::sync::{SyncAction, UpdateAction};
+use crate::cli::sync::{
+  SyncAction,
+  UpdateAction,
+  add_sync_spinner,
+  display_sync_updates,
+  set_sync_spinner_style,
+};
 use crate::config::{self, Config};
 use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
 use crate::util::branch_meta::BranchMeta;
@@ -60,71 +68,106 @@ impl Args {
     let app_config = &state.config;
     let git_config = state.repo.config()?.snapshot()?;
 
+    // progress bars
+    let multi = MultiProgress::new();
+    let mut prefix_width: usize;
+
+    let main_progress = {
+      let name = work_dir
+        .unwrap_or(&repo_dir)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "repo".to_string());
+
+      prefix_width = name.len();
+      let spinner = add_sync_spinner(&multi, name.clone());
+      (name, spinner)
+    };
+
     let skip_projects = match self.no_projects {
       Some(it) => it,
       None => !data::get_sync_projects(&git_config)?,
     };
-    let proj_names: Vec<_> = if skip_projects {
+    let proj_progresses: Vec<_> = if skip_projects {
       Vec::new()
     } else {
       state
         .config
         .projects
         .iter()
-        .map(|(name, _)| name.to_owned())
+        .map(|(name, _)| {
+          let name = name.to_owned();
+          prefix_width = name.len().max(prefix_width);
+
+          (name.clone(), add_sync_spinner(&multi, name))
+        })
         .collect()
     };
 
+    // set spinner templates
+    set_sync_spinner_style(&main_progress.1, prefix_width);
+    for (_, progress) in &proj_progresses {
+      set_sync_spinner_style(progress, prefix_width);
+    }
+
     thread::scope(|scope| -> Result<_> {
+      // unlike sync, main repo can run concurrently, since projects won't be
+      // reconfigured
       let repo_thread = scope.spawn(|| {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
-        self.prune_repo(&repo, app_config)
+        self.prune_repo(&repo, app_config, &main_progress.1)
       });
 
       let proj_thread = scope.spawn(|| {
         if skip_projects {
           Vec::new()
         } else {
-          app_config
-            .projects
+          proj_progresses
             .par_iter()
-            .map(|(_, project)| {
+            .map(|(name, progress)| {
+              let project = &app_config.projects[name];
               let repo = Repository::open(&project.path)?;
               let config = config::load_with_path(&project.path)?;
-              self.prune_repo(&repo, &config)
+              self.prune_repo(&repo, &config, progress)
             })
             .collect()
         }
       });
 
-      let repo_result = repo_thread.join().unwrap();
+      let main_result = repo_thread.join().unwrap();
       let proj_results = proj_thread.join().unwrap();
 
-      let repo_name = work_dir
-        .unwrap_or(&repo_dir)
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| "repo".to_string());
-
-      match repo_result {
-        Ok(action) => println!("{}", display_prune_action(&repo_name, &action)),
+      match main_result {
+        Ok(SyncAction::Sync(updates)) => {
+          let out = display_sync_updates(&main_progress.0, &updates);
+          if !out.is_empty() {
+            println!("{}", out);
+          }
+        }
         Err(e) => eprintln!(
           "{} to prune {}: {}",
           style("Failed").red(),
-          style(&repo_name).cyan(),
+          style(&main_progress.0).cyan(),
           e
         ),
+        _ => (),
       }
 
-      for (name, result) in proj_names.iter().zip(proj_results) {
+      for ((name, _), result) in proj_progresses.iter().zip(proj_results) {
         match result {
-          Ok(action) => println!("{}", display_prune_action(name, &action)),
+          Ok(SyncAction::Sync(updates)) => {
+            let out = display_sync_updates(name, &updates);
+            if !out.is_empty() {
+              println!("{}", out);
+            }
+          }
           Err(e) => eprintln!(
             "{} to prune {}: {}",
             style("Failed").red(),
             style(name).cyan(),
             e
           ),
+          _ => (),
         }
       }
 
@@ -132,21 +175,29 @@ impl Args {
     })
   }
 
-  fn prune_repo(&self, repo: &Repository, config: &Config) -> Result<SyncAction> {
+  fn prune_repo(
+    &self,
+    repo: &Repository,
+    config: &Config,
+    progress: &ProgressBar,
+  ) -> Result<SyncAction> {
+    progress.enable_steady_tick(Duration::from_millis(100));
+
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
       None => !data::get_feature_autofetch(&repo.config()?.snapshot()?)?,
     };
 
     if !skip_fetch {
+      progress.set_message("Fetching all remotes");
       fetch_all(repo)?;
     }
 
-    Ok(SyncAction::Sync(prune_branches(
-      repo,
-      config,
-      self.dry_run,
-    )?))
+    progress.set_message("Pruning");
+    let updates = prune_branches(repo, config, self.dry_run)?;
+
+    progress.finish_with_message("Pruned");
+    Ok(SyncAction::Sync(updates))
   }
 }
 
@@ -245,42 +296,4 @@ fn prune_branch(
     name: meta.name().to_owned(),
     old: commit.as_object().short_id()?.to_str_lossy_owned(),
   })
-}
-
-/// Displays this [SyncAction::Sync], but uses the word "Pruned" instead of
-/// "Synced".
-///
-/// # Panics
-/// This must only be called on a [SyncAction::Sync]. Panics when called on
-/// another other [SyncAction] type.
-pub fn display_prune_action(name: &str, action: &SyncAction) -> String {
-  match action {
-    SyncAction::Sync(updates) => {
-      let updates: Vec<_> = updates
-        .iter()
-        .filter_map(|update| {
-          if let UpdateAction::None = update {
-            None
-          } else {
-            Some(format!("  {}", update))
-          }
-        })
-        .collect();
-
-      let msg = if updates.is_empty() {
-        " up to date".to_string()
-      } else {
-        format!("\n{}", updates.join("\n"))
-      };
-
-      format!(
-        "{} {}:{}",
-        style("Pruned").bold().green(),
-        style(name).cyan(),
-        msg
-      )
-    }
-
-    _ => panic!("Illegal SyncAction type"),
-  }
 }

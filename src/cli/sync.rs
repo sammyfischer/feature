@@ -143,7 +143,7 @@ impl Args {
         .unwrap_or_else(|| "repo".to_string());
 
       prefix_width = name.len();
-      let spinner = add_spinner(&multi, name.clone());
+      let spinner = add_sync_spinner(&multi, name.clone());
       (name, spinner)
     };
 
@@ -163,7 +163,7 @@ impl Args {
           let name = name.to_owned();
           prefix_width = name.len().max(prefix_width);
 
-          (name.clone(), add_spinner(&multi, name))
+          (name.clone(), add_sync_spinner(&multi, name))
         })
         .collect()
     };
@@ -183,18 +183,18 @@ impl Args {
           let name = module.name_bytes().to_str_lossy_owned();
           prefix_width = name.len().max(prefix_width);
 
-          (name.clone(), add_spinner(&multi, name))
+          (name.clone(), add_sync_spinner(&multi, name))
         })
         .collect()
     };
 
     // set spinner templates
-    set_spinner_style(&main_progress.1, prefix_width);
+    set_sync_spinner_style(&main_progress.1, prefix_width);
     for (_, progress) in &proj_progresses {
-      set_spinner_style(progress, prefix_width);
+      set_sync_spinner_style(progress, prefix_width);
     }
     for (_, progress) in &mod_progresses {
-      set_spinner_style(progress, prefix_width);
+      set_sync_spinner_style(progress, prefix_width);
     }
 
     // main repo must run first, since projects/submodule state could change as a
@@ -540,14 +540,15 @@ impl Args {
 
 /// Adds a new unstyled spinner to the [MultiProgress]. Returns the newly
 /// created spinner.
-fn add_spinner(multi: &MultiProgress, name: String) -> ProgressBar {
+pub fn add_sync_spinner(multi: &MultiProgress, name: String) -> ProgressBar {
   let spinner = multi.add(ProgressBar::new_spinner());
   spinner.set_prefix(name);
+  spinner.set_message("Starting");
   spinner
 }
 
 /// Sets the style of the spinner
-fn set_spinner_style(progress: &ProgressBar, prefix_width: usize) {
+pub fn set_sync_spinner_style(progress: &ProgressBar, prefix_width: usize) {
   progress.set_style(
     ProgressStyle::with_template(&format!(
       "{{prefix:<{prefix_width}.cyan}} {{spinner:.green}} {{elapsed:.dim}} {{msg}}"
