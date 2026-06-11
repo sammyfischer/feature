@@ -250,10 +250,10 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
     transfer_progress.set_position(current as u64);
 
     if current != total {
-      transfer_progress.set_message(format!("{}/{} objects", current, total));
+      transfer_progress.set_message(format!("Transferring {}/{} objects", current, total));
     } else {
       transfer_progress.finish_with_message(format!(
-        "{} objects ({})",
+        "Transferred {} objects ({})",
         HumanCount(total as u64),
         BinaryBytes(bytes as u64)
       ));
