@@ -44,7 +44,7 @@
           "default": "-"
         },
         "template": {
-          "description": "Template for creating branch names. See `feature start --help` for more info",
+          "description": "Template for creating branch names. See `feature start --help` for more\ninfo",
           "type": [
             "string",
             "null"

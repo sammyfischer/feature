@@ -49,6 +49,7 @@ comp:
 
 # build test container
 container-build:
+  #!/usr/bin/env bash
   docker=$(which docker || which podman)
   "$docker" build -t localhost/feature-test .
 
