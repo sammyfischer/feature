@@ -24,7 +24,6 @@ const LONG_ABOUT: &str = r#"Lists all branches. The format is similar to "git br
   visible_alias = "ls",
   about = "Lists branches",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

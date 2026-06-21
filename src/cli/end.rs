@@ -29,7 +29,6 @@ branch, delete it normally with "git branch -d <BRANCH>"."#;
 #[command(
   about = "Ends a feature branch",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

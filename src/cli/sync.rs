@@ -47,7 +47,6 @@ Submodules get synced by checking-out to their tracked commit.";
 #[command(
   about = "Updates branches with their remotes and prunes redundant branches",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

@@ -50,11 +50,7 @@ conflicts and running "git revert --continue", rather than committing.
 Do you want to commit anyway?"#;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(
-  about = "Commit staged changes",
-  disable_help_flag = true,
-  disable_help_subcommand = true
-)]
+#[command(about = "Commit staged changes", disable_help_subcommand = true)]
 pub struct Args {
   /// Where to apply the commit
   #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]

@@ -23,7 +23,6 @@ customize this."#;
 #[command(
   about = "View a graph of commits",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

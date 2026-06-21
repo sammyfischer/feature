@@ -58,7 +58,6 @@ macro_rules! git {
 #[derive(Debug, Parser)]
 #[command(
   long_version = env!("CARGO_PKG_VERSION"),
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

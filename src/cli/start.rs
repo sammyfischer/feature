@@ -36,7 +36,6 @@ with the "--from <BRANCH>" option."#;
 #[command(
   about = "Starts a new feature branch",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

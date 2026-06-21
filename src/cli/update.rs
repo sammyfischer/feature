@@ -17,7 +17,6 @@ const NO_BASE_MSG: &str = r#"No base branch found. You can:
 #[command(
   about = "Updates this branch with its base",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true)]
 pub struct Args {
   /// Output which base branch will be used, but don't perform the rebase

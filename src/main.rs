@@ -130,7 +130,7 @@ impl App {
 fn main() -> Result<()> {
   let mut command = Args::command();
   if let Some(status) = command.find_subcommand_mut("status") {
-    *status = status.clone().after_long_help(status_guide());
+    *status = status.clone().after_help(status_guide());
   };
 
   let args = Args::from_arg_matches(&command.get_matches())?;

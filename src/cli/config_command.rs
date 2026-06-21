@@ -16,11 +16,7 @@ macro_rules! toml_stringify {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(
-  about = "Interact with feature config",
-  disable_help_flag = true,
-  disable_help_subcommand = true
-)]
+#[command(about = "Interact with feature config", disable_help_subcommand = true)]
 pub struct Args {
   /// Which config file to use
   #[arg(long, default_value = "project", conflicts_with = "global")]
@@ -61,7 +57,7 @@ pub enum WhichConfig {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(disable_help_flag = true, disable_help_subcommand = true)]
+#[command(disable_help_subcommand = true)]
 pub struct GetArgs {
   /// The names of the keys to get
   #[arg(trailing_var_arg = true, value_hint = ValueHint::Other)]

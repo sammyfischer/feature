@@ -16,7 +16,6 @@ echo 'eval "$(feature completions bash)"' >> ~/.bashrc"#;
 #[command(
   about = "Generate shell completion scripts",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

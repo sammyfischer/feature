@@ -32,7 +32,6 @@ const BASE_DIVERGED_MSG: &str = r"Branch has diverged from its base. You must:
 #[derive(clap::Args, Clone, Debug)]
 #[command(
   about = "Pushes a branch to remote, setting upstream automatically",
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

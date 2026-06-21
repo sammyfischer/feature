@@ -36,7 +36,6 @@ itself."#;
   about = "Interact with projects",
   visible_alias = "proj",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {
@@ -56,7 +55,6 @@ pub enum ProjectCommand {
 #[command(
   about = "Add a project to this repo",
   long_about = ADD_LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct AddArgs {
@@ -77,7 +75,6 @@ pub struct AddArgs {
   about = "Remove a project from this repo",
   visible_alias = "remove",
   long_about = RM_LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct RmArgs {
@@ -89,7 +86,6 @@ pub struct RmArgs {
 #[command(
   about = "List all projects in this repo",
   visible_alias = "list",
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct LsArgs {}
@@ -97,7 +93,6 @@ pub struct LsArgs {}
 #[derive(clap::Args, Debug)]
 #[command(
   about = "Run a command in each project",
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct EachArgs {

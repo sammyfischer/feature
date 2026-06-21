@@ -36,7 +36,6 @@ base contains the branch's commit history already).";
 #[command(
   about = "Deletes merged feature branches",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

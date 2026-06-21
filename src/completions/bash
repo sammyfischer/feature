@@ -256,7 +256,7 @@ _feature() {
   # generate completions depending on the cmd found
   case "$cmd" in
     feature)
-      local opts="--help -V --version --config --git-dir --work-tree --wt \
+      local opts="-h --help -V --version --config --git-dir --work-tree --wt \
         base check commit completions config graph list ls log project proj \
         prune push show start status st sync update"
       case "$prev" in
@@ -277,7 +277,7 @@ _feature() {
       ;;
 
     base)
-      local opts="--help --branch"
+      local opts="-h --help --branch"
       case "$prev" in
         --branch)
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
@@ -294,7 +294,7 @@ _feature() {
       ;;
 
     check)
-      local opts="--help --base"
+      local opts="-h --help --base"
       case "$prev" in
         --base)
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
@@ -311,7 +311,7 @@ _feature() {
       ;;
 
     commit)
-      local opts="--help --amend --no-verify --to"
+      local opts="-h --help --amend --no-verify --to"
       case "$prev" in
         --to)
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
@@ -330,12 +330,12 @@ _feature() {
       ;;
 
     completions)
-      local opts="--help bash elvish fish powershell zsh"
+      local opts="-h --help bash elvish fish powershell zsh"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur"))
       ;;
 
     config)
-      local opts="--help --which -g create get schema"
+      local opts="-h --help --which -g create get schema"
       case "$prev" in
         --which)
           COMPREPLY=( $(compgen -W "project local user global" -- "$cur") )
@@ -347,12 +347,12 @@ _feature() {
       ;;
 
     config_create | config_schema)
-      local opts="--help"
+      local opts="-h --help"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur"))
       ;;
 
     config_get)
-      local opts="--help"
+      local opts="-h --help"
       local keys="default_remote protect branch.sep branch.template"
       case "$cur" in
         -*)
@@ -365,7 +365,7 @@ _feature() {
       ;;
 
     end)
-      local opts="--help -r --remote -f --force --base"
+      local opts="-h --help -r --remote -f --force --base"
       case "$prev" in
         --base)
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
@@ -387,12 +387,12 @@ _feature() {
       ;;
 
     graph | log)
-      local opts="--help --format --fmt"
+      local opts="-h --help --format --fmt"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
     list)
-      local opts="--help -H --no-hash -U --no-upstream -B --no-base -P \
+      local opts="-h --help -H --no-hash -U --no-upstream -B --no-base -P \
         --no-projects -M --no-modules"
       case "$prev" in
         -H | --no-hash | -U | --no-upstream | -B | --no-base | -P | --no-projects | -M | --no-modules)
@@ -405,12 +405,12 @@ _feature() {
       ;;
 
     project)
-      local opts="--help add rm remove ls list each"
+      local opts="-h --help add rm remove ls list each"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
     project_add)
-      local opts="--help --repo --path"
+      local opts="-h --help --repo --path"
       case "$prev" in
         --repo)
           # default comps
@@ -426,18 +426,18 @@ _feature() {
       ;;
 
     project_rm)
-      local opts="--help"
+      local opts="-h --help"
       local projects="$(_feature_compgen_projects "$cur" "$config")"
       COMPREPLY=( $(compgen -W "$opts $projects" -- "$cur") )
       ;;
 
     project_ls)
-      local opts="--help"
+      local opts="-h --help"
       COMPREPLY=("$opts")
       ;;
 
     project_each)
-      local opts="--help -f --filter"
+      local opts="-h --help -f --filter"
       local i
       local subcmd_start=0
       local seen=""
@@ -446,7 +446,7 @@ _feature() {
           ",each")
             seen="each"
             ;;
-          "each,--help")
+          "each,--help" | "each,-h")
             ;;
           "each,-f" | "each,--filter")
             seen="--filter"
@@ -473,12 +473,12 @@ _feature() {
       ;;
 
     prune)
-      local opts="--help --dry-run"
+      local opts="-h --help --dry-run"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
     push)
-      local opts="--help -f --force -r --remote -u --upstream"
+      local opts="-h --help -f --force -r --remote -u --upstream"
       case "$prev" in
         -r | --remote)
           COMPREPLY=( $(_feature_compgen_remotes "$cur" "$git_dir" "$work_tree") )
@@ -500,7 +500,7 @@ _feature() {
       ;;
 
     show)
-      local opts="--help -S --no-summary -P --no-patch -m --message --paging"
+      local opts="-h --help -S --no-summary -P --no-patch -m --message --paging"
       case "$prev" in
         -m | --message)
           COMPREPLY=( $(compgen -W "none subject full" -- "$cur") )
@@ -525,7 +525,7 @@ _feature() {
       ;;
 
     start)
-      local opts="--help --dry-run --sep --format --fmt --from -s --stay"
+      local opts="-h --help --dry-run --sep --format --fmt --from -s --stay"
       case "$prev" in
         --from)
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
@@ -544,7 +544,7 @@ _feature() {
       ;;
 
     status)
-      local opts="--help -U --no-untracked -P --no-projects -M --no-modules"
+      local opts="-h --help -U --no-untracked -P --no-projects -M --no-modules"
       case "$prev" in
         -U | --no-untracked | -P | --no-projects | -M | --no-modules)
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
@@ -554,7 +554,7 @@ _feature() {
       ;;
 
     sync)
-      local opts="--help --dry-run --no-prune --no-projects"
+      local opts="-h --help --dry-run --no-prune --no-projects"
       case "$prev" in
         --no-prune | --no-projects)
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
@@ -566,7 +566,7 @@ _feature() {
       ;;
 
     update)
-      local opts="--help --dry-run -c --continue -a --abort"
+      local opts="-h --help --dry-run -c --continue -a --abort"
       case "$cur" in
         -*)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )

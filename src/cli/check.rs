@@ -18,7 +18,6 @@ as the last argument.";
 #[command(
   about = "Checks merge-ability of a branch. May fetch remote branches",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {

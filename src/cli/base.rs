@@ -23,7 +23,6 @@ with the --branch option.";
 #[command(
   about = "Tell feature which base another branch belongs to",
   long_about = LONG_ABOUT,
-  disable_help_flag = true,
   disable_help_subcommand = true
 )]
 pub struct Args {
