@@ -34,9 +34,10 @@ use crate::util::display::{
   trim_hash,
 };
 use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
+use crate::util::tag::find_current_semver;
 use crate::util::term::{get_term_width, is_term};
 use crate::util::{get_signature, open_repo_from_dirs};
-use crate::{App, data, opt_advice};
+use crate::{App, data, opt_advice, style};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -191,15 +192,6 @@ impl Args {
     };
 
     write!(out, "{}", header)?;
-
-    if data::get_feature_show_authorship(&config)? {
-      // signature/author info
-      write!(
-        out,
-        "\n{}",
-        display_signature(get_signature(repo)?.as_ref())
-      )?;
-    }
 
     // print advice in new paragraph above diffs
     if let Some(advice) = advice {
@@ -500,7 +492,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
   let mut out = String::with_capacity(80);
   let mut branch = None;
 
-  let first_line = match head {
+  match head {
     // there are commits in the repo
     Some(head) => {
       let commit = head
@@ -510,14 +502,43 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
       // display branch name or detached head indicator
       let display_branch = if head.is_branch() {
         let meta = BranchMeta::from_reference(head)?;
-        let display = format!("On {}", style(meta.name()).green());
+        let mut out = format!("On {}", style(meta.name()).green());
+
+        let semver = find_current_semver(repo, head)?;
+        if let Some(semver) = semver {
+          out.push_str(&format!(" {}", style!("({})", semver).dim()));
+        }
+
         branch = Some(meta);
-        display
+        out
+      } else if head.is_tag() {
+        let name = head.name_bytes().to_str_lossy();
+        let mut out = format!("On tag {}", style(&name).green());
+
+        let semver = find_current_semver(repo, head)?;
+        if let Some(semver) = semver {
+          // display semver if it's a different tag
+          if semver.name() != name {
+            out.push_str(&format!(" {}", style!("({})", semver).dim()));
+          }
+        }
+
+        out
       } else {
         style("Detached HEAD").red().to_string()
       };
 
-      format!("{} -> {}", display_branch, display_commit_compact(&commit)?)
+      write!(out, "{}", display_branch)?;
+
+      display_authorship(repo, &mut out, " as ")?;
+
+      let commit = display_commit_compact(&commit)?;
+      let commit = if is_term() {
+        truncate_str(&commit, get_term_width(), &style("…").dim().to_string()).to_string()
+      } else {
+        commit
+      };
+      write!(out, "\n{}", commit)?;
     }
 
     // head points to nothing, no commits in repo
@@ -527,23 +548,16 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         .symbolic_target_bytes()
         .expect("HEAD points to nothing. Is the .git/HEAD file corrupt or missing?")
         .to_str_lossy();
-      format!(
-        "On {}, no commits yet",
+
+      write!(
+        out,
+        "On {} (no commits yet)",
         style(symbolic_ref.trim_prefix_opt("refs/heads/")).green()
-      )
+      )?;
+
+      display_authorship(repo, &mut out, "\n  Committing as ")?;
     }
   };
-
-  // end first line
-  if is_term() {
-    write!(
-      out,
-      "{}",
-      truncate_str(&first_line, get_term_width(), &style("…").dim().to_string())
-    )?;
-  } else {
-    write!(out, "{}", &first_line)?;
-  }
 
   // upstream and base ahead/behind if we're on a branch
   if head.is_some_and(|it| it.is_branch()) {
@@ -634,14 +648,6 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   let end = fs::read_to_string(dir.join("end")).context("Failed to get total number of steps")?;
   let total = end.trim();
 
-  let progress = format!(
-    "{}{}/{}{}",
-    style("[").dim(),
-    current,
-    total,
-    style("]").dim()
-  );
-
   let head_name_path = dir.join("head-name");
   let head_name = fs::read_to_string(&head_name_path).context("Failed to get branch name")?;
   let branch_ref = repo.resolve_reference_from_short_name(head_name.trim())?;
@@ -673,13 +679,18 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   // if all else fails, use the short hash
   .unwrap_or(trim_hash(&base_commit)?);
 
-  Ok(format!(
+  let mut out = String::with_capacity(80);
+  write!(
+    out,
     "{} {} onto {} {}",
     style("Rebasing").yellow(),
     style(&branch_name).blue(),
     style(&base).magenta(),
-    progress
-  ))
+    style!("({}/{})", current, total).dim()
+  )?;
+
+  display_authorship(repo, &mut out, " as ")?;
+  Ok(out)
 }
 
 fn is_merge_active(repo: &Repository) -> bool {
@@ -704,12 +715,17 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
     None => trim_hash(&merge_commit)?,
   };
 
-  Ok(format!(
+  let mut out = String::with_capacity(80);
+  write!(
+    out,
     "{} {} with {}",
     style("Merging").yellow(),
     style(current).blue(),
     style(base).magenta()
-  ))
+  )?;
+
+  display_authorship(repo, &mut out, " as ")?;
+  Ok(out)
 }
 
 fn is_pick_active(repo: &Repository) -> bool {
@@ -724,12 +740,17 @@ fn display_pick_header(repo: &Repository) -> Result<String> {
   let current = get_current_branch_or_commit(repo)?
     .expect("HEAD should point to a commit during an active cherry-pick");
 
-  Ok(format!(
+  let mut out = String::with_capacity(80);
+  write!(
+    out,
     "{} {} onto {}",
     style("Picking").yellow(),
     style(trim_hash(&pick_commit)?).blue(),
     style(current).magenta()
-  ))
+  )?;
+
+  display_authorship(repo, &mut out, " as ")?;
+  Ok(out)
 }
 
 fn is_revert_active(repo: &Repository) -> bool {
@@ -744,12 +765,17 @@ fn display_revert_header(repo: &Repository) -> Result<String> {
   let current = get_current_branch_or_commit(repo)?
     .expect("HEAD should point to a commit during an active revert");
 
-  Ok(format!(
+  let mut out = String::with_capacity(80);
+  write!(
+    out,
     "{} changes from {} onto {}",
     style("Reverting").yellow(),
     style(trim_hash(&revert_commit)?).blue(),
     style(current).magenta()
-  ))
+  )?;
+
+  display_authorship(repo, &mut out, " as ")?;
+  Ok(out)
 }
 
 fn is_bisect_active(repo: &Repository) -> bool {
@@ -769,10 +795,35 @@ fn display_bisect_header(repo: &Repository) -> Result<String> {
     start = trim_hash(&commit)?;
   }
 
-  Ok(format!(
+  let mut out = String::with_capacity(80);
+  write!(
+    out,
     "{} on {} {}",
     style("Bisecting").yellow(),
     style(&current).blue(),
     style(&format!("(started from {})", start)).dim()
-  ))
+  )?;
+
+  display_authorship(repo, &mut out, "\n")?;
+  Ok(out)
+}
+
+/// Writes the prefix and authorship info to the buffer if the user's config
+/// allows it. The prefix immediately precedes the authorship info with no added
+/// whitespace.
+fn display_authorship<'buf>(
+  repo: &Repository,
+  buf: &'buf mut String,
+  prefix: &str,
+) -> Result<&'buf mut String> {
+  if data::get_feature_show_authorship(&repo.config()?.snapshot()?)? {
+    write!(
+      buf,
+      "{}{}",
+      prefix,
+      display_signature(get_signature(repo)?.as_ref())
+    )?;
+  }
+
+  Ok(buf)
 }
