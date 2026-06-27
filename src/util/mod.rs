@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use console::style;
@@ -201,7 +202,9 @@ impl PushOutput {
   }
 }
 
-/// Gets fully configured push callbacks
+/// Gets fully configured push callbacks. This creates and begins ticking a
+/// progress bar, so callbacks should be obtained close to when the actual push
+/// is performed.
 pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
   repo: &'repo Repository,
   bufs: &'cbs mut PushOutput,
@@ -216,6 +219,7 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
       .progress_chars(PROGRESS_CHARS)
       .tick_strings(&TICK_STRINGS),
   );
+  transfer_progress.enable_steady_tick(Duration::from_millis(100));
 
   cbs.push_transfer_progress(move |current, total, bytes| {
     if transfer_progress.length().is_none() || transfer_progress.length() == Some(0) {
