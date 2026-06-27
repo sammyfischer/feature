@@ -511,6 +511,11 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
 
         branch = Some(meta);
         out
+      } else if head.is_remote() {
+        let meta = BranchMeta::from_reference(head)?;
+        // don't set branch because, while remotes are like branches, they cannot have
+        // an upstream or base
+        format!("On remote {}", style(meta.name()).green())
       } else if head.is_tag() {
         let name = head.name_bytes().to_str_lossy();
         let mut out = format!("On tag {}", style(&name).green());
@@ -560,8 +565,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
   };
 
   // upstream and base ahead/behind if we're on a branch
-  if head.is_some_and(|it| it.is_branch()) {
-    let branch = branch.expect("Should be checked out to a branch");
+  if let Some(branch) = branch {
     // we don't fetch, so we can use this ref multiple times
     let branch_ref = branch.resolve(repo)?;
 
