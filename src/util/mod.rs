@@ -32,6 +32,7 @@ pub mod branch_meta;
 pub mod diff;
 pub mod display;
 pub mod string;
+pub mod tag;
 pub mod term;
 
 /// Opens a repo given a `.git` dir. If the workdir is `None`, it's assumed to
