@@ -12,13 +12,12 @@ use git2::{
   CredentialType,
   ErrorCode,
   Oid,
-  PackBuilderStage,
   RemoteCallbacks,
   Repository,
   Signature,
   Tag,
 };
-use indicatif::{BinaryBytes, HumanCount, MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{BinaryBytes, HumanCount, ProgressBar, ProgressStyle};
 
 use crate::util::branch::find_branch_at_commit;
 use crate::util::display::{display_hash, trim_hash};
@@ -209,38 +208,13 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
 ) -> Result<RemoteCallbacks<'cbs>> {
   use std::fmt::Write;
 
-  let multi = MultiProgress::new();
   let mut cbs = RemoteCallbacks::new();
-
   cbs.credentials(get_credentials_cb());
 
-  let pack_progress = multi.add(ProgressBar::new_spinner().with_style(
-    ProgressStyle::with_template("{spinner:.cyan} {elapsed} {msg}")?.tick_strings(&TICK_STRINGS),
-  ));
-
-  cbs.pack_progress(move |stage, current, total| {
-    pack_progress.set_message(format!(
-      "{}: {}/{}",
-      match stage {
-        PackBuilderStage::AddingObjects => "Counting objects",
-        PackBuilderStage::Deltafication => "Compressing objects",
-      },
-      current,
-      total
-    ));
-
-    // Finish the spinner once packing completes
-    if current == total && total > 0 {
-      pack_progress.finish_with_message(format!("Packed {} objects", HumanCount(total as u64)));
-    }
-  });
-
-  let transfer_progress = multi.add(
-    ProgressBar::new(0).with_style(
-      ProgressStyle::with_template("{spinner:.cyan} {elapsed} [{bar:40.cyan}] {msg}")?
-        .progress_chars(PROGRESS_CHARS)
-        .tick_strings(&TICK_STRINGS),
-    ),
+  let transfer_progress = ProgressBar::new(0).with_style(
+    ProgressStyle::with_template("{spinner:.cyan} {elapsed} [{bar:40.cyan}] {msg}")?
+      .progress_chars(PROGRESS_CHARS)
+      .tick_strings(&TICK_STRINGS),
   );
 
   cbs.push_transfer_progress(move |current, total, bytes| {
