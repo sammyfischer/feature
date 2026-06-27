@@ -115,11 +115,6 @@ pub fn get_feature_show_modules(config: &Config) -> Result<bool> {
 
 // FORMAT
 
-/// Gets `feature.format.graph`
-pub fn get_format_graph(config: &Config) -> Result<Option<String>> {
-  get_option!(config, get_string, "feature.format.graph")
-}
-
 /// Gets `feature.format.date`. Defaults to `"%b %d, %Y at %I:%M %p"`.
 pub fn get_format_date(config: &Config) -> Result<String> {
   get_option!(

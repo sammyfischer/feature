@@ -137,15 +137,6 @@ If the value is a default git option that feature doesn't use, it will contain "
 
 # Various formatting options used by feature
 [feature "format"]
-    # The pretty format passed to the underlying "git log" call. Passed in as
-    # "git log --pretty=<value>". When unset, defaults to the "format.pretty"
-    # builtin option. See "man git-log" for possible values. This isn't the
-    # default option, but one that I find nice.
-    graph = format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s
-
-    # Tip: this is a simpler value built in to git
-    graph = oneline
-
     # The formatting to use for absolute timestamps. Uses strftime format
     # specifier.
     date = %b %d, %Y at %I:%M %p
@@ -153,7 +144,7 @@ If the value is a default git option that feature doesn't use, it will contain "
     # Tip: use this for 24-hour time
     date = %b %d, %Y at %H:%M
 
-    # Tip: and this for numeric dates
+    # Tip: use this a for more technical style
     date = %Y-%m-%d %H:%M
 
     # Whether to use relative or absolute times. This option isn't respected in
