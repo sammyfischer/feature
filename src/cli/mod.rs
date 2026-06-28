@@ -22,6 +22,7 @@ mod show;
 mod start;
 mod status;
 mod sync;
+mod tag;
 mod update;
 
 /// Waits on the child process, returns result
@@ -90,6 +91,7 @@ pub enum Command {
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(sync::Args),
   Prune(prune::Args),
+  Tag(tag::Args),
   Project(project::Args),
 
   // ==== DISPLAY / INFO ====
@@ -115,6 +117,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
 
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),
+    Command::Tag(args) => args.run(&state),
     Command::Project(args) => args.run(&state),
 
     Command::Status(args) => args.run(&state),

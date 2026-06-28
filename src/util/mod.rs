@@ -111,7 +111,7 @@ pub fn resolve_commit_name(repo: &Repository, commit: &Commit) -> Result<String>
     return Ok(tag.name_bytes().to_str_lossy_owned());
   }
 
-  trim_hash(commit)
+  trim_hash(commit.as_object())
 }
 
 pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<'repo>>> {
@@ -252,7 +252,7 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
     match (old_id, new_id) {
       (old, new) if old == zero && new != zero => {
         if let Ok(new_commit) = repo.find_commit(new_id)
-          && let Ok(hash) = display_hash(&new_commit)
+          && let Ok(hash) = display_hash(new_commit.as_object())
         {
           let _ = writeln!(
             update_buf.borrow_mut(),
@@ -266,7 +266,7 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
 
       (old, new) if new == zero && old != zero => {
         if let Ok(old_commit) = repo.find_commit(old_id)
-          && let Ok(hash) = trim_hash(&old_commit)
+          && let Ok(hash) = trim_hash(old_commit.as_object())
         {
           let _ = writeln!(
             update_buf.borrow_mut(),
@@ -280,9 +280,9 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
 
       (old, new) => {
         if let Ok(new_commit) = repo.find_commit(new)
-          && let Ok(new_hash) = display_hash(&new_commit)
+          && let Ok(new_hash) = display_hash(new_commit.as_object())
           && let Ok(old_commit) = repo.find_commit(old)
-          && let Ok(old_hash) = display_hash(&old_commit)
+          && let Ok(old_hash) = display_hash(old_commit.as_object())
         {
           let _ = writeln!(
             update_buf.borrow_mut(),

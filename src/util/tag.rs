@@ -3,6 +3,7 @@ use std::fmt::Display;
 use anyhow::{Context, Result};
 use git2::{Oid, Reference, Repository};
 
+/// A real tag on the repo of the format "v.*.*.*"
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SemverTag {
   pub commit: Oid,
@@ -16,11 +17,25 @@ impl SemverTag {
     format!("v{}.{}.{}", self.major, self.minor, self.patch)
   }
 
-  /// Name must be of the format "v*.*.*"
+  /// Name can be of the format "v*.*.*" or "*.*.*"
   pub fn new(name: &str, commit: Oid) -> Result<Self> {
-    assert!(name.starts_with('v'), "Invalid format for semver tag");
+    let (major, minor, patch) = Self::parse(name)?;
+    Ok(Self {
+      commit,
+      major,
+      minor,
+      patch,
+    })
+  }
 
-    let rest = &name[1..];
+  /// Parses out the major, minor, and patch version of a semver string. The
+  /// leading `v` in the version string is optional.
+  pub fn parse(version: &str) -> Result<(u32, u32, u32)> {
+    let rest = if let Some(stripped) = version.strip_prefix('v') {
+      stripped
+    } else {
+      version
+    };
     let mut parts = rest.split('.');
 
     let major = parts
@@ -41,12 +56,7 @@ impl SemverTag {
       .parse::<u32>()
       .context("Invalid format for patch version")?;
 
-    Ok(Self {
-      commit,
-      major,
-      minor,
-      patch,
-    })
+    Ok((major, minor, patch))
   }
 }
 

@@ -6,7 +6,7 @@ use std::fmt::Display;
 use anyhow::{Context, Result, anyhow};
 use chrono::{FixedOffset, TimeZone};
 use console::style;
-use git2::{Commit, Signature, Time};
+use git2::{Commit, Object, Signature, Tag, Time};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -20,13 +20,13 @@ macro_rules! style {
   };
 }
 
-pub fn trim_hash(commit: &Commit) -> Result<String> {
-  Ok(commit.as_object().short_id()?.to_str_lossy_owned())
+pub fn trim_hash(obj: &Object) -> Result<String> {
+  Ok(obj.short_id()?.to_str_lossy_owned())
 }
 
 /// Displays a trimmed hash in yellow
-pub fn display_hash(commit: &Commit) -> Result<String> {
-  Ok(style(trim_hash(commit)?).yellow().to_string())
+pub fn display_hash(obj: &Object) -> Result<String> {
+  Ok(style(trim_hash(obj)?).yellow().to_string())
 }
 
 /// Displays the name in cyan, email in dim (gray), and "No user info" in red
@@ -102,7 +102,7 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
   let mut out = String::with_capacity(140);
 
   // hash
-  write!(out, "{}", display_hash(commit)?)?;
+  write!(out, "{}", display_hash(commit.as_object())?)?;
 
   // timestamp
   write!(
@@ -149,6 +149,48 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
   Ok(out)
 }
 
+/// Displays a tag object in a format similar to a commit. Reuses
+/// [DisplayCommitOptions] for convenience.
+pub fn display_tag(tag: &Tag, options: &DisplayCommitOptions) -> Result<String> {
+  use std::fmt::Write;
+  // around 60 chars for hash/time/author, another 80 for message (most of the
+  // time this will only be a subject line)
+  let mut out = String::with_capacity(140);
+
+  // hash
+  write!(out, "{}", display_hash(tag.as_object())?)?;
+
+  if let Some(tagger) = tag.tagger().as_ref() {
+    // timestamp
+    write!(
+      out,
+      " {}",
+      style(display_time(&tagger.when(), &options.time)?).magenta()
+    )?;
+
+    // author
+    write!(out, " by {}", display_signature(Some(tagger)))?;
+  }
+
+  if let Some(msg) = tag.message_bytes() {
+    match options.message {
+      DisplayCommitMessageLevel::None => {}
+
+      // there is no subject line for tags. could just parse it out myself but I'd rather not
+      // support it if it's non standard
+      DisplayCommitMessageLevel::Subject | DisplayCommitMessageLevel::Full => {
+        // write each line tabbed by 2 spaces
+        writeln!(out)?;
+        for line in msg.to_str_lossy().lines() {
+          write!(out, "\n  {}", line)?;
+        }
+      }
+    };
+  }
+
+  Ok(out)
+}
+
 /// A very concise format meant to be displayed on one line (although not
 /// guaranteed to be). Unlike, [display_commit], there are no configuration
 /// options.
@@ -162,7 +204,7 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
 pub fn display_commit_compact(commit: &Commit) -> Result<String> {
   Ok(format!(
     "{} {} {}",
-    display_hash(commit)?,
+    display_hash(commit.as_object())?,
     style(&format!(
       "({}, {})",
       commit.author().name_bytes().to_str_lossy(),

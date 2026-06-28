@@ -227,7 +227,7 @@ impl Args {
     row.branch = branch_name.to_string();
 
     let branch_commit = branch.get().peel_to_commit()?;
-    row.hash = trim_hash(&branch_commit)?;
+    row.hash = trim_hash(branch_commit.as_object())?;
 
     if let Some(upstream) = get_upstream(branch)? {
       let upstream_name = upstream.name_bytes()?.to_str_lossy();
