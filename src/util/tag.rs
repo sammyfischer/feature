@@ -1,7 +1,8 @@
 use std::fmt::Display;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use git2::{Oid, Reference, Repository};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 /// A real tag on the repo of the format "v.*.*.*"
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -83,7 +84,7 @@ pub fn get_semver_tags(repo: &Repository) -> Result<Vec<SemverTag>> {
 }
 
 /// Find the current semver tag for the given reference. This does an
-/// ahead/behind graph calculation against each semver tag.
+/// ahead/behind graph calculation against each semver tag in parallel.
 pub fn find_current_semver(repo: &Repository, reference: &Reference) -> Result<Option<SemverTag>> {
   let upstream = reference.peel_to_commit()?.id();
 
@@ -91,20 +92,52 @@ pub fn find_current_semver(repo: &Repository, reference: &Reference) -> Result<O
   // ascending order, e.g. v1.0.0 -> v1.0.1 -> v2.0.0
   tags.sort();
 
+  let repo_dir = repo.path().to_owned();
+  let work_dir = repo.workdir().to_owned();
+
+  // perform graph traversals in parallel, since there could be many tags and
+  // it's a readonly operation
+  let ancestors: Vec<_> = tags
+    .par_iter()
+    .map(|tag| -> Result<Option<(SemverTag, usize)>> {
+      let repo = match &work_dir {
+        Some(work_dir) => {
+          let repo = Repository::open_bare(&repo_dir)?;
+          repo.set_workdir(work_dir, false)?;
+          repo
+        }
+        None => Repository::open(&repo_dir)?,
+      };
+
+      let (ahead, behind) = repo.graph_ahead_behind(tag.commit, upstream)?;
+
+      // ancestors only
+      if ahead > 0 {
+        return Ok(None);
+      }
+
+      Ok(Some((tag.to_owned(), behind)))
+    })
+    .collect();
+
   // pair of the tag and its distance from `upstream`
   let mut closest_ancestor = (None, None);
-  for tag in tags {
-    let (ahead, behind) = repo.graph_ahead_behind(tag.commit, upstream)?;
-    // ancestors only
-    if ahead > 0 {
-      continue;
-    }
 
-    // because it's ascending order and we want the most recent version, if two
-    // version tags point to the same commit, we need to overwrite the previous
-    // one using a <= check
-    if closest_ancestor.1.is_none_or(|it| behind <= it) {
-      closest_ancestor = (Some(tag), Some(behind));
+  for tag in ancestors {
+    let tag = match tag {
+      Ok(it) => it,
+      Err(e) => return Err(anyhow!(e)),
+    };
+
+    let Some((tag, distance)) = tag else {
+      continue;
+    };
+
+    // because it's ascending order (by version) and we want the most recent
+    // version, if two version tags point to the same commit, we need to
+    // overwrite the previous one using a <= check
+    if closest_ancestor.1.is_none_or(|it| distance <= it) {
+      closest_ancestor = (Some(tag), Some(distance));
     }
   }
 
