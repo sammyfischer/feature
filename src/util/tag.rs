@@ -5,12 +5,32 @@ use git2::{Oid, Reference, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 /// A real tag on the repo of the format "v.*.*.*"
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SemverTag {
   pub commit: Oid,
   pub major: u32,
   pub minor: u32,
   pub patch: u32,
+}
+
+impl PartialOrd for SemverTag {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for SemverTag {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    match self.major.cmp(&other.major) {
+      core::cmp::Ordering::Equal => {}
+      ord => return ord,
+    }
+    match self.minor.cmp(&other.minor) {
+      core::cmp::Ordering::Equal => {}
+      ord => return ord,
+    }
+    self.patch.cmp(&other.patch)
+  }
 }
 
 impl SemverTag {

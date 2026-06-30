@@ -229,7 +229,7 @@ pub fn display_time(time: &Time, options: &DisplayTimeOptions) -> Result<String>
 
 /// `fmt` is passed to chronos as-is. Defaults to "%b %d, %Y at %I:%M %p", which
 /// looks like "May 11, 2026 at 4:44 PM"
-fn display_time_absolute(time: &Time, fmt: &str) -> Result<String> {
+pub fn display_time_absolute(time: &Time, fmt: &str) -> Result<String> {
   let tz = FixedOffset::east_opt(time.offset_minutes() * 60)
     .ok_or(anyhow!("Failed to format time to local timezone"))?;
 
@@ -241,7 +241,7 @@ fn display_time_absolute(time: &Time, fmt: &str) -> Result<String> {
   Ok(date.format(fmt).to_string())
 }
 
-fn display_time_relative(time: &Time) -> Result<String> {
+pub fn display_time_relative(time: &Time) -> Result<String> {
   let now = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
     .context("Failed to get current time")?

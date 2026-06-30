@@ -2,6 +2,9 @@
 
 ## Housekeeping
 
+- paging
+  - use git config for pager command
+  - add cli option for paging `branches` and `tags` output
 - support `commit.template` config option
   - template file that is used when -m is unspecified
 - custom zsh completions, maybe fish too
@@ -22,8 +25,7 @@
   - quick creation of wip commits
   - standard message format: "WIP on <branch>: message"
   - tbh this isn't hard to do with regular commits or stashes
-- `version` (`ver`)
-  - list all semver tags, sorted by most recent
+- `tag`
   - `version --log` calls git log on commits since last version
   - feature config option: require annotated tags
     - this would make creating tags error if no message is provided
