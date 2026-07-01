@@ -85,7 +85,7 @@ pub fn get_current_branch_or_commit(repo: &Repository) -> Result<Option<String>>
         Err(e) => return Err(e),
 
         Ok(commit) => match commit {
-          Some(commit) => Some(trim_hash(&commit)?),
+          Some(commit) => Some(trim_hash(commit.as_object())?),
           None => None,
         },
       },

@@ -8,13 +8,13 @@ use clap::{Parser, Subcommand, ValueHint};
 use crate::App;
 
 mod base;
+mod branches;
 mod check;
 mod commit;
 mod complete;
 mod completions;
 mod config_command;
 mod end;
-mod list;
 mod project;
 mod prune;
 mod push;
@@ -22,7 +22,10 @@ mod show;
 mod start;
 mod status;
 mod sync;
+mod tag;
+mod tags;
 mod update;
+mod version_log;
 
 /// Waits on the child process, returns result
 #[macro_export]
@@ -90,11 +93,14 @@ pub enum Command {
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(sync::Args),
   Prune(prune::Args),
+  Tag(tag::Args),
   Project(project::Args),
 
   // ==== DISPLAY / INFO ====
   Status(status::Args),
-  List(list::Args),
+  Branches(branches::Args),
+  Tags(tags::Args),
+  VersionLog(version_log::Args),
   Show(show::Args),
 
   // ==== META / FEATURE COMMANDS ====
@@ -115,10 +121,13 @@ pub fn run(state: App) -> anyhow::Result<()> {
 
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),
+    Command::Tag(args) => args.run(&state),
     Command::Project(args) => args.run(&state),
 
     Command::Status(args) => args.run(&state),
-    Command::List(args) => args.run(&state),
+    Command::Branches(args) => args.run(&state),
+    Command::Tags(args) => args.run(&state),
+    Command::VersionLog(args) => args.run(&state),
     Command::Show(args) => args.run(&state),
 
     Command::Config(args) => args.run(&state.config),

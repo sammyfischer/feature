@@ -1,0 +1,40 @@
+use anyhow::{Context, Result, anyhow};
+
+use crate::util::tag::find_current_semver;
+use crate::{App, git};
+
+const LONG_ABOUT: &str = r#"Displays a git log since last version reachable by a commit. By default, uses
+HEAD."#;
+
+#[derive(clap::Args, Clone, Debug)]
+#[command(
+  visible_alias = "verlog",
+  about = "Displays a git log since last version",
+  long_about = LONG_ABOUT,
+  disable_help_subcommand = true
+)]
+pub struct Args {
+  /// The commit to start from
+  #[arg(value_name = "REVISION")]
+  rev: Option<String>,
+}
+
+impl Args {
+  pub fn run(&self, state: &App) -> Result<()> {
+    let repo = &state.repo;
+
+    let rev = self.rev.as_deref().unwrap_or("HEAD");
+    let commit = repo.revparse_single(rev)?.peel_to_commit()?;
+
+    let semver = find_current_semver(repo, &commit)?
+      .with_context(|| format!("Failed to find a version reachable from {}", rev))?;
+
+    let status = git!("log", format!("{}..", semver.name())).status()?;
+
+    if status.success() {
+      Ok(())
+    } else {
+      Err(anyhow!("Git failed with exit status: {:?}", status.code()))
+    }
+  }
+}

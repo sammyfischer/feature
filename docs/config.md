@@ -80,34 +80,23 @@ If the value is a default git option that feature doesn't use, it will contain "
 
     # Whether to automatically fetch before commands that may benefit from a
     # fetch first.
-    autofetch = yes
+    autofetch = true
 
     # Show projects in commands where it isn't the main output.
-    showProjects = yes
+    showProjects = true
 
     # Show submodules in commands where it isn't the main output.
-    showModules = yes
+    showModules = true
 
     # Show authorship info (user.name and user.email) in commands where it's
     # not specifically relevant. It will still be visible when commit objects
     # are displayed, e.g. after committing and in the show command.
-    showAuthorship = yes
+    showAuthorship = true
 
 # Config for the end command
 [feature "end"]
     # Whether to try deleting the branch from remote when calling "feature end".
-    remote = no
-
-# Config for the list command
-[feature "list"]
-    # Whether to show the hash column.
-    hash = yes
-
-    # Whether to show the upstream column.
-    upstream = yes
-
-    # Whether to show the base column.
-    base = yes
+    remote = false
 
 # Config for the show command
 [feature "show"]
@@ -115,10 +104,10 @@ If the value is a default git option that feature doesn't use, it will contain "
     message = full
 
     # Whether to show diff summary.
-    summary = yes
+    summary = true
 
     # Whether to show diff patch.
-    patch = no
+    patch = false
 
     # When to page output. Valid values: auto, always, never.
     paging = auto
@@ -126,14 +115,14 @@ If the value is a default git option that feature doesn't use, it will contain "
 # Config for the sync command
 [feature "sync"]
     # Whether to automatically prune during the sync command.
-    prune = yes
+    prune = true
 
     # Sync all projects. The prune command shares this option.
-    projects = yes
+    projects = true
 
     # Sync all submodules. Similar to running `git submodule update --init` and
     # `git submodule sync`.
-    modules = yes
+    modules = true
 
 # Various formatting options used by feature
 [feature "format"]
@@ -151,5 +140,5 @@ If the value is a default git option that feature doesn't use, it will contain "
     # places where it doesn't make sense to. For example, when creating a new
     # commit, the timestamp will always be absolute, since the commit just
     # occured.
-    relative = no
+    relative = false
 ```

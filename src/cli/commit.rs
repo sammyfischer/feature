@@ -744,7 +744,7 @@ fn display_amend_header(old_commit: &Commit, target: &str) -> Result<String> {
   Ok(format!(
     "{} {} on {}",
     style("Amended").green(),
-    display_hash(old_commit)?,
+    display_hash(old_commit.as_object())?,
     style(target).blue()
   ))
 }

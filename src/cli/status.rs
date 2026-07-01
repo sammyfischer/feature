@@ -504,7 +504,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         let meta = BranchMeta::from_reference(head)?;
         let mut out = format!("On {}", style(meta.name()).green());
 
-        let semver = find_current_semver(repo, head)?;
+        let semver = find_current_semver(repo, &head.peel_to_commit()?)?;
         if let Some(semver) = semver {
           out.push_str(&format!(" {}", style!("({})", semver).dim()));
         }
@@ -520,7 +520,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         let name = head.name_bytes().to_str_lossy();
         let mut out = format!("On tag {}", style(&name).green());
 
-        let semver = find_current_semver(repo, head)?;
+        let semver = find_current_semver(repo, &head.peel_to_commit()?)?;
         if let Some(semver) = semver {
           // display semver if it's a different tag
           if semver.name() != name {
@@ -681,7 +681,7 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
     Err(_) => None,
   }
   // if all else fails, use the short hash
-  .unwrap_or(trim_hash(&base_commit)?);
+  .unwrap_or(trim_hash(base_commit.as_object())?);
 
   let mut out = String::with_capacity(80);
   write!(
@@ -716,7 +716,7 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
       Ok(name) => name.to_str_lossy_owned(),
       Err(_) => "unknown".to_string(),
     },
-    None => trim_hash(&merge_commit)?,
+    None => trim_hash(merge_commit.as_object())?,
   };
 
   let mut out = String::with_capacity(80);
@@ -749,7 +749,7 @@ fn display_pick_header(repo: &Repository) -> Result<String> {
     out,
     "{} {} onto {}",
     style("Picking").yellow(),
-    style(trim_hash(&pick_commit)?).blue(),
+    style(trim_hash(pick_commit.as_object())?).blue(),
     style(current).magenta()
   )?;
 
@@ -774,7 +774,7 @@ fn display_revert_header(repo: &Repository) -> Result<String> {
     out,
     "{} changes from {} onto {}",
     style("Reverting").yellow(),
-    style(trim_hash(&revert_commit)?).blue(),
+    style(trim_hash(revert_commit.as_object())?).blue(),
     style(current).magenta()
   )?;
 
@@ -796,7 +796,7 @@ fn display_bisect_header(repo: &Repository) -> Result<String> {
 
   if let Ok(id) = Oid::from_str(&start) {
     let commit = repo.find_commit(id)?;
-    start = trim_hash(&commit)?;
+    start = trim_hash(commit.as_object())?;
   }
 
   let mut out = String::with_capacity(80);

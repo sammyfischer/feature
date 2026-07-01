@@ -149,23 +149,6 @@ pub fn get_end_remote(config: &Config) -> Result<bool> {
   get_option!(config, get_bool, "feature.end.remote", false)
 }
 
-// LIST
-
-/// Gets `feature.list.hash`. Defautls to `true`.
-pub fn get_list_hash(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.list.hash", true)
-}
-
-/// Gets `feature.list.upstream`. Defautls to `true`.
-pub fn get_list_upstream(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.list.upstream", true)
-}
-
-/// Gets `feature.list.base`. Defautls to `true`.
-pub fn get_list_base(config: &Config) -> Result<bool> {
-  get_option!(config, get_bool, "feature.list.base", true)
-}
-
 // SHOW
 
 /// Gets `feature.show.message`. Defaults to

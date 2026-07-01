@@ -34,6 +34,7 @@ with the "--from <BRANCH>" option."#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
+  visible_alias = "branch",
   about = "Starts a new feature branch",
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
