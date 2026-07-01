@@ -25,9 +25,6 @@
   - quick creation of wip commits
   - standard message format: "WIP on <branch>: message"
   - tbh this isn't hard to do with regular commits or stashes
-- `tag`
-  - feature config option: require annotated tags
-    - this would make creating tags error if no message is provided
 - auto merge/rebase
   - when branches have diverged, preventing a push, check if a merge/rebase would result in conflicts, then do it automatically
   - use default git push config to determine whether to merge or rebase

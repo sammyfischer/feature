@@ -77,3 +77,35 @@ fn creates_annotated_tag() {
     .success()
     .stdout("Release v1.0.0\n");
 }
+
+/// When configured, feature should require annotated tags
+#[test]
+fn requires_annotated_tag() {
+  let (local, remote) = TestRepo::new_with_remote();
+  local.write_file(
+    "feature.toml",
+    r#"[tag]
+require_annotated = true
+"#,
+  );
+
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  // create lightweight tag
+  local.feature(&["tag", "1.0.0"]).failure();
+
+  // local doesn't have tag
+  local
+    .git(&["tag", "--list"])
+    .success()
+    .stdout("")
+    .stderr("");
+
+  // remote doesn't have tag
+  remote
+    .git(&["tag", "--list"])
+    .success()
+    .stdout("")
+    .stderr("");
+}

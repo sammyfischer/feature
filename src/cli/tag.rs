@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
 use git2::{ErrorCode, PushOptions};
@@ -22,6 +22,9 @@ and "1.0.0" are accepted and equivalent.
 
 When no "--message" is specified, this creates a lightweight tag. With a
 message, this creates an annotated tag."#;
+
+const NOT_ANNOTATED_MSG: &str = r#"This repository requires annotated tags!
+Specify a message with "-m" to annotate."#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -110,6 +113,10 @@ impl Args {
         })?
       );
     } else {
+      if state.config.tag.require_annotated {
+        return Err(anyhow!(NOT_ANNOTATED_MSG));
+      }
+
       // lightweight tag
       repo.tag_lightweight(&name, &target, false)?;
       println!(

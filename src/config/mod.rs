@@ -12,9 +12,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::branch::BranchConfig;
 use crate::config::projects::ProjectsConfig;
+use crate::config::tag::TagConfig;
 
 pub mod branch;
 pub mod projects;
+pub mod tag;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -28,7 +30,10 @@ pub struct Config {
   /// Branch name options
   pub branch: BranchConfig,
 
-  /// Stores list of subprojects
+  /// Semver tag options
+  pub tag: TagConfig,
+
+  /// List of subprojects
   #[serde(default)]
   pub projects: ProjectsConfig,
 }
@@ -39,6 +44,7 @@ impl Default for Config {
       default_remote: "origin".into(),
       protect: vec!["main".into()],
       branch: Default::default(),
+      tag: Default::default(),
       projects: Default::default(),
     }
   }
