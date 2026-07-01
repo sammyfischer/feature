@@ -26,7 +26,6 @@
   - standard message format: "WIP on <branch>: message"
   - tbh this isn't hard to do with regular commits or stashes
 - `tag`
-  - `version --log` calls git log on commits since last version
   - feature config option: require annotated tags
     - this would make creating tags error if no message is provided
 - auto merge/rebase

@@ -504,7 +504,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         let meta = BranchMeta::from_reference(head)?;
         let mut out = format!("On {}", style(meta.name()).green());
 
-        let semver = find_current_semver(repo, head)?;
+        let semver = find_current_semver(repo, &head.peel_to_commit()?)?;
         if let Some(semver) = semver {
           out.push_str(&format!(" {}", style!("({})", semver).dim()));
         }
@@ -520,7 +520,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         let name = head.name_bytes().to_str_lossy();
         let mut out = format!("On tag {}", style(&name).green());
 
-        let semver = find_current_semver(repo, head)?;
+        let semver = find_current_semver(repo, &head.peel_to_commit()?)?;
         if let Some(semver) = semver {
           // display semver if it's a different tag
           if semver.name() != name {

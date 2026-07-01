@@ -25,6 +25,7 @@ mod sync;
 mod tag;
 mod tags;
 mod update;
+mod version_log;
 
 /// Waits on the child process, returns result
 #[macro_export]
@@ -99,6 +100,7 @@ pub enum Command {
   Status(status::Args),
   Branches(branches::Args),
   Tags(tags::Args),
+  VersionLog(version_log::Args),
   Show(show::Args),
 
   // ==== META / FEATURE COMMANDS ====
@@ -125,6 +127,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Status(args) => args.run(&state),
     Command::Branches(args) => args.run(&state),
     Command::Tags(args) => args.run(&state),
+    Command::VersionLog(args) => args.run(&state),
     Command::Show(args) => args.run(&state),
 
     Command::Config(args) => args.run(&state.config),

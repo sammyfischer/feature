@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use anyhow::{Context, Result, anyhow};
-use git2::{Oid, Reference, Repository};
+use git2::{Commit, Oid, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 /// A real tag on the repo of the format "v.*.*.*"
@@ -103,10 +103,10 @@ pub fn get_semver_tags(repo: &Repository) -> Result<Vec<SemverTag>> {
   Ok(semvers)
 }
 
-/// Find the current semver tag for the given reference. This does an
+/// Find the current semver tag for the given commit. This does an
 /// ahead/behind graph calculation against each semver tag in parallel.
-pub fn find_current_semver(repo: &Repository, reference: &Reference) -> Result<Option<SemverTag>> {
-  let upstream = reference.peel_to_commit()?.id();
+pub fn find_current_semver(repo: &Repository, commit: &Commit) -> Result<Option<SemverTag>> {
+  let upstream = commit.id();
 
   let mut tags = get_semver_tags(repo)?;
   // ascending order, e.g. v1.0.0 -> v1.0.1 -> v2.0.0
