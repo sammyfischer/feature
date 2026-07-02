@@ -116,6 +116,7 @@ pub fn find_current_semver(repo: &Repository, commit: &Commit) -> Result<Option<
 
   let mut walk = repo.revwalk()?;
   walk.push(upstream)?;
+  walk.simplify_first_parent()?;
 
   let mut closest = None;
   for id in walk {
