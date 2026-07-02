@@ -1,8 +1,8 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use git2::{Commit, Oid, Repository};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 /// A real tag on the repo of the format "v.*.*.*"
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -103,63 +103,29 @@ pub fn get_semver_tags(repo: &Repository) -> Result<Vec<SemverTag>> {
   Ok(semvers)
 }
 
-/// Find the current semver tag for the given commit. This does an
-/// ahead/behind graph calculation against each semver tag in parallel.
+/// Find the current semver tag for the given commit. This walks up the commit
+/// history from the commit until it finds a tag or history ends.
 pub fn find_current_semver(repo: &Repository, commit: &Commit) -> Result<Option<SemverTag>> {
   let upstream = commit.id();
 
-  let mut tags = get_semver_tags(repo)?;
-  // ascending order, e.g. v1.0.0 -> v1.0.1 -> v2.0.0
-  tags.sort();
+  let tags = get_semver_tags(repo)?;
+  let lookup_tag = tags
+    .iter()
+    .map(|tag| (tag.commit, tag))
+    .collect::<HashMap<Oid, &SemverTag>>();
 
-  let repo_dir = repo.path().to_owned();
-  let work_dir = repo.workdir().to_owned();
+  let mut walk = repo.revwalk()?;
+  walk.push(upstream)?;
 
-  // perform graph traversals in parallel, since there could be many tags and
-  // it's a readonly operation
-  let ancestors: Vec<_> = tags
-    .par_iter()
-    .map(|tag| -> Result<Option<(SemverTag, usize)>> {
-      let repo = match &work_dir {
-        Some(work_dir) => {
-          let repo = Repository::open_bare(&repo_dir)?;
-          repo.set_workdir(work_dir, false)?;
-          repo
-        }
-        None => Repository::open(&repo_dir)?,
-      };
+  let mut closest = None;
+  for id in walk {
+    let id = id?;
 
-      let (ahead, behind) = repo.graph_ahead_behind(tag.commit, upstream)?;
-
-      // ancestors only
-      if ahead > 0 {
-        return Ok(None);
-      }
-
-      Ok(Some((tag.to_owned(), behind)))
-    })
-    .collect();
-
-  // pair of the tag and its distance from `upstream`
-  let mut closest_ancestor = (None, None);
-
-  for tag in ancestors {
-    let tag = match tag {
-      Ok(it) => it,
-      Err(e) => return Err(anyhow!(e)),
-    };
-
-    let Some((tag, distance)) = tag else {
-      continue;
-    };
-
-    // because it's ascending order (by version) and we want the most recent
-    // version, if two version tags point to the same commit, we need to
-    // overwrite the previous one using a <= check
-    if closest_ancestor.1.is_none_or(|it| distance <= it) {
-      closest_ancestor = (Some(tag), Some(distance));
+    if let Some(tag) = lookup_tag.get(&id) {
+      closest = Some(**tag);
+      break;
     }
   }
 
-  Ok(closest_ancestor.0)
+  Ok(closest)
 }
