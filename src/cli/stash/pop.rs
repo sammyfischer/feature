@@ -4,6 +4,7 @@ use git2::ErrorCode;
 
 use crate::App;
 use crate::util::branch_meta::BranchMeta;
+use crate::util::diff::DiffSummary;
 use crate::util::string::ToStrLossy;
 
 #[derive(clap::Args, Clone, Debug)]
@@ -75,7 +76,23 @@ impl PopArgs {
 
     println!("{}", stash.message_bytes().to_str_lossy());
 
-    // TODO: show staged/unstaged status
+    let old_tree = repo.head()?.peel_to_tree()?;
+
+    let mut staged = repo.diff_tree_to_index(Some(&old_tree), None, None)?;
+    staged.find_similar(None)?;
+
+    let staged = DiffSummary::new(&staged)?;
+    if staged.num_files > 0 {
+      println!("\n{} - {}", style("Staged").green(), staged);
+    }
+
+    let mut unstaged = repo.diff_index_to_workdir(None, None)?;
+    unstaged.find_similar(None)?;
+
+    let unstaged = DiffSummary::new(&unstaged)?;
+    if unstaged.num_files > 0 {
+      println!("\n{} - {}", style("Unstaged").red(), staged);
+    }
 
     Ok(())
   }

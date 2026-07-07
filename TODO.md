@@ -14,8 +14,9 @@
   - `config_command.rs` should probably be renamed to `config.rs`
 - paging
   - accurate pager resolution: GIT_PAGER -> core.pager -> PAGER -> less -FR -> stdout
-  - add cli option for paging `branches` and `tags` output
-  - add `feature.pager.<command>` to set paging per command. values: auto, always, never
+- per-command config
+  - add global feature options like `feature.relativeTime`, `feature.paging`
+  - add override for each command like `feature.stash.relativeTime`, `feature.tags.paging`
 - support `commit.template` config option
   - template file that is used when -m is unspecified
 - custom zsh completions, maybe fish too
@@ -27,9 +28,9 @@
 - `squash`
   - squashes all commits on a feature branch into one
 - `stash`
-  - print status after pop
   - if pop leads to conflicts, keep stash entry and print warning, but leave conflicts in workdir
   - support the `stash --branch` option to use non-current branch
+    - could use special syntax `branch:index` to target stashes
   - create parent commits containing staged, unstaged, and untracked. use to build diffs and restore changes correctly
   - possibly rename command to `wip`, since it's designed for per-feature, in-progress work
   - could be an option to operate on the default stash, `refs/stash`

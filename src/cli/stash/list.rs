@@ -7,7 +7,7 @@ use crate::util::string::{ToStrLossy, ToStrLossyOwned};
 use crate::{App, data};
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Lists stashes on branch")]
+#[command(visible_alias = "ls", about = "Lists stashes on branch")]
 pub struct ListArgs {
   /// List all stashes, not only this branch's stashes
   #[arg(short, long)]
