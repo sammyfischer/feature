@@ -2,9 +2,8 @@ use anyhow::{Result, anyhow};
 use console::style;
 use git2::{Reflog, Repository};
 
-use crate::util::branch_meta::BranchMeta;
 use crate::util::display::{DisplayTimeOptions, display_time};
-use crate::util::string::ToStrLossyOwned;
+use crate::util::string::{ToStrLossy, ToStrLossyOwned};
 use crate::{App, data};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -24,21 +23,20 @@ impl ListArgs {
       return Err(anyhow!("Not currently on a branch"));
     }
 
+    let branch_name = head.shorthand_bytes().to_str_lossy();
+
     if self.all {
       let refs = repo.references_glob("refs/feature/stashes/*")?;
 
       for reference in refs {
         let reference = reference?;
-        let branch = BranchMeta::from_reference(&reference)?;
-        let reflog = repo.reflog(branch.refname())?;
+        let reflog = repo.reflog(reference.name()?)?;
 
-        println!("{}", self.display_stash_list(repo, &branch, &reflog)?);
+        println!("{}", self.display_stash_list(repo, &branch_name, &reflog)?);
       }
     } else {
-      let branch = BranchMeta::from_reference(&head.resolve()?)?;
-      let reflog = repo.reflog(branch.refname())?;
-
-      println!("{}", self.display_stash_list(repo, &branch, &reflog)?);
+      let reflog = repo.reflog(&format!("refs/feature/stashes/{}", &branch_name))?;
+      println!("{}", self.display_stash_list(repo, &branch_name, &reflog)?);
     }
 
     Ok(())
@@ -47,7 +45,7 @@ impl ListArgs {
   fn display_stash_list(
     &self,
     repo: &Repository,
-    branch: &BranchMeta,
+    branch_name: &str,
     reflog: &Reflog,
   ) -> Result<String> {
     use std::fmt::Write;
@@ -72,7 +70,7 @@ impl ListArgs {
       write!(
         out,
         "{}{}{} {} {}",
-        style(branch.name()).cyan(),
+        style(branch_name).cyan(),
         style(":").dim(),
         style(i).cyan(),
         style(display_time(&time, &DisplayTimeOptions {

@@ -45,7 +45,11 @@ impl PushArgs {
     let branch_name = head.shorthand_bytes().to_str_lossy();
 
     let sig = repo.signature()?;
-    let msg = self.message.join(" ");
+    let msg = if self.message.is_empty() {
+      format!("WIP on {}", branch_name)
+    } else {
+      self.message.join(" ")
+    };
 
     let tree = if self.staged {
       let mut index = repo.index()?;
