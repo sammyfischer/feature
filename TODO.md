@@ -2,9 +2,20 @@
 
 ## Housekeeping
 
+- separate core module/crate
+  - move all common/backend functionality into a separate module (should replace util module)
+  - cli module becomes just a frontend, calls common functions
+  - config and data modules should be part of core
+  - all terminal printing/formatting should be handled in cli, with common code in a `display` module
+- clearer naming
+  - every cli subcommand is a struct called `Args`, they should be renamed to contain the command name e.g. `StartArgs`
+- cli group commands should be organized in modules
+  - config/project commands are currently in one file, they should be split up
+  - `config_command.rs` should probably be renamed to `config.rs`
 - paging
-  - use git config for pager command
+  - accurate pager resolution: GIT_PAGER -> core.pager -> PAGER -> less -FR -> stdout
   - add cli option for paging `branches` and `tags` output
+  - add `feature.pager.<command>` to set paging per command. values: auto, always, never
 - support `commit.template` config option
   - template file that is used when -m is unspecified
 - custom zsh completions, maybe fish too
@@ -16,11 +27,12 @@
 - `squash`
   - squashes all commits on a feature branch into one
 - `stash`
-  - custom stash mechanism, no interop with git stash
-  - stashes are stored per branch, e.g. `refs/feature/stashes/branch-name`
-    - in other words, each branch gets its own independent stash that works like the normal `refs/stash`
-    - stash commands operate on the current branch, or take the branch as an argument
-    - could be an option to operate on the default stash, `refs/stash`
+  - print status after pop
+  - if pop leads to conflicts, keep stash entry and print warning, but leave conflicts in workdir
+  - support the `stash --branch` option to use non-current branch
+  - create parent commits containing staged, unstaged, and untracked. use to build diffs and restore changes correctly
+  - possibly rename command to `wip`, since it's designed for per-feature, in-progress work
+  - could be an option to operate on the default stash, `refs/stash`
 - `wip`
   - quick creation of wip commits
   - standard message format: "WIP on <branch>: message"

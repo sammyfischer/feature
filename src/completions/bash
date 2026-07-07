@@ -588,6 +588,7 @@ _feature() {
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
           ;;
+      esac
       ;;
 
     update)
