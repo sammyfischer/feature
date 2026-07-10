@@ -4,16 +4,16 @@ use git2::build::CheckoutBuilder;
 use git2::{Commit, DiffOptions, ErrorCode};
 
 use crate::App;
-use crate::util::advice::NOT_ON_BRANCH_MSG;
-use crate::util::branch_meta::BranchMeta;
-use crate::util::diff::DiffSummary;
-use crate::util::display::{
+use crate::core::advice::NOT_ON_BRANCH_MSG;
+use crate::core::branch_info::BranchInfo;
+use crate::core::diff::DiffSummary;
+use crate::core::display::{
   DisplayCommitMessageLevel,
   DisplayCommitOptions,
   DisplayTimeOptions,
   display_commit,
 };
-use crate::util::wip::get_wip_refname;
+use crate::core::wip::get_wip_refname;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Pushes a new wip to a branch")]
@@ -45,14 +45,14 @@ impl PushArgs {
     let head = repo.head()?;
 
     let branch = match &self.branch {
-      Some(name) => BranchMeta::from_name_dwim(repo, name)?
+      Some(name) => BranchInfo::from_name_dwim(repo, name)?
         .with_context(|| format!("Failed to find branch: {}", name))?,
       None => {
         if !head.is_branch() {
           return Err(anyhow!(NOT_ON_BRANCH_MSG));
         }
 
-        BranchMeta::from_reference(&head.resolve()?)?
+        BranchInfo::from_reference(&head.resolve()?)?
       }
     };
 

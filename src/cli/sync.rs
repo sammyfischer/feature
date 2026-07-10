@@ -22,13 +22,13 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use crate::cli::prune::prune_branches;
 use crate::config::projects::ProjectEntry;
 use crate::config::{self, Config};
-use crate::util::branch::{fetch_all, get_current_branch_name, hard_reset};
-use crate::util::branch_meta::BranchMeta;
-use crate::util::diff::{DiffSummary, has_workdir_changes};
-use crate::util::get_credentials_cb;
-use crate::util::string::ToStrLossyOwned;
-use crate::util::term::TICK_STRINGS;
-use crate::util::wip::{WIP_NAMESPACE, get_wip_refname};
+use crate::core::branch::{get_current_branch_name, hard_reset};
+use crate::core::branch_info::BranchInfo;
+use crate::core::diff::{DiffSummary, has_workdir_changes};
+use crate::core::fetch::{fetch_all, get_credentials_cb};
+use crate::core::string::ToStrLossyOwned;
+use crate::core::term::TICK_STRINGS;
+use crate::core::wip::{WIP_NAMESPACE, get_wip_refname};
 use crate::{App, data, style};
 
 const LONG_ABOUT: &str = r"Updates all branches with their remotes (if they have one), then prunes merged
@@ -493,23 +493,23 @@ impl Args {
     current_branch: Option<&str>,
     dry_run: bool,
   ) -> Result<UpdateAction> {
-    let branch_meta = BranchMeta::from_branch(branch)?;
+    let branch_info = BranchInfo::from_branch(branch)?;
     let is_current = current_branch
       .as_ref()
-      .is_some_and(|it| *it == branch_meta.name());
+      .is_some_and(|it| *it == branch_info.name());
 
-    let upstream = branch_meta.upstream(repo)?;
+    let upstream = branch_info.upstream(repo)?;
     let Some(upstream) = upstream else {
       // no upstream, nothing to update
       return Ok(UpdateAction::None);
     };
-    let upstream_meta = BranchMeta::from_branch(&upstream)?;
+    let upstream_info = BranchInfo::from_branch(&upstream)?;
 
     if is_current {
       // check for local changes
       if has_workdir_changes(repo)? {
         return Ok(UpdateAction::UpdateSkip {
-          name: branch_meta.name().to_owned(),
+          name: branch_info.name().to_owned(),
           reason: "local changes".to_owned(),
         });
       }
@@ -527,7 +527,7 @@ impl Args {
 
     if !can_ff {
       return Ok(UpdateAction::UpdateSkip {
-        name: branch_meta.name().to_owned(),
+        name: branch_info.name().to_owned(),
         reason: "not fast-forwardable".to_string(),
       });
     }
@@ -546,13 +546,13 @@ impl Args {
         // for other branches, we just move them to the upstream commit
         branch.get_mut().set_target(
           upstream_tip.id(),
-          &format!("feature sync: fast-forward to {}", upstream_meta.refname()),
+          &format!("feature sync: fast-forward to {}", upstream_info.refname()),
         )?;
       }
     }
 
     Ok(UpdateAction::Update {
-      name: branch_meta.name().to_owned(),
+      name: branch_info.name().to_owned(),
       old: branch_tip.as_object().short_id()?.to_str_lossy_owned(),
       changes,
     })

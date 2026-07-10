@@ -6,7 +6,7 @@ use schemars::schema_for;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{self, Config};
-use crate::util::term::get_user_confirmation;
+use crate::core::term::get_user_confirmation;
 
 /// Serializes the value into a toml string
 macro_rules! toml_stringify {

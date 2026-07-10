@@ -6,13 +6,13 @@ use git2::{ErrorClass, ErrorCode, Repository};
 
 use crate::cli::{Args, Command};
 use crate::config::Config;
-use crate::util::diff::status_guide;
+use crate::core::diff::status_guide;
 
 mod cli;
 mod config;
+mod core;
 mod data;
 mod templater;
-mod util;
 
 /// Shared state of the cli
 pub struct App {

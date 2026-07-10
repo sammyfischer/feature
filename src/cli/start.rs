@@ -4,10 +4,10 @@ use anyhow::{Context, Result};
 use clap::ValueHint;
 use console::style;
 
+use crate::core::branch::switch;
+use crate::core::branch_info::BranchInfo;
+use crate::core::string::ToStrLossyOwned;
 use crate::templater::{LongVar, ShortVar, Templater};
-use crate::util::branch::switch;
-use crate::util::branch_meta::BranchMeta;
-use crate::util::string::ToStrLossyOwned;
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Creates and switches to a new branch.
@@ -69,9 +69,9 @@ pub struct Args {
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let base = match &self.from {
-      Some(base_name) => BranchMeta::from_name_dwim(&state.repo, base_name)?
+      Some(base_name) => BranchInfo::from_name_dwim(&state.repo, base_name)?
         .with_context(|| format!("Branch not found: {}", base_name))?,
-      None => BranchMeta::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
+      None => BranchInfo::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
     let branch_name = self.build_branch_name(state, base.name())?;
@@ -97,8 +97,8 @@ impl Args {
 
     // switch to branch if user didn't specify --stay
     if !self.stay {
-      let meta = BranchMeta::from_branch(&branch)?;
-      switch(&state.repo, &meta)?;
+      let info = BranchInfo::from_branch(&branch)?;
+      switch(&state.repo, &info)?;
     }
 
     // set feature-base in config

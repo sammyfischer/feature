@@ -4,9 +4,9 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use git2::Branch;
 
-use crate::util::branch::get_upstream;
-use crate::util::branch_meta::BranchMeta;
-use crate::util::string::ToStrLossyOwned;
+use crate::core::branch::get_upstream;
+use crate::core::branch_info::BranchInfo;
+use crate::core::string::ToStrLossyOwned;
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
@@ -38,12 +38,12 @@ pub struct Args {
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let branch = match &self.branch {
-      Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
+      Some(branch_name) => BranchInfo::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
-      None => BranchMeta::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
+      None => BranchInfo::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
-    let base = BranchMeta::from_name_dwim(&state.repo, &self.base)?
+    let base = BranchInfo::from_name_dwim(&state.repo, &self.base)?
       .ok_or(anyhow!("Branch not found: {}", self.base))?;
 
     let feature_base_name = {

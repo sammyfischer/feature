@@ -5,8 +5,8 @@ use clap::ValueEnum;
 use git2::{Config, ErrorClass, ErrorCode, Repository};
 
 use crate::config::PageWhen;
-use crate::util::branch_meta::BranchMeta;
-use crate::util::display::DisplayCommitMessageLevel;
+use crate::core::branch_info::BranchInfo;
+use crate::core::display::DisplayCommitMessageLevel;
 
 /// Generates the function to get a variable from git config.
 ///
@@ -48,16 +48,16 @@ macro_rules! get_option {
 /// Gets the feature-base of a branch.
 ///
 /// # Params
-/// - `branch_name` - the shortname of the branch (use [BranchMeta::name] if
+/// - `branch_name` - the shortname of the branch (use [BranchInfo::name] if
 ///   available)
-pub fn get_feature_base(repo: &Repository, branch_name: &str) -> Result<Option<BranchMeta>> {
+pub fn get_feature_base(repo: &Repository, branch_name: &str) -> Result<Option<BranchInfo>> {
   match repo
     .config()?
     .snapshot()?
     .get_string(&format!("branch.{}.feature-base", &branch_name))
   {
     Ok(it) => Ok(Some(
-      BranchMeta::from_refname(repo, &it).context("Failed to parse base branch name")?,
+      BranchInfo::from_refname(repo, &it).context("Failed to parse base branch name")?,
     )),
     Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
     Err(e) => Err(e.into()),

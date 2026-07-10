@@ -15,11 +15,12 @@ use crate::cli::sync::{
   set_sync_spinner_style,
 };
 use crate::config::{self, Config};
-use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
-use crate::util::branch_meta::BranchMeta;
-use crate::util::string::ToStrLossyOwned;
-use crate::util::wip::get_wip_refname;
-use crate::util::{delete_config_section, open_repo_from_dirs};
+use crate::core::branch::{get_current_branch_name, is_merged};
+use crate::core::branch_info::BranchInfo;
+use crate::core::fetch::fetch_all;
+use crate::core::string::ToStrLossyOwned;
+use crate::core::wip::get_wip_refname;
+use crate::core::{delete_config_section, open_repo_from_dirs};
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
@@ -245,32 +246,32 @@ fn prune_branch(
   current_branch_name: Option<&str>,
   dry_run: bool,
 ) -> Result<UpdateAction> {
-  let meta = BranchMeta::from_branch(branch)?;
+  let info = BranchInfo::from_branch(branch)?;
 
   // skip protected branches
-  if config.protect.iter().any(|it| it == meta.name()) {
+  if config.protect.iter().any(|it| it == info.name()) {
     return Ok(UpdateAction::None);
   }
 
   // skip branches that have never been pushed
-  match repo.branch_upstream_remote(meta.refname()) {
+  match repo.branch_upstream_remote(info.refname()) {
     Ok(_) => {}
     Err(e) if e.code() == ErrorCode::NotFound => return Ok(UpdateAction::None),
     Err(e) => return Err(e.into()),
   }
 
   // find base branch from db, else skip
-  let base = match data::get_feature_base(repo, meta.name())? {
+  let base = match data::get_feature_base(repo, info.name())? {
     Some(base) => base,
     None => return Ok(UpdateAction::None),
   };
 
   // skip current branch
-  if current_branch_name.is_some_and(|it| it == meta.name()) {
+  if current_branch_name.is_some_and(|it| it == info.name()) {
     // not necessarily an error, but the user should know that a non-protected
     // branch was skipped and may manually need to be deleted
     return Ok(UpdateAction::DeleteSkip {
-      name: meta.name().to_owned(),
+      name: info.name().to_owned(),
       reason: "currently checked-out".to_owned(),
     });
   }
@@ -288,18 +289,18 @@ fn prune_branch(
     branch.delete()?;
 
     // delete wip ref if there was one
-    let wip_refname = get_wip_refname(meta.name());
+    let wip_refname = get_wip_refname(info.name());
     if let Ok(mut wip_ref) = repo.find_reference(&wip_refname) {
       wip_ref.delete()?;
     }
 
     // git2 can't remove entire config sections, but git provides a command to do so
-    let key = format!("branch.{}", &meta.name());
+    let key = format!("branch.{}", &info.name());
     let _ = delete_config_section(&key);
   }
 
   Ok(UpdateAction::Delete {
-    name: meta.name().to_owned(),
+    name: info.name().to_owned(),
     old: commit.as_object().short_id()?.to_str_lossy_owned(),
   })
 }

@@ -3,15 +3,15 @@ use clap::ValueHint;
 use console::style;
 use git2::{ErrorCode, PushOptions};
 
-use crate::util::display::{
+use crate::core::display::{
   DisplayCommitMessageLevel,
   DisplayCommitOptions,
   DisplayTimeOptions,
   display_tag,
 };
-use crate::util::string::ToStrLossyOwned;
-use crate::util::tag::SemverTag;
-use crate::util::{PushOutput, get_push_callbacks};
+use crate::core::push::{PushOutput, get_push_callbacks};
+use crate::core::string::ToStrLossyOwned;
+use crate::core::tag::SemverTag;
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Creates and pushes a semver tag.
@@ -136,10 +136,11 @@ impl Args {
           let mut output = PushOutput::new();
           {
             let mut opts = PushOptions::new();
-            opts.remote_callbacks(get_push_callbacks(repo, &mut output)?);
+            opts.remote_callbacks(get_push_callbacks(&mut output)?);
             remote.push(&[&refname], Some(&mut opts))?;
           }
-          output.print();
+          // TODO: frontend impl
+          // output.print();
 
           println!(
             "{} tag {} to {}",

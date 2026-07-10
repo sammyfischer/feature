@@ -3,7 +3,7 @@ use git2::{BranchType, Repository};
 
 use crate::App;
 use crate::config::Config;
-use crate::util::string::ToStrLossyOwned;
+use crate::core::string::ToStrLossyOwned;
 
 /// Dynamic shell completions
 #[derive(clap::Args, Clone, Debug)]

@@ -13,25 +13,26 @@ use clap::ValueHint;
 use console::{strip_ansi_codes, style};
 use git2::{Commit, Diff, ErrorCode, MergeOptions, Oid, Reference, Repository, Tree};
 
-use crate::util::advice::NO_SIGNATURE_MSG;
-use crate::util::branch::{
+use crate::core::advice::NO_SIGNATURE_MSG;
+use crate::core::branch::{
   get_current_branch_name,
   get_head,
   get_merge_head,
   get_pick_head,
   get_revert_head,
 };
-use crate::util::diff::{DiffSummary, has_index_changes};
-use crate::util::display::{
+use crate::core::commit::resolve_commit_name;
+use crate::core::diff::{DiffSummary, has_index_changes};
+use crate::core::display::{
   DisplayCommitMessageLevel,
   DisplayCommitOptions,
   DisplayTimeOptions,
   display_commit,
   display_hash,
 };
-use crate::util::string::{ToStrLossy, ToStrLossyOwned};
-use crate::util::term::get_user_confirmation;
-use crate::util::{get_signature, resolve_commit_name};
+use crate::core::get_signature;
+use crate::core::string::{ToStrLossy, ToStrLossyOwned};
+use crate::core::term::get_user_confirmation;
 use crate::{App, data};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.

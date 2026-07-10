@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use console::style;
 
 use crate::App;
-use crate::util::string::ToStrLossy;
-use crate::util::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
+use crate::core::string::ToStrLossy;
+use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Drops a wip without applying it")]

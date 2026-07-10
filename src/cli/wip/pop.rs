@@ -3,9 +3,9 @@ use console::style;
 use git2::build::CheckoutBuilder;
 use git2::{DiffOptions, IndexAddOption, Repository, Tree};
 
-use crate::util::status::display_file_statuses;
-use crate::util::string::ToStrLossy;
-use crate::util::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
+use crate::core::status::display_file_statuses;
+use crate::core::string::ToStrLossy;
+use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
 use crate::{App, data};
 
 #[derive(clap::Args, Clone, Debug)]

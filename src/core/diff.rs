@@ -9,7 +9,7 @@ use console::style;
 use git2::{Delta, Diff, DiffLineType, Repository, Status, StatusOptions};
 use which::which;
 
-use crate::util::display::display_plus_minus;
+use crate::core::display::display_plus_minus;
 
 macro_rules! delta_filename {
   ($delta:ident, $file:ident) => {

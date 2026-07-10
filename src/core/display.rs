@@ -10,7 +10,8 @@ use git2::{Commit, Object, Signature, Tag, Time};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::util::string::{ToStrLossy, ToStrLossyOwned};
+use crate::core::string::ToStrLossy;
+use crate::core::trim_hash;
 
 // Creates a [StyledObject] with format args
 #[macro_export]
@@ -18,10 +19,6 @@ macro_rules! style {
   ($($arg:tt)*) => {
     console::style(&format!($($arg)*))
   };
-}
-
-pub fn trim_hash(obj: &Object) -> Result<String> {
-  Ok(obj.short_id()?.to_str_lossy_owned())
 }
 
 /// Displays a trimmed hash in yellow

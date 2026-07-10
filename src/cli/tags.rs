@@ -5,11 +5,11 @@ use console::style;
 use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::util::display::{DisplayTimeOptions, display_hash, display_time, display_time_relative};
-use crate::util::open_repo_from_dirs;
-use crate::util::string::{ToStrLossy, ToStrLossyOwned};
-use crate::util::tag::{SemverTag, get_semver_tags};
-use crate::util::term::paginate;
+use crate::core::display::{DisplayTimeOptions, display_hash, display_time, display_time_relative};
+use crate::core::open_repo_from_dirs;
+use crate::core::string::{ToStrLossy, ToStrLossyOwned};
+use crate::core::tag::{SemverTag, get_semver_tags};
+use crate::core::term::paginate;
 use crate::{App, data, style};
 
 #[derive(clap::Args, Clone, Debug)]

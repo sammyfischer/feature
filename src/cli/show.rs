@@ -3,16 +3,16 @@ use clap::ValueHint;
 use git2::{ErrorClass, ErrorCode};
 
 use crate::config::PageWhen;
-use crate::util::diff::{DiffSummary, get_formatted_diff};
-use crate::util::display::{
+use crate::core::diff::{DiffSummary, get_formatted_diff};
+use crate::core::display::{
   DisplayCommitMessageLevel,
   DisplayCommitOptions,
   DisplayTimeOptions,
   display_commit,
   display_tag,
 };
-use crate::util::string::ToStrLossy;
-use crate::util::term::{is_term, paginate};
+use crate::core::string::ToStrLossy;
+use crate::core::term::{is_term, paginate};
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Show info about a commit

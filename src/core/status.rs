@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use console::style;
 use git2::{DiffOptions, Repository};
 
-use crate::util::diff::DiffSummary;
-use crate::util::string::ToStrLossyOwned;
+use crate::core::diff::DiffSummary;
+use crate::core::string::ToStrLossyOwned;
 
 pub fn is_merge_active(repo: &Repository) -> bool {
   use git2::RepositoryState::*;

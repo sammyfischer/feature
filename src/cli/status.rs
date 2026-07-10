@@ -17,7 +17,7 @@ use git2::{
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::config::projects::ProjectEntry;
-use crate::util::advice::{
+use crate::core::advice::{
   BISECT_ADVICE,
   MERGE_CONFLICT_ADVICE,
   PICK_CONFLICT_ADVICE,
@@ -25,8 +25,7 @@ use crate::util::advice::{
   REVERT_CONFLICT_ADVICE,
   STATUS_ADVICE,
 };
-use crate::util::branch::{
-  find_branch_at_commit,
+use crate::core::branch::{
   get_ahead_behind,
   get_current_branch_or_commit,
   get_head,
@@ -34,19 +33,15 @@ use crate::util::branch::{
   get_pick_head,
   get_revert_head,
 };
-use crate::util::branch_meta::BranchMeta;
-use crate::util::diff::DiffSummary;
-use crate::util::display::{
-  display_commit_compact,
-  display_plus_minus,
-  display_signature,
-  trim_hash,
-};
-use crate::util::status::{display_file_statuses, is_pick_active};
-use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
-use crate::util::tag::find_current_semver;
-use crate::util::term::{get_term_width, is_term};
-use crate::util::{get_signature, open_repo_from_dirs};
+use crate::core::branch_info::BranchInfo;
+use crate::core::commit::find_branch_at_commit;
+use crate::core::diff::DiffSummary;
+use crate::core::display::{display_commit_compact, display_plus_minus, display_signature};
+use crate::core::status::{display_file_statuses, is_pick_active};
+use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
+use crate::core::tag::find_current_semver;
+use crate::core::term::{get_term_width, is_term};
+use crate::core::{get_signature, open_repo_from_dirs, trim_hash};
 use crate::{App, data, opt_advice, style};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -277,10 +272,10 @@ impl Args {
       let commit = head.peel_to_commit()?;
 
       if head.is_branch() || head.is_remote() {
-        let branch_meta = BranchMeta::from_reference(&head)?;
-        out.push_str(&format!(" on {}", style(branch_meta.name()).green()));
+        let branch_info = BranchInfo::from_reference(&head)?;
+        out.push_str(&format!(" on {}", style(branch_info.name()).green()));
 
-        if let Some(upstream) = branch_meta.upstream(&proj_repo)? {
+        if let Some(upstream) = branch_info.upstream(&proj_repo)? {
           let (ahead, behind) = get_ahead_behind(&proj_repo, &head, upstream.get())?;
           out.push_str(&format!(
             " {}{}{}",
@@ -460,18 +455,18 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
 
       // display branch name or detached head indicator
       let display_branch = if head.is_branch() {
-        let meta = BranchMeta::from_reference(head)?;
-        let mut out = format!("On {}", style(meta.name()).green());
+        let info = BranchInfo::from_reference(head)?;
+        let mut out = format!("On {}", style(info.name()).green());
 
         let semver = find_current_semver(repo, &head.peel_to_commit()?)?;
         if let Some(semver) = semver {
           out.push_str(&format!(" {}", style!("({})", semver).dim()));
         }
 
-        branch = Some(meta);
+        branch = Some(info);
         out
       } else if head.is_remote() {
-        let meta = BranchMeta::from_reference(head)?;
+        let meta = BranchInfo::from_reference(head)?;
         // don't set branch because, while remotes are like branches, they cannot have
         // an upstream or base
         format!("On remote {}", style(meta.name()).green())
@@ -536,7 +531,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     // upstream row
     let upstream = branch.upstream(repo)?;
     if let Some(upstream) = upstream {
-      let upstream = BranchMeta::from_branch(&upstream)?;
+      let upstream = BranchInfo::from_branch(&upstream)?;
       let (a, b) = get_ahead_behind(repo, &upstream.resolve(repo)?, &branch_ref)
         .context("Failed to get ahead/behind for upstream")?;
 

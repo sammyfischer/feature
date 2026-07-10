@@ -2,9 +2,9 @@ use anyhow::{Result, anyhow};
 use console::style;
 use git2::{Reflog, Repository};
 
-use crate::util::display::{DisplayTimeOptions, display_time};
-use crate::util::string::ToStrLossyOwned;
-use crate::util::wip::{display_wip_spec, get_wip_refname};
+use crate::core::display::{DisplayTimeOptions, display_time};
+use crate::core::string::ToStrLossyOwned;
+use crate::core::wip::{display_wip_spec, get_wip_refname};
 use crate::{App, data};
 
 #[derive(clap::Args, Clone, Debug)]

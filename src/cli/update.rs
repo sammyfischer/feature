@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 
-use crate::util::branch::fetch_upstream_branch;
-use crate::util::branch_meta::BranchMeta;
+use crate::core::branch_info::BranchInfo;
+use crate::core::fetch::fetch_upstream_branch;
 use crate::{App, await_child, data, git, style};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
@@ -53,10 +53,10 @@ impl Args {
     }
 
     let branch =
-      BranchMeta::current(&state.repo)?.context("Not currently on a branch! Nothing to update.")?;
+      BranchInfo::current(&state.repo)?.context("Not currently on a branch! Nothing to update.")?;
 
     let base = match &self.base {
-      Some(base_name) => BranchMeta::from_name_dwim(&state.repo, base_name)?
+      Some(base_name) => BranchInfo::from_name_dwim(&state.repo, base_name)?
         .ok_or(anyhow!("Branch not found: {}", base_name))?,
       None => data::get_feature_base(&state.repo, branch.name())?.ok_or(anyhow!(NO_BASE_MSG))?,
     };

@@ -5,10 +5,11 @@ use clap::ValueHint;
 use console::style;
 use git2::{Branch, BranchType, ErrorClass, ErrorCode, PushOptions, Repository};
 
-use crate::util::branch::{fetch_upstream_branch, get_ahead_behind};
-use crate::util::branch_meta::BranchMeta;
-use crate::util::diff::DiffSummary;
-use crate::util::{PushOutput, get_push_callbacks};
+use crate::core::branch::get_ahead_behind;
+use crate::core::branch_info::BranchInfo;
+use crate::core::diff::DiffSummary;
+use crate::core::fetch::fetch_upstream_branch;
+use crate::core::push::{PushOutput, get_push_callbacks};
 use crate::{App, data, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
@@ -55,9 +56,9 @@ pub struct Args {
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let branch = match &self.branch {
-      Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
+      Some(branch_name) => BranchInfo::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
-      None => BranchMeta::current(&state.repo)?.context(NO_BRANCH_MSG)?,
+      None => BranchInfo::current(&state.repo)?.context(NO_BRANCH_MSG)?,
     };
 
     // allow pushing protected branches, but as fast-forward only
@@ -67,12 +68,12 @@ impl Args {
 
     let (upstream, remote_name) = match branch.upstream(&state.repo)? {
       Some(it) => {
-        let meta = BranchMeta::from_branch(&it)?;
-        let remote_name = meta
+        let info = BranchInfo::from_branch(&it)?;
+        let remote_name = info
           .split_name_and_remote()?
           .1
           .expect("Upstream should have a remote");
-        (Some(meta), remote_name)
+        (Some(info), remote_name)
       }
       None => (
         None,
@@ -183,7 +184,7 @@ impl Args {
     let mut output = PushOutput::new();
     {
       let mut opts = PushOptions::new();
-      opts.remote_callbacks(get_push_callbacks(&state.repo, &mut output)?);
+      opts.remote_callbacks(get_push_callbacks(&mut output)?);
 
       remote
         .push(&[&refspec], Some(&mut opts))
@@ -191,7 +192,8 @@ impl Args {
 
       // drop opts after push
     }
-    output.print();
+    // TODO: frontend impl
+    // output.print();
 
     print!(
       "{} {} to {}",
@@ -256,8 +258,8 @@ pub enum PushCheckStatus {
 /// Fetches the latest upstream ensures that we have all the needed changes
 pub fn check_upstream(
   repo: &Repository,
-  branch: &BranchMeta,
-  upstream: Option<&BranchMeta>,
+  branch: &BranchInfo,
+  upstream: Option<&BranchInfo>,
   force: bool,
 ) -> Result<PushCheckStatus> {
   let Some(upstream) = upstream else {
@@ -310,8 +312,8 @@ pub fn check_upstream(
 /// Fetches the latest base ensures that we have all the needed changes
 pub fn check_base(
   repo: &Repository,
-  branch: &BranchMeta,
-  base: Option<&BranchMeta>,
+  branch: &BranchInfo,
+  base: Option<&BranchInfo>,
   force: bool,
 ) -> Result<PushCheckStatus> {
   let Some(base) = base else {
