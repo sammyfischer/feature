@@ -30,7 +30,6 @@
   - squashes all commits on a feature branch into one
 - `wip`
   - create parent commits containing staged, unstaged, and untracked. use to build diffs and restore changes correctly
-  - sync should check each stash and delete all dangling stash references
 - auto merge/rebase
   - when branches have diverged, preventing a push, check if a merge/rebase would result in conflicts, then do it automatically
   - use default git push config to determine whether to merge or rebase

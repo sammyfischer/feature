@@ -12,6 +12,7 @@ use crate::util::branch::{
 use crate::util::branch_meta::BranchMeta;
 use crate::util::display::trim_hash;
 use crate::util::string::ToStrLossy;
+use crate::util::wip::get_wip_refname;
 use crate::util::{PushOutput, delete_config_section, get_push_callbacks};
 use crate::{App, data, style};
 
@@ -135,6 +136,12 @@ impl Args {
       branch.name(),
       style!("(was {})", trim_hash(branch_tip.as_object())?).dim()
     );
+
+    // delete wip ref if there was one
+    let wip_refname = get_wip_refname(branch.name());
+    if let Ok(mut wip_ref) = state.repo.find_reference(&wip_refname) {
+      wip_ref.delete()?;
+    }
 
     // delete branch's config
     let key = format!("branch.{}", branch.name());

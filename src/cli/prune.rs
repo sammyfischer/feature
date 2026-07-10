@@ -18,6 +18,7 @@ use crate::config::{self, Config};
 use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
 use crate::util::branch_meta::BranchMeta;
 use crate::util::string::ToStrLossyOwned;
+use crate::util::wip::get_wip_refname;
 use crate::util::{delete_config_section, open_repo_from_dirs};
 use crate::{App, data};
 
@@ -285,11 +286,17 @@ fn prune_branch(
 
   if !dry_run {
     branch.delete()?;
-  }
 
-  // git2 can't remove entire config sections, but git provides a command to do so
-  let key = format!("branch.{}", &meta.name());
-  let _ = delete_config_section(&key);
+    // delete wip ref if there was one
+    let wip_refname = get_wip_refname(meta.name());
+    if let Ok(mut wip_ref) = repo.find_reference(&wip_refname) {
+      wip_ref.delete()?;
+    }
+
+    // git2 can't remove entire config sections, but git provides a command to do so
+    let key = format!("branch.{}", &meta.name());
+    let _ = delete_config_section(&key);
+  }
 
   Ok(UpdateAction::Delete {
     name: meta.name().to_owned(),

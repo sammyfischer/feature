@@ -5,10 +5,13 @@ use git2::Repository;
 use crate::util::advice::NOT_ON_BRANCH_MSG;
 use crate::util::branch_meta::BranchMeta;
 
-/// Gets the refname the branch's wips. `branch_name` must be the shortname of a
-/// local branch.
+/// The base ref namespace for feature wips. Doesn't include a trailing slash.
+pub const WIP_NAMESPACE: &str = "refs/feature/wips";
+
+/// Gets the refname the branch's wips. `branch_name` should be the shortname of
+/// a local branch or a glob pattern.
 pub fn get_wip_refname(branch_name: &str) -> String {
-  format!("refs/feature/wips/{}", branch_name)
+  format!("{}/{}", WIP_NAMESPACE, branch_name)
 }
 
 /// Parses an optional stash spec. Fills in defaults and returns the branch and

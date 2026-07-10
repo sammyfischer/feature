@@ -455,3 +455,29 @@ fn updates_modules() {
       .stdout("A");
   }
 }
+
+/// Syncing should delete wips with no backing branch
+#[test]
+fn cleans_up_wips() {
+  let file_name = "file.txt";
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.feature(&["start", "topic"]).success();
+
+  // push wips to topic
+  repo.write_file(file_name, "B\n");
+  repo.feature(&["wip", "push", "wip b"]).success();
+  repo.write_file(file_name, "C\n");
+  repo.feature(&["wip", "push", "wip c"]).success();
+
+  repo.git(&["switch", "main"]).success();
+  repo.git(&["branch", "-D", "topic"]).success();
+
+  repo.feature(&["sync"]).success();
+
+  assert!(
+    !repo.path().join(".git/refs/feature/wips/topic").exists(),
+    "Wip ref should be deleted"
+  );
+}
