@@ -184,3 +184,35 @@ B
     .success()
     .stdout("wip on main\n");
 }
+
+/// Feature should pop the stash specified by the stash ref
+#[test]
+fn pop_from_stash_ref() {
+  let file_name = "file.txt";
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.write_file(file_name, "B\n");
+  repo.feature(&["stash", "push", "wip b"]).success();
+
+  repo.write_file(file_name, "C\n");
+  repo.feature(&["stash", "push", "wip c"]).success();
+
+  repo.feature(&["start", "topic"]).success();
+
+  // pop wip b from main
+  repo.feature(&["stash", "pop", "main:1"]).success();
+
+  // changes are in workdir
+  assert_eq!(
+    fs::read_to_string(repo.path().join(file_name)).unwrap(),
+    "B\n",
+    "Changes should be applied"
+  );
+
+  // wip b is dropped from reflog
+  repo
+    .git(&["reflog", "--format=%s", "refs/feature/stashes/main"])
+    .success()
+    .stdout("wip c\n");
+}

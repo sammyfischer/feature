@@ -1,41 +1,35 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use console::style;
 
 use crate::App;
-use crate::util::branch_meta::BranchMeta;
+use crate::util::stash::{display_stash_spec, parse_stash_spec};
 use crate::util::string::ToStrLossy;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Drops a stash entry without applying it")]
 pub struct DropArgs {
-  /// Which stash to drop
-  index: Option<usize>,
+  /// Stash-spec to drop
+  #[arg(value_name = "STASH_SPEC")]
+  spec: Option<String>,
 }
 
 impl DropArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
-    let head = repo.head()?;
 
-    if !head.is_branch() {
-      return Err(anyhow!("Not currently on a branch"));
-    }
-
-    let index = self.index.unwrap_or(0);
-
-    let branch = BranchMeta::from_reference(&head.resolve()?)?;
+    let (branch, num) = parse_stash_spec(repo, self.spec.as_deref())?;
     let stash_refname = format!("refs/feature/stashes/{}", branch.name());
     let mut reflog = repo.reflog(&stash_refname)?;
 
     let commit_id = reflog
-      .get(index)
-      .with_context(|| format!("Entry {} does not exist", index))?
+      .get(num)
+      .with_context(|| format!("Entry {} does not exist", num))?
       .id_new();
 
     let stash = repo.find_commit(commit_id)?;
 
     reflog
-      .remove(index, true)
+      .remove(num, true)
       .context("Failed to remove stash entry")?;
     reflog.write()?;
 
@@ -48,14 +42,11 @@ impl DropArgs {
     }
 
     println!(
-      "{} stash entry {}{}{}",
+      "{} {}: {}",
       style("Dropped").red(),
-      style(branch.name()).cyan(),
-      style(":").dim(),
-      style(index).cyan()
+      display_stash_spec(branch.name(), num),
+      stash.message_bytes().to_str_lossy()
     );
-
-    println!("{}", stash.message_bytes().to_str_lossy());
 
     Ok(())
   }

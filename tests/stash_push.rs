@@ -69,9 +69,9 @@ fn pushes_stack() {
     .stdout("wip c\nwip b\n");
 }
 
-/// Feature should be able to just stash unstaged changes
+/// Feature should be able to just stash staged changes
 #[test]
-fn stashes_unstaged_only() {
+fn stashes_staged_only() {
   let repo = TestRepo::new();
   repo.write_file("file.txt", "one\ntwo\nthree\n");
   repo.write_file("file2.txt", "one\n");
@@ -133,4 +133,25 @@ fn stashes_unstaged_only() {
     "one\ntwo\n",
     "file2.txt contents should not be reset by stash"
   );
+}
+
+/// Feature should be able to push a stash to another branch
+#[test]
+fn push_to_different_branch() {
+  let file_name = "file.txt";
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.feature(&["start", "topic"]).success();
+
+  repo.write_file(file_name, "B\n");
+  repo
+    .feature(&["stash", "push", "-b", "main", "wip b"])
+    .success();
+
+  // reflog contains all stashes, with wip c on top
+  repo
+    .git(&["reflog", "--format=%s", "refs/feature/stashes/main"])
+    .success()
+    .stdout("wip b\n");
 }

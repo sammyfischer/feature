@@ -4,6 +4,8 @@ use git2::build::CheckoutBuilder;
 use git2::{Commit, DiffOptions, ErrorCode};
 
 use crate::App;
+use crate::util::advice::NOT_ON_BRANCH_MSG;
+use crate::util::branch_meta::BranchMeta;
 use crate::util::diff::DiffSummary;
 use crate::util::display::{
   DisplayCommitMessageLevel,
@@ -11,7 +13,6 @@ use crate::util::display::{
   DisplayTimeOptions,
   display_commit,
 };
-use crate::util::string::ToStrLossy;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Pushes a new stash on this branch")]
@@ -28,6 +29,10 @@ pub struct PushArgs {
   #[arg(short, long)]
   keep: bool,
 
+  /// The branch's stash to push to
+  #[arg(short, long)]
+  branch: Option<String>,
+
   /// Stash message
   #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
   message: Vec<String>,
@@ -38,19 +43,34 @@ impl PushArgs {
     let repo = &state.repo;
     let head = repo.head()?;
 
-    if !head.is_branch() {
-      return Err(anyhow!("Not currently on a branch"));
-    }
+    let branch = match &self.branch {
+      Some(name) => BranchMeta::from_name_dwim(repo, name)?
+        .with_context(|| format!("Failed to find branch: {}", name))?,
+      None => {
+        if !head.is_branch() {
+          return Err(anyhow!(NOT_ON_BRANCH_MSG));
+        }
 
-    let branch_name = head.shorthand_bytes().to_str_lossy();
+        BranchMeta::from_reference(&head.resolve()?)?
+      }
+    };
+
+    let parent = branch.resolve(repo)?.peel_to_commit()?;
 
     let sig = repo.signature()?;
     let msg = if self.message.is_empty() {
-      format!("WIP on {}", branch_name)
+      // use parent commit message
+      format!("WIP: {}", match parent.summary()? {
+        // unwrap
+        Some(it) => it,
+        // or else
+        None => parent.message()?,
+      })
     } else {
       self.message.join(" ")
     };
 
+    // build tree of stash changes
     let tree = if self.staged {
       let mut index = repo.index()?;
       let tree_id = index.write_tree()?;
@@ -66,14 +86,16 @@ impl PushArgs {
       let mut index = repo
         .apply_to_tree(&base_tree, &diff, None)
         .context("Failed to build stash changes")?;
+
       let tree_id = index.write_tree_to(repo)?;
       repo.find_tree(tree_id)?
     };
 
     // TODO: add more parents to diff between staged, unstaged, and untracked files
     // in stash commit
-    let parents: Vec<Commit> = vec![head.peel_to_commit()?];
+    let parents: Vec<Commit> = vec![parent];
 
+    // create stash commit
     let commit_id = repo.commit(
       None,
       &sig,
@@ -87,7 +109,7 @@ impl PushArgs {
     let stash = repo.find_commit(commit_id)?;
 
     // create/update reference
-    let stash_refname = format!("refs/feature/stashes/{}", branch_name);
+    let stash_refname = format!("refs/feature/stashes/{}", branch.name());
     match repo.find_reference(&stash_refname) {
       // a stash ref exists for this branch, update it
       Ok(mut stash_ref) => {
@@ -150,7 +172,7 @@ impl PushArgs {
     println!(
       "{} changes on {}",
       style("Stashed").green(),
-      style(branch_name).cyan()
+      style(branch.name()).cyan()
     );
 
     println!(

@@ -16,10 +16,6 @@ mod show;
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Manage branch stashes", disable_help_subcommand = true)]
 pub struct Args {
-  /// The branch to create the stash on. Defaults to current branch.
-  #[arg(short, long)]
-  branch: Option<String>,
-
   #[command(subcommand)]
   command: StashCommand,
 }

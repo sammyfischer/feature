@@ -2,6 +2,7 @@
 
 ## Housekeeping
 
+- use `NOT_ON_BRANCH_MSG` everywhere
 - separate core module/crate
   - move all common/backend functionality into a separate module (should replace util module)
   - cli module becomes just a frontend, calls common functions
@@ -28,9 +29,6 @@
 - `squash`
   - squashes all commits on a feature branch into one
 - `stash`
-  - if pop leads to conflicts, keep stash entry and print warning, but leave conflicts in workdir
-  - support the `stash --branch` option to use non-current branch
-    - could use special syntax `branch:index` to target stashes
   - create parent commits containing staged, unstaged, and untracked. use to build diffs and restore changes correctly
   - possibly rename command to `wip`, since it's designed for per-feature, in-progress work
   - could be an option to operate on the default stash, `refs/stash`

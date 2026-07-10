@@ -87,3 +87,35 @@ fn drops_specified_entry() {
     .success()
     .stdout("wip c\n");
 }
+
+/// Feature should drop the stash specified by the stash ref
+#[test]
+fn drop_from_stash_ref() {
+  let file_name = "file.txt";
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.write_file(file_name, "B\n");
+  repo.feature(&["stash", "push", "wip b"]).success();
+
+  repo.write_file(file_name, "C\n");
+  repo.feature(&["stash", "push", "wip c"]).success();
+
+  repo.feature(&["start", "topic"]).success();
+
+  // drop wip b from main
+  repo.feature(&["stash", "drop", "main:1"]).success();
+
+  // changes are not in workdir
+  assert_eq!(
+    fs::read_to_string(repo.path().join(file_name)).unwrap(),
+    "A",
+    "Changes should not be applied"
+  );
+
+  // wip b is dropped from reflog
+  repo
+    .git(&["reflog", "--format=%s", "refs/feature/stashes/main"])
+    .success()
+    .stdout("wip c\n");
+}

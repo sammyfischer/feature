@@ -1,8 +1,9 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use console::style;
 use git2::build::CheckoutBuilder;
 use git2::{DiffOptions, IndexAddOption, Repository, Tree};
 
+use crate::util::stash::{display_stash_spec, parse_stash_spec};
 use crate::util::status::display_file_statuses;
 use crate::util::string::ToStrLossy;
 use crate::{App, data};
@@ -14,27 +15,22 @@ pub struct PopArgs {
   #[arg(short, long)]
   keep: bool,
 
-  /// Which stash to pop
-  index: Option<usize>,
+  /// Stash-spec to pop
+  #[arg(value_name = "STASH_SPEC")]
+  spec: Option<String>,
 }
 
 impl PopArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
-    let head = repo.head()?;
 
-    if !head.is_branch() {
-      return Err(anyhow!("Not currently on a branch"));
-    }
-
-    let index = self.index.unwrap_or(0);
-
-    let stash_refname = format!("refs/feature/stashes/{}", head.resolve()?.shorthand()?);
+    let (branch, num) = parse_stash_spec(repo, self.spec.as_deref())?;
+    let stash_refname = format!("refs/feature/stashes/{}", branch.name());
     let mut reflog = repo.reflog(&stash_refname)?;
 
     let stash = {
       let id = reflog
-        .get(index)
+        .get(num)
         .context("There are no stash entries!")?
         .id_new();
       repo.find_commit(id)?
@@ -55,11 +51,12 @@ impl PopArgs {
       repo.checkout_index(Some(&mut merge), Some(&mut checkout))?;
 
       println!(
-        "{} with conflicts: {}\n{}",
+        "{} {} with conflicts: {}",
         style("Applied").yellow(),
-        stash.message_bytes().to_str_lossy(),
-        style("(stash entry was kept)").dim()
+        display_stash_spec(branch.name(), num),
+        stash.message_bytes().to_str_lossy()
       );
+      println!("{}", style("(stash entry was kept)").dim());
     } else {
       let merged_tree = {
         let id = merge.write_tree_to(repo)?;
@@ -73,7 +70,7 @@ impl PopArgs {
       if !self.keep {
         // remove stash entry if apply was successful
         reflog
-          .remove(index, true)
+          .remove(num, true)
           .context("Failed to remove stash entry")?;
         reflog.write()?;
 
@@ -85,8 +82,9 @@ impl PopArgs {
       }
 
       println!(
-        "{}: {}",
+        "{} {}: {}",
         style("Popped").green(),
+        display_stash_spec(branch.name(), num),
         stash.message_bytes().to_str_lossy()
       );
     }

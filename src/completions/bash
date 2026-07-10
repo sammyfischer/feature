@@ -554,29 +554,55 @@ _feature() {
       ;;
 
     stash)
-      # TODO: add --branch when it's supported
       local opts="-h --help drop list pop push show"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
     stash_drop | stash_show)
       local opts="-h --help"
-      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      case "$cur" in
+        -*)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
+          ;;
+      esac
       ;;
 
     stash_list)
       local opts="-h --help -a --all"
-      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      case "$cur" in
+        -*)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
+          ;;
+      esac
       ;;
 
     stash_pop)
       local opts="-h --help -k --keep"
-      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      case "$cur" in
+        -*)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
+          ;;
+      esac
       ;;
 
     stash_push)
-      local opts="-h --help -s --staged -u --untracked -k --keep"
-      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      local opts="-h --help -s --staged -u --untracked -k --keep -b --branch"
+      case "$prev" in
+        -b | --branch)
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      esac
       ;;
 
     status)
@@ -606,10 +632,10 @@ _feature() {
       local opts="-h --help --at -r --remote --push -m --message"
       case "$prev" in
         --at)
-          COMPREPLY=( $(_feature_compgen_revisions "$cur" "$git_dir", "$work_tree"))
+          COMPREPLY=( $(_feature_compgen_revisions "$cur" "$git_dir" "$work_tree"))
           ;;
         -r | --remote)
-          COMPREPLY=( $(_feature_compgen_remotes "$cur" "$git_dir", "$work_tree"))
+          COMPREPLY=( $(_feature_compgen_remotes "$cur" "$git_dir" "$work_tree"))
           ;;
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
