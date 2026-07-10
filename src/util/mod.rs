@@ -31,11 +31,11 @@ pub mod branch;
 pub mod branch_meta;
 pub mod diff;
 pub mod display;
-pub mod stash;
 pub mod status;
 pub mod string;
 pub mod tag;
 pub mod term;
+pub mod wip;
 
 /// Opens a repo given a `.git` dir. If the workdir is `None`, it's assumed to
 /// be the parent of repo_dir. If `Some`, the repo is assumed to be bare.

@@ -28,15 +28,9 @@
 
 - `squash`
   - squashes all commits on a feature branch into one
-- `stash`
-  - create parent commits containing staged, unstaged, and untracked. use to build diffs and restore changes correctly
-  - possibly rename command to `wip`, since it's designed for per-feature, in-progress work
-  - could be an option to operate on the default stash, `refs/stash`
-  - sync should check each stash and delete all dangling stash references
 - `wip`
-  - quick creation of wip commits
-  - standard message format: "WIP on <branch>: message"
-  - tbh this isn't hard to do with regular commits or stashes
+  - create parent commits containing staged, unstaged, and untracked. use to build diffs and restore changes correctly
+  - sync should check each stash and delete all dangling stash references
 - auto merge/rebase
   - when branches have diverged, preventing a push, check if a merge/rebase would result in conflicts, then do it automatically
   - use default git push config to determine whether to merge or rebase

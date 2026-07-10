@@ -118,22 +118,46 @@ This is similar to `git branch -d` except:
 - it fetches the latest base branch before checking if it's merged
 - it can delete the branch from remote
 
-## Stash
+## Wip
 
 ```bash
-feature stash push wip
-feature stash pop 2
-feature stash ls
+feature wip push wip
+feature wip pop 2
+feature wip ls
 ```
 
-Manage feature stashes. Feature stores a separate stash for each branch, allowing you to keep your stashes organized. It's helpful to think of it as a place to store in-progress changes for each feature, rather than a way of moving arbitrary changes between branches.
+Manage feature wips. Wips are like git stashes, except they're scoped to one particular branch. Think of it as work-in-progres changes that belong to a particular feature. This is in opposition to git stashes, which are just arbitary changes.
 
-If you want to move changes between branches, it may be better to use git stash instead.
+Wips are designed to be contained within a particular branch, but you can push/pop wips between branches if you need to using wipspec syntax.
+
+Wipspecs can have three forms:
+
+1. `branch_name:wip_number`
+2. `branch_name`
+3. `wip_number`
+
+It determines which form to use with the following precedence:
+
+1. If the wipspec contains a colon, it's assumed to be of the first form.
+2. If the first character of the wip-spec is numeric, then the entire wipspec is parsed as a number.
+3. The entire wipspec is parsed as a local branch name.
+
+If a branch name isn't specified, it defaults to the current branch. If a wip number isn't specified, it defaults to 0.
+
+The commands `drop`, `pop`, and `show` take wipspecs as arguments. `push` only takes a branch name, since you can only push wipspecs to position 0 (top of the stack). `list` also only takes a branch name, since it just lists all wips on the branch.
+
+Examples:
+
+```bash
+feature wip pop main:3
+feature wip push -b my-branch message
+```
 
 This is similar to `git stash`, except:
 
-- stashes are stored per-branch
-- the stash commands only operate on the current branch's stashes by default
+- wips are stored per-branch, helping keep changes more organized
+
+> Note: feature calls them "wips" instead of "stashes" to reduce confusion. The `wip` command isn't just a more convenient frontend for git stashes, it uses a different underlying implementation that's fully incompatible with `git stash`.
 
 ## Sync
 

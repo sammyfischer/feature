@@ -3,20 +3,20 @@ use console::style;
 use git2::build::CheckoutBuilder;
 use git2::{DiffOptions, IndexAddOption, Repository, Tree};
 
-use crate::util::stash::{display_stash_spec, parse_stash_spec};
 use crate::util::status::display_file_statuses;
 use crate::util::string::ToStrLossy;
+use crate::util::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
 use crate::{App, data};
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Applies and drops a stash entry")]
+#[command(about = "Applies and drops a wip entry")]
 pub struct PopArgs {
-  /// Don't drop the stash entry
+  /// Don't drop the wip entry
   #[arg(short, long)]
   keep: bool,
 
-  /// Stash-spec to pop
-  #[arg(value_name = "STASH_SPEC")]
+  /// The wip-spec to pop
+  #[arg(value_name = "WIP_SPEC")]
   spec: Option<String>,
 }
 
@@ -24,26 +24,26 @@ impl PopArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
 
-    let (branch, num) = parse_stash_spec(repo, self.spec.as_deref())?;
-    let stash_refname = format!("refs/feature/stashes/{}", branch.name());
-    let mut reflog = repo.reflog(&stash_refname)?;
+    let (branch, num) = parse_wip_spec(repo, self.spec.as_deref())?;
+    let wip_refname = get_wip_refname(branch.name());
+    let mut reflog = repo.reflog(&wip_refname)?;
 
-    let stash = {
+    let wip = {
       let id = reflog
         .get(num)
-        .context("There are no stash entries!")?
+        .context("There are no wip entries!")?
         .id_new();
       repo.find_commit(id)?
     };
 
-    let parent = stash
+    let parent = wip
       .parent(0)
-      .context("Failed to get first parent of stash commit")?;
+      .context("Failed to get first parent of wip commit")?;
 
     let workdir = self
       .get_workdir_tree(repo)
       .context("Failed to build tree from workdir")?;
-    let mut merge = repo.merge_trees(&parent.tree()?, &workdir, &stash.tree()?, None)?;
+    let mut merge = repo.merge_trees(&parent.tree()?, &workdir, &wip.tree()?, None)?;
 
     if merge.has_conflicts() {
       let mut checkout = CheckoutBuilder::new();
@@ -53,10 +53,10 @@ impl PopArgs {
       println!(
         "{} {} with conflicts: {}",
         style("Applied").yellow(),
-        display_stash_spec(branch.name(), num),
-        stash.message_bytes().to_str_lossy()
+        display_wip_spec(branch.name(), num),
+        wip.message_bytes().to_str_lossy()
       );
-      println!("{}", style("(stash entry was kept)").dim());
+      println!("{}", style("(wip entry was kept)").dim());
     } else {
       let merged_tree = {
         let id = merge.write_tree_to(repo)?;
@@ -68,24 +68,24 @@ impl PopArgs {
       repo.checkout_tree(merged_tree.as_object(), Some(&mut checkout))?;
 
       if !self.keep {
-        // remove stash entry if apply was successful
+        // remove wip entry if apply was successful
         reflog
           .remove(num, true)
-          .context("Failed to remove stash entry")?;
+          .context("Failed to remove wip entry")?;
         reflog.write()?;
 
         // if that was the only entry, delete the entire reflog and ref
         if reflog.is_empty() {
-          let mut stash_ref = repo.find_reference(&stash_refname)?;
-          stash_ref.delete()?; // automatically deletes reflog
+          let mut wip_ref = repo.find_reference(&wip_refname)?;
+          wip_ref.delete()?; // automatically deletes reflog
         }
       }
 
       println!(
         "{} {}: {}",
         style("Popped").green(),
-        display_stash_spec(branch.name(), num),
-        stash.message_bytes().to_str_lossy()
+        display_wip_spec(branch.name(), num),
+        wip.message_bytes().to_str_lossy()
       );
     }
 

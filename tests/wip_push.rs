@@ -5,39 +5,39 @@ use crate::common::TestRepo;
 mod common;
 
 #[test]
-fn creates_stash_commit() {
+fn creates_wip_commit() {
   let file_name = "file.txt";
   let repo = TestRepo::new();
   repo.init_commit();
 
   repo.write_file(file_name, "B\n");
 
-  repo.feature(&["stash", "push", "wip on main"]).success();
+  repo.feature(&["wip", "push", "wip on main"]).success();
 
   repo
     .git(&[
       "show",
       "--no-patch",
       "--format=%s",
-      "refs/feature/stashes/main",
+      "refs/feature/wips/main",
     ])
     .success()
     .stdout("wip on main\n");
 
-  // first parent commit of stash should be A
+  // first parent commit of wip should be A
   repo
     .git(&[
       "show",
       "--no-patch",
       "--format=%s",
-      "refs/feature/stashes/main^1",
+      "refs/feature/wips/main^1",
     ])
     .success()
     .stdout("A\n");
 
-  // reflog exists for stash ref
+  // reflog exists for wip ref
   repo
-    .git(&["reflog", "--format=%s", "refs/feature/stashes/main"])
+    .git(&["reflog", "--format=%s", "refs/feature/wips/main"])
     .success()
     .stdout("wip on main\n");
 
@@ -45,11 +45,11 @@ fn creates_stash_commit() {
   assert_eq!(
     fs::read_to_string(repo.path().join(file_name)).unwrap(),
     "A",
-    "File contents should be reset by stash"
+    "File contents should be reset by push"
   );
 }
 
-/// Pushing a stash should stack on top of previous stashes
+/// Pushing a wip should stack on top of previous wips
 #[test]
 fn pushes_stack() {
   let file_name = "file.txt";
@@ -57,21 +57,21 @@ fn pushes_stack() {
   repo.init_commit();
 
   repo.write_file(file_name, "B\n");
-  repo.feature(&["stash", "push", "wip b"]).success();
+  repo.feature(&["wip", "push", "wip b"]).success();
 
   repo.write_file(file_name, "C\n");
-  repo.feature(&["stash", "push", "wip c"]).success();
+  repo.feature(&["wip", "push", "wip c"]).success();
 
-  // reflog contains all stashes, with wip c on top
+  // reflog contains all wips, with wip c on top
   repo
-    .git(&["reflog", "--format=%s", "refs/feature/stashes/main"])
+    .git(&["reflog", "--format=%s", "refs/feature/wips/main"])
     .success()
     .stdout("wip c\nwip b\n");
 }
 
-/// Feature should be able to just stash staged changes
+/// Feature should be able to just wip staged changes
 #[test]
-fn stashes_staged_only() {
+fn pushes_staged_only() {
   let repo = TestRepo::new();
   repo.write_file("file.txt", "one\ntwo\nthree\n");
   repo.write_file("file2.txt", "one\n");
@@ -108,7 +108,7 @@ fn stashes_staged_only() {
   // two
 
   repo
-    .feature(&["stash", "push", "--staged", "wip on main"])
+    .feature(&["wip", "push", "--staged", "wip on main"])
     .success();
 
   repo
@@ -116,7 +116,7 @@ fn stashes_staged_only() {
       "show",
       "--no-patch",
       "--format=%s",
-      "refs/feature/stashes/main",
+      "refs/feature/wips/main",
     ])
     .success()
     .stdout("wip on main\n");
@@ -125,17 +125,17 @@ fn stashes_staged_only() {
   assert_eq!(
     fs::read_to_string(repo.path().join("file.txt")).unwrap(),
     "one\ntwo\nthree\n",
-    "file.txt contents should be reset by stash"
+    "file.txt contents should be reset by push"
   );
 
   assert_eq!(
     fs::read_to_string(repo.path().join("file2.txt")).unwrap(),
     "one\ntwo\n",
-    "file2.txt contents should not be reset by stash"
+    "file2.txt contents should not be reset by push"
   );
 }
 
-/// Feature should be able to push a stash to another branch
+/// Feature should be able to push a wip to another branch
 #[test]
 fn push_to_different_branch() {
   let file_name = "file.txt";
@@ -146,12 +146,12 @@ fn push_to_different_branch() {
 
   repo.write_file(file_name, "B\n");
   repo
-    .feature(&["stash", "push", "-b", "main", "wip b"])
+    .feature(&["wip", "push", "-b", "main", "wip b"])
     .success();
 
-  // reflog contains all stashes, with wip c on top
+  // reflog contains all wips, with wip c on top
   repo
-    .git(&["reflog", "--format=%s", "refs/feature/stashes/main"])
+    .git(&["reflog", "--format=%s", "refs/feature/wips/main"])
     .success()
     .stdout("wip b\n");
 }

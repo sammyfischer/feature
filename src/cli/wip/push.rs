@@ -13,11 +13,12 @@ use crate::util::display::{
   DisplayTimeOptions,
   display_commit,
 };
+use crate::util::wip::get_wip_refname;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Pushes a new stash on this branch")]
+#[command(about = "Pushes a new wip to a branch")]
 pub struct PushArgs {
-  /// Stash only staged changes, instead of the entire workdir
+  /// Push only staged changes, instead of the entire workdir
   #[arg(short, long)]
   staged: bool,
 
@@ -25,15 +26,15 @@ pub struct PushArgs {
   #[arg(short, long)]
   untracked: bool,
 
-  /// Keep stashed files in working directory
+  /// Keep changes in working directory
   #[arg(short, long)]
   keep: bool,
 
-  /// The branch's stash to push to
+  /// Which branch to push to
   #[arg(short, long)]
   branch: Option<String>,
 
-  /// Stash message
+  /// Wip message
   #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
   message: Vec<String>,
 }
@@ -70,7 +71,7 @@ impl PushArgs {
       self.message.join(" ")
     };
 
-    // build tree of stash changes
+    // build tree of changes
     let tree = if self.staged {
       let mut index = repo.index()?;
       let tree_id = index.write_tree()?;
@@ -85,17 +86,17 @@ impl PushArgs {
 
       let mut index = repo
         .apply_to_tree(&base_tree, &diff, None)
-        .context("Failed to build stash changes")?;
+        .context("Failed to build wip changes")?;
 
       let tree_id = index.write_tree_to(repo)?;
       repo.find_tree(tree_id)?
     };
 
     // TODO: add more parents to diff between staged, unstaged, and untracked files
-    // in stash commit
+    // in wip commit
     let parents: Vec<Commit> = vec![parent];
 
-    // create stash commit
+    // create wip commit
     let commit_id = repo.commit(
       None,
       &sig,
@@ -106,22 +107,22 @@ impl PushArgs {
       &parents.iter().collect::<Vec<_>>(),
     )?;
 
-    let stash = repo.find_commit(commit_id)?;
+    let wip = repo.find_commit(commit_id)?;
 
     // create/update reference
-    let stash_refname = format!("refs/feature/stashes/{}", branch.name());
-    match repo.find_reference(&stash_refname) {
-      // a stash ref exists for this branch, update it
-      Ok(mut stash_ref) => {
-        stash_ref.set_target(commit_id, &msg)?;
+    let wip_refname = get_wip_refname(branch.name());
+    match repo.find_reference(&wip_refname) {
+      // a wip ref exists for this branch, update it
+      Ok(mut wip_ref) => {
+        wip_ref.set_target(commit_id, &msg)?;
       }
 
-      // no stash ref exists for this branch, create it
+      // no wip ref exists for this branch, create it
       Err(e) if e.code() == ErrorCode::NotFound => {
-        repo.reference(&stash_refname, commit_id, false, &msg)?;
+        repo.reference(&wip_refname, commit_id, false, &msg)?;
 
-        // create the stash's reflog (not done automatically)
-        let mut reflog = repo.reflog(&stash_refname)?;
+        // create the wip's reflog (not done automatically)
+        let mut reflog = repo.reflog(&wip_refname)?;
         reflog.append(commit_id, &sig, Some(&msg))?;
         reflog.write()?;
       }
@@ -129,7 +130,7 @@ impl PushArgs {
       Err(e) => return Err(anyhow!(e)),
     }
 
-    // remove stashed changes from workdir
+    // remove changes from workdir
     if !self.keep {
       if self.staged {
         // existing reference to head hasn't changed
@@ -145,7 +146,7 @@ impl PushArgs {
         // fails to remove changes from workdir
         let mut index = repo
           .apply_to_tree(&base_tree, &diff, None)
-          .context("Stash was created, but changes cannot be removed from working directory")?;
+          .context("Wip was created, but changes cannot be removed from working directory")?;
 
         // checkout to update workdir
         let mut checkout = CheckoutBuilder::new();
@@ -170,14 +171,14 @@ impl PushArgs {
     }
 
     println!(
-      "{} changes on {}",
-      style("Stashed").green(),
+      "{} changes to {}",
+      style("Pushed").green(),
       style(branch.name()).cyan()
     );
 
     println!(
       "{}",
-      display_commit(&stash, &DisplayCommitOptions {
+      display_commit(&wip, &DisplayCommitOptions {
         time: DisplayTimeOptions {
           relative: false,
           fmt: String::new(),
@@ -186,10 +187,10 @@ impl PushArgs {
       },)?
     );
 
-    let parent = stash
+    let parent = wip
       .parent(0)
-      .expect("Failed to get first parent of stash commit");
-    let mut diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&stash.tree()?), None)?;
+      .expect("Failed to get first parent of wip commit");
+    let mut diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&wip.tree()?), None)?;
 
     diff.find_similar(None)?;
 

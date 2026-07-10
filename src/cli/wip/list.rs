@@ -4,16 +4,17 @@ use git2::{Reflog, Repository};
 
 use crate::util::display::{DisplayTimeOptions, display_time};
 use crate::util::string::ToStrLossyOwned;
+use crate::util::wip::{display_wip_spec, get_wip_refname};
 use crate::{App, data};
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(visible_alias = "ls", about = "Lists stashes on branch")]
+#[command(visible_alias = "ls", about = "Lists wips on branch")]
 pub struct ListArgs {
-  /// List all stashes, not only this branch's stashes
+  /// List all wips, not only this branch's wips
   #[arg(short, long)]
   all: bool,
 
-  /// Branch whose stashes will be listed
+  /// Branch whose wips will be listed
   branch: Option<String>,
 }
 
@@ -22,14 +23,14 @@ impl ListArgs {
     let repo = &state.repo;
 
     if self.all {
-      let refs = repo.references_glob("refs/feature/stashes/*")?;
+      let refs = repo.references_glob(&get_wip_refname("*"))?;
 
       for reference in refs {
         let reference = reference?;
         let name = reference.shorthand()?;
         let reflog = repo.reflog(reference.name()?)?;
 
-        println!("{}", self.display_stash_list(repo, name, &reflog)?);
+        println!("{}", self.display_wip_list(repo, name, &reflog)?);
       }
     } else {
       let branch_name = match &self.branch {
@@ -42,14 +43,14 @@ impl ListArgs {
           head.shorthand_bytes().to_str_lossy_owned()
         }
       };
-      let reflog = repo.reflog(&format!("refs/feature/stashes/{}", &branch_name))?;
-      println!("{}", self.display_stash_list(repo, &branch_name, &reflog)?);
+      let reflog = repo.reflog(&get_wip_refname(&branch_name))?;
+      println!("{}", self.display_wip_list(repo, &branch_name, &reflog)?);
     }
 
     Ok(())
   }
 
-  fn display_stash_list(
+  fn display_wip_list(
     &self,
     repo: &Repository,
     branch_name: &str,
@@ -76,10 +77,8 @@ impl ListArgs {
 
       write!(
         out,
-        "{}{}{} {} {}",
-        style(branch_name).cyan(),
-        style(":").dim(),
-        style(i).cyan(),
+        "{} {} {}",
+        display_wip_spec(branch_name, i),
         style(display_time(&time, &DisplayTimeOptions {
           relative: data::get_format_relative(&config)?,
           fmt: data::get_format_date(&config)?,

@@ -20,13 +20,13 @@ mod prune;
 mod push;
 mod show;
 mod start;
-mod stash;
 mod status;
 mod sync;
 mod tag;
 mod tags;
 mod update;
 mod version_log;
+mod wip;
 
 /// Waits on the child process, returns result
 #[macro_export]
@@ -90,7 +90,7 @@ pub enum Command {
   Push(push::Args),
   Check(check::Args),
   End(end::Args),
-  Stash(stash::Args),
+  Wip(wip::Args),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(sync::Args),
@@ -120,7 +120,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Push(args) => args.run(&state),
     Command::Check(args) => args.run(&state),
     Command::End(args) => args.run(&state),
-    Command::Stash(args) => args.run(&state),
+    Command::Wip(args) => args.run(&state),
 
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),

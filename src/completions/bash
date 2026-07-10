@@ -221,23 +221,23 @@ _feature() {
         cmd="start"
         ;;
 
-      feature,stash)
-        cmd="stash"
+      feature,wip)
+        cmd="wip"
         ;;
-      stash,drop)
-        cmd="stash_drop"
+      wip,drop)
+        cmd="wip_drop"
         ;;
-      stash,list | stash,ls)
-        cmd="stash_list"
+      wip,list | wip,ls)
+        cmd="wip_list"
         ;;
-      stash,pop)
-        cmd="stash_pop"
+      wip,pop)
+        cmd="wip_pop"
         ;;
-      stash,push)
-        cmd="stash_push"
+      wip,push)
+        cmd="wip_push"
         ;;
-      stash,show)
-        cmd="stash_show"
+      wip,show)
+        cmd="wip_show"
         ;;
 
       feature,status | feature,st)
@@ -553,12 +553,12 @@ _feature() {
       esac
       ;;
 
-    stash)
+    wip)
       local opts="-h --help drop list pop push show"
       COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
-    stash_drop | stash_show)
+    wip_drop | wip_show)
       local opts="-h --help"
       case "$cur" in
         -*)
@@ -570,7 +570,7 @@ _feature() {
       esac
       ;;
 
-    stash_list)
+    wip_list)
       local opts="-h --help -a --all"
       case "$cur" in
         -*)
@@ -582,7 +582,7 @@ _feature() {
       esac
       ;;
 
-    stash_pop)
+    wip_pop)
       local opts="-h --help -k --keep"
       case "$cur" in
         -*)
@@ -594,7 +594,7 @@ _feature() {
       esac
       ;;
 
-    stash_push)
+    wip_push)
       local opts="-h --help -s --staged -u --untracked -k --keep -b --branch"
       case "$prev" in
         -b | --branch)
