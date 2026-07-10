@@ -104,25 +104,6 @@ impl DiffSummary {
     Ok(summary)
   }
 
-  /// Creates a new diff summary out of the conflicted files in this summary.
-  ///
-  /// `insertions` and `deletions` are always 0
-  pub fn conflicts(&self) -> Self {
-    let mut conflicted_files: Vec<DiffFileSummary> = Vec::new();
-    for file in &self.files {
-      if file.status == Delta::Conflicted {
-        conflicted_files.push(file.clone());
-      }
-    }
-
-    Self {
-      num_files: conflicted_files.len(),
-      insertions: 0,
-      deletions: 0,
-      files: conflicted_files,
-    }
-  }
-
   /// Creates a new diff summary out of the non-conflicted files in this
   /// summary.
   pub fn non_conflicts(&self) -> Self {
@@ -153,27 +134,6 @@ impl DiffSummary {
       display_plus_minus(self.insertions, self.deletions),
       style("]").dim()
     )
-  }
-
-  /// Displays a header similar to the default except the text says "n
-  /// conflicted files". Assumes this summary only contains conflicted files.
-  pub fn display_conflict_header(&self) -> String {
-    let num = self.num_files;
-    format!(
-      "{} conflicted {}",
-      style(num).cyan(),
-      if num == 1 { "file" } else { "files" }
-    )
-  }
-
-  /// Displays with the default format, but uses the conflict header. Assumes
-  /// this summary contains only conflicted files.
-  pub fn display_conflicts(&self) -> String {
-    let mut out = self.display_conflict_header();
-    for file in &self.files {
-      out.push_str(&format!("\n  {}", file));
-    }
-    out
   }
 }
 
@@ -292,7 +252,10 @@ pub fn status_guide() -> String {
   writeln!(out, "  {} Renamed", style("R").magenta()).unwrap();
   writeln!(out, "  {} Copied", style("C").magenta()).unwrap();
 
-  writeln!(out, "These generally won't appear in regular diffs").unwrap();
+  writeln!(out, "These appear under conflicts").unwrap();
+  writeln!(out, "  {} None (file not present)", style("-").dim()).unwrap();
+
+  writeln!(out, "These generally won't appear in regular statuses").unwrap();
   writeln!(out, "  {} Unmodified", style("=").dim()).unwrap();
   writeln!(out, "  {} Ignored", style("I").dim()).unwrap();
   writeln!(out, "  {} Typechange", style("T").yellow()).unwrap();

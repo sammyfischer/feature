@@ -175,15 +175,12 @@ _feature() {
       feature,config)
         cmd="config"
         ;;
-
       config,create)
         cmd="config_create"
         ;;
-
       config,get)
         cmd="config_get"
         ;;
-
       config,schema)
         cmd="config_schema"
         ;;
@@ -195,19 +192,15 @@ _feature() {
       feature,proj | feature,project)
         cmd="project"
         ;;
-
       project,add)
         cmd="project_add"
         ;;
-
       project,rm | project,remove)
         cmd="project_rm"
         ;;
-
       project,ls | project,list)
         cmd="project_ls"
         ;;
-
       project,each)
         cmd="project_each"
         ;;
@@ -226,6 +219,25 @@ _feature() {
 
       feature,start | feature,branch)
         cmd="start"
+        ;;
+
+      feature,wip)
+        cmd="wip"
+        ;;
+      wip,drop)
+        cmd="wip_drop"
+        ;;
+      wip,list | wip,ls)
+        cmd="wip_list"
+        ;;
+      wip,pop)
+        cmd="wip_pop"
+        ;;
+      wip,push)
+        cmd="wip_push"
+        ;;
+      wip,show)
+        cmd="wip_show"
         ;;
 
       feature,status | feature,st)
@@ -541,6 +553,58 @@ _feature() {
       esac
       ;;
 
+    wip)
+      local opts="-h --help drop list pop push show"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      ;;
+
+    wip_drop | wip_show)
+      local opts="-h --help"
+      case "$cur" in
+        -*)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
+          ;;
+      esac
+      ;;
+
+    wip_list)
+      local opts="-h --help -a --all"
+      case "$cur" in
+        -*)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
+          ;;
+      esac
+      ;;
+
+    wip_pop)
+      local opts="-h --help -k --keep"
+      case "$cur" in
+        -*)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
+        *)
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
+          ;;
+      esac
+      ;;
+
+    wip_push)
+      local opts="-h --help -s --staged -u --untracked -k --keep -b --branch"
+      case "$prev" in
+        -b | --branch)
+          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+      esac
+      ;;
+
     status)
       local opts="-h --help -U --no-untracked -P --no-projects -M --no-modules"
       case "$prev" in
@@ -568,10 +632,10 @@ _feature() {
       local opts="-h --help --at -r --remote --push -m --message"
       case "$prev" in
         --at)
-          COMPREPLY=( $(_feature_compgen_revisions "$cur" "$git_dir", "$work_tree"))
+          COMPREPLY=( $(_feature_compgen_revisions "$cur" "$git_dir" "$work_tree"))
           ;;
         -r | --remote)
-          COMPREPLY=( $(_feature_compgen_remotes "$cur" "$git_dir", "$work_tree"))
+          COMPREPLY=( $(_feature_compgen_remotes "$cur" "$git_dir" "$work_tree"))
           ;;
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -588,6 +652,7 @@ _feature() {
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
           ;;
+      esac
       ;;
 
     update)

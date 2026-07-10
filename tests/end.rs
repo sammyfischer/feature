@@ -273,3 +273,28 @@ fn deletes_branch_config() {
   local.git(&["config", "branch.topic.remote"]).code(1);
   local.git(&["config", "branch.topic.merge"]).code(1);
 }
+
+/// End should delete wips associated with branch
+#[test]
+fn deletes_wips() {
+  let file_name = "file.txt";
+  let (local, _remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.git(&["push", "-u", "origin", "main"]).success();
+
+  local.feature(&["start", "topic"]).success();
+
+  local.write_file(file_name, "B\n");
+  local.feature(&["wip", "push", "wip b"]).success();
+  local.write_file(file_name, "C\n");
+  local.feature(&["wip", "push", "wip c"]).success();
+
+  local.git(&["push", "-u", "origin", "topic"]).success();
+
+  local.feature(&["end"]).success();
+
+  assert!(
+    !local.path().join(".git/refs/feature/wips/topic").exists(),
+    "Wip ref should be deleted"
+  );
+}

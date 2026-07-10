@@ -7,6 +7,9 @@ macro_rules! opt_advice {
   };
 }
 
+/// Error message when the user must be on a branch
+pub const NOT_ON_BRANCH_MSG: &str = "Not currently on a branch";
+
 /// Error message when a signature is required
 pub const NO_SIGNATURE_MSG: &str = r"Failed to get default signature. You must set it with:
 

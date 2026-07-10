@@ -118,6 +118,47 @@ This is similar to `git branch -d` except:
 - it fetches the latest base branch before checking if it's merged
 - it can delete the branch from remote
 
+## Wip
+
+```bash
+feature wip push wip
+feature wip pop 2
+feature wip ls
+```
+
+Manage feature wips. Wips are like git stashes, except they're scoped to one particular branch. Think of it as work-in-progres changes that belong to a particular feature. This is in opposition to git stashes, which are just arbitary changes.
+
+Wips are designed to be contained within a particular branch, but you can push/pop wips between branches if you need to using wipspec syntax.
+
+Wipspecs can have three forms:
+
+1. `branch_name:wip_number`
+2. `branch_name`
+3. `wip_number`
+
+It determines which form to use with the following precedence:
+
+1. If the wipspec contains a colon, it's assumed to be of the first form.
+2. If the first character of the wip-spec is numeric, then the entire wipspec is parsed as a number.
+3. The entire wipspec is parsed as a local branch name.
+
+If a branch name isn't specified, it defaults to the current branch. If a wip number isn't specified, it defaults to 0.
+
+The commands `drop`, `pop`, and `show` take wipspecs as arguments. `push` only takes a branch name, since you can only push wipspecs to position 0 (top of the stack). `list` also only takes a branch name, since it just lists all wips on the branch.
+
+Examples:
+
+```bash
+feature wip pop main:3
+feature wip push -b my-branch message
+```
+
+This is similar to `git stash`, except:
+
+- wips are stored per-branch, helping keep changes more organized
+
+> Note: feature calls them "wips" instead of "stashes" to reduce confusion. The `wip` command isn't just a more convenient frontend for git stashes, it uses a different underlying implementation that's fully incompatible with `git stash`.
+
 ## Sync
 
 ```bash
@@ -181,6 +222,20 @@ fi
 
 on each `(branch, base)` pair. Note that this script does not cover branch iteration, or determining which base belongs to which branch.
 
+## Tag
+
+```bash
+feature tag --at main 1.0.0
+feature tag 1.1.2 -m 'release v1.1.2'
+```
+
+Creates a tag at the specified commit (default HEAD) and pushes it to the default remote.
+
+It's similar to `git tag`, except:
+
+- it expects a semver string
+- it can push automatically
+
 ## Project
 
 See [the docs](./projects.md)
@@ -192,9 +247,11 @@ feature status
 feature st
 ```
 
-Prints the current status of the repo. This includes the current branch, the commit it points to, git username and email, and a summary of staged/unstaged changes.
+Prints the current status of the repo; where you are (branch, tag, commit), who you are (user name and email) and what changes you have.
 
-If applicable, displays any active state the repo is in (e.g. merge conflicts, cherry-pick conflicts) and extra info about the state (e.g. a list of conflicted files).
+When applicable, it displays the current state of the repo (active merge, rebase, etc.) and displays info relevant to that state.
+
+Changes are displayed in 3 sections: staged, unstaged, and conflicts. If a section has no changes, it's not displayed at all. The staged and unstaged sections display a list of files and their status (added, modified, etc.). The conflicts section display the status of both sides of the merge (ours and theirs).
 
 This similar to `git status`, except that:
 
@@ -204,55 +261,33 @@ This similar to `git status`, except that:
 
 ![Status terminal output](../screenshots/status.png)
 
-## List
+## Branches
 
 ```bash
-feature list
-feature ls
+feature branches
 ```
 
 Lists all local branches (not just feature branches).
 
-This is similar to `git branch` except that:
+This is similar to `git branch` except:
 
 - it shows the base branch, if present
-- it displays as a table
-- it's has simpler config options
-  - columns can be hidden with cli or config file options
-  - git branch output can be customized, but there's no clear documentation for the available field names
+- it shows how many commits ahead/behind base and upstream are
+- it shows more commit info
 - it's more colorful
 
-## Graph
+## Tags
 
 ```bash
-feature graph
+feature tags
 ```
 
-Prints a graph of commits.
+Lists all *semver* tags, sorted by version.
 
-This command runs:
+This is similar to `git tag`, except:
 
-```bash
-git log --graph --all
-git log --graph --all --pretty=<FORMAT> # if --format was specified
-```
-
-This provides an easier-to-type command to use the graph option (which many people might not know about) and allows you to specify a different format for graph.
-
-Recommended config:
-
-```bash
-git config --global format.pretty 'format:%C(auto)%h%d %C(reset)%s %C(dim)(%an, %ar)'
-
-# This isn't needed if you use the above format, but if not I highly recommend this. Git log uses the full hash by default.
-git config --global log.abbrevCommit yes
-```
-
-```toml
-# feature config
-[format]
-graph = "format:%C(auto)%h%d %C(green)%an %C(blue)%ar %C(reset)%s"
-```
+- it only shows semver tags
+- it shows commit info
 
 ## Show
 

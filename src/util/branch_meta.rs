@@ -78,14 +78,14 @@ impl BranchMeta {
 
   // CONSTRUCTORS
 
-  /// Creates a [BranchMeta] from a [Branch] (uses the [TryInto] impl)
+  /// Creates a [BranchMeta] from a [Branch]
   #[inline]
   pub fn from_branch<'branch>(branch: &Branch<'branch>) -> Result<Self> {
     let reference = branch.get();
     Self::from_reference(reference)
   }
 
-  /// Creates a [BranchMeta] from a [Reference] (uses the [TryInto] impl)
+  /// Creates a [BranchMeta] from a [Reference]
   pub fn from_reference<'branch>(reference: &Reference<'branch>) -> Result<Self> {
     let refname = reference.name_bytes().to_str_lossy_owned();
     if !refname.starts_with("refs/heads/") && !refname.starts_with("refs/remotes/") {

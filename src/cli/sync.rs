@@ -28,6 +28,7 @@ use crate::util::diff::{DiffSummary, has_workdir_changes};
 use crate::util::get_credentials_cb;
 use crate::util::string::ToStrLossyOwned;
 use crate::util::term::TICK_STRINGS;
+use crate::util::wip::{WIP_NAMESPACE, get_wip_refname};
 use crate::{App, data, style};
 
 const LONG_ABOUT: &str = r"Updates all branches with their remotes (if they have one), then prunes merged
@@ -328,6 +329,27 @@ impl Args {
       let results = prune_branches(repo, config, self.dry_run)?;
       for action in results {
         updates.push(action);
+      }
+    }
+
+    progress.set_message("Cleaning up");
+
+    // iterate through all wip refs. delete them if their backing branch was
+    // deleted
+    let refs = repo.references_glob(&get_wip_refname("*"))?;
+    for r in refs {
+      let mut r = r?;
+      let branch_name = r
+        .name()?
+        .strip_prefix(&format!("{}/", WIP_NAMESPACE))
+        .expect("Invalid wip refname");
+
+      match repo.find_reference(&format!("refs/heads/{}", branch_name)) {
+        // branch was deleted, cleanup wip
+        Err(e) if e.code() == ErrorCode::NotFound => r.delete()?,
+
+        // branch exists or different error, do nothing
+        _ => {}
       }
     }
 
