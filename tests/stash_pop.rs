@@ -130,3 +130,57 @@ fn pops_from_specified_index() {
     .success()
     .stdout("wip c\n");
 }
+
+/// Feature should apply the stash even when there are conflicts. The conflicts
+/// should be left in the workdir and the stash entry should be kept.
+#[test]
+fn pops_with_conflicts() {
+  let file_name = "file.txt";
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.write_file(file_name, "B\n");
+
+  repo.feature(&["stash", "push", "wip on main"]).success();
+
+  // double check that stash worked
+  assert_eq!(
+    fs::read_to_string(repo.path().join(file_name)).unwrap(),
+    "A",
+    "File contents should be reset by stash"
+  );
+
+  // create conflicting changes
+  repo.write_file(file_name, "C\n");
+
+  repo.feature(&["stash", "pop"]).success();
+
+  // conflict markers left in file
+  assert_eq!(
+    fs::read_to_string(repo.path().join(file_name)).unwrap(),
+    r#"<<<<<<< ours
+C
+=======
+B
+>>>>>>> theirs
+"#,
+    "File should contain conflicts"
+  );
+
+  // stash ref still exists
+  repo
+    .git(&[
+      "show",
+      "--no-patch",
+      "--format=%s",
+      "refs/feature/stashes/main",
+    ])
+    .success()
+    .stdout("wip on main\n");
+
+  // stash entry still exists
+  repo
+    .git(&["reflog", "--format=%s", "refs/feature/stashes/main"])
+    .success()
+    .stdout("wip on main\n");
+}

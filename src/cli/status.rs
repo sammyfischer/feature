@@ -1,10 +1,19 @@
 use std::fmt::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::{fs, thread};
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{Commit, DiffOptions, ErrorClass, ErrorCode, Oid, Reference, Repository};
+use git2::{
+  Commit,
+  DiffOptions,
+  ErrorClass,
+  ErrorCode,
+  Oid,
+  Reference,
+  Repository,
+  RepositoryState,
+};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::config::projects::ProjectEntry;
@@ -33,6 +42,7 @@ use crate::util::display::{
   display_signature,
   trim_hash,
 };
+use crate::util::status::{display_file_statuses, is_pick_active};
 use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::util::tag::find_current_semver;
 use crate::util::term::{get_term_width, is_term};
@@ -157,38 +167,45 @@ impl Args {
     let mut out = String::new();
     let config = repo.config()?.snapshot()?;
     let head = get_head(repo)?;
-    let rebase_dir = get_rebase_dir(repo);
 
-    let (header, advice) = if let Some(dir) = rebase_dir.as_ref() {
-      (
-        display_rebase_header(repo, dir)?,
-        opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
-      )
-    } else if is_merge_active(repo) {
-      (
-        display_merge_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, MERGE_CONFLICT_ADVICE),
-      )
-    } else if is_pick_active(repo) {
-      (
-        display_pick_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, PICK_CONFLICT_ADVICE),
-      )
-    } else if is_revert_active(repo) {
-      (
-        display_revert_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, REVERT_CONFLICT_ADVICE),
-      )
-    } else if is_bisect_active(repo) {
-      (
-        display_bisect_header(repo)?,
-        opt_advice!(data::get_advice_status(&config)?, BISECT_ADVICE),
-      )
-    } else {
-      (
+    let (header, advice) = match repo.state() {
+      // TODO: custom header/advice for git am
+      RepositoryState::ApplyMailbox | RepositoryState::Clean => (
         display_normal_header(repo, head.as_ref())?,
         opt_advice!(data::get_advice_status(&config)?, STATUS_ADVICE),
-      )
+      ),
+
+      RepositoryState::Merge => (
+        display_merge_header(repo)?,
+        opt_advice!(data::get_advice_conflict(&config)?, MERGE_CONFLICT_ADVICE),
+      ),
+
+      RepositoryState::Revert | RepositoryState::RevertSequence => (
+        display_revert_header(repo)?,
+        opt_advice!(data::get_advice_conflict(&config)?, REVERT_CONFLICT_ADVICE),
+      ),
+
+      RepositoryState::CherryPick | RepositoryState::CherryPickSequence => (
+        display_pick_header(repo)?,
+        opt_advice!(data::get_advice_conflict(&config)?, PICK_CONFLICT_ADVICE),
+      ),
+
+      RepositoryState::Bisect => (
+        display_bisect_header(repo)?,
+        opt_advice!(data::get_advice_status(&config)?, BISECT_ADVICE),
+      ),
+
+      RepositoryState::Rebase
+      | RepositoryState::RebaseInteractive
+      | RepositoryState::RebaseMerge => (
+        display_rebase_header(repo, &repo.path().join("rebase-merge"))?,
+        opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
+      ),
+
+      RepositoryState::ApplyMailboxOrRebase => (
+        display_rebase_header(repo, &repo.path().join("rebase-apply"))?,
+        opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
+      ),
     };
 
     write!(out, "{}", header)?;
@@ -196,40 +213,6 @@ impl Args {
     // print advice in new paragraph above diffs
     if let Some(advice) = advice {
       write!(out, "\n\n{}", advice)?;
-    }
-
-    // get current tree to diff from
-    let tree = match &head {
-      Some(head) => {
-        let commit = head.peel_to_commit()?;
-        Some(commit.tree()?)
-      }
-      None => None,
-    };
-
-    // conflicted changes
-    if rebase_dir.is_some()
-      || is_merge_active(repo)
-      || is_pick_active(repo)
-      || is_revert_active(repo)
-    {
-      let tree = tree
-        .as_ref()
-        .context("There must be a current commit during a rebase")?;
-
-      let diff = repo.diff_tree_to_index(Some(tree), None, None)?;
-      let summary = DiffSummary::new(&diff)?.conflicts();
-
-      write!(
-        out,
-        "\n\n{} - {}",
-        style("Conflicts").yellow(),
-        if summary.num_files != 0 {
-          summary.display_conflicts()
-        } else {
-          style("none").green().to_string()
-        }
-      )?;
     }
 
     if is_pick_active(repo) {
@@ -244,45 +227,21 @@ impl Args {
       if summary.num_files != 0 {
         write!(out, "\n\n{} - {}", style("Resolved").green(), summary)?;
       }
+
       // cherry picked changes have no difference with head (except for conflicts), so
       // the remaining diffs can be skipped
       return Ok(out);
     }
 
-    // staged changes
-    let mut diff = repo
-      .diff_tree_to_index(tree.as_ref(), None, None)
-      .context("Failed to get staged changes")?;
-    diff.find_similar(None)?;
-    let summary = DiffSummary::new(&diff)?.non_conflicts();
-    if summary.num_files != 0 {
-      write!(out, "\n\n{} - {}", style("Staged").green(), summary)?;
-    }
-
-    // unstaged changes
-    let hide_untracked = match self.no_untracked {
-      Some(it) => it,
-      None => !data::get_status_untracked(&config)?,
+    let show_untracked = match self.no_untracked {
+      Some(hide) => !hide,
+      None => data::get_status_untracked(&config)?,
     };
 
-    let mut opts = if hide_untracked {
-      None
-    } else {
-      let mut opts = DiffOptions::new();
-      opts.include_untracked(true);
-      Some(opts)
-    };
-
-    let mut diff = repo
-      .diff_index_to_workdir(None, opts.as_mut())
-      .context("Failed to get unstaged changes")?;
-    diff.find_similar(None)?;
-    let summary = DiffSummary::new(&diff)?.non_conflicts();
-    if summary.num_files != 0 {
-      write!(out, "\n\n{} - ", style("Unstaged").red())?;
-      write!(out, "{}", summary)?;
+    let statuses = display_file_statuses(repo, show_untracked)?;
+    if !statuses.is_empty() {
+      write!(out, "\n\n{}", display_file_statuses(repo, show_untracked)?)?;
     }
-
     Ok(out)
   }
 
@@ -629,19 +588,6 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
   Ok(out)
 }
 
-fn get_rebase_dir(repo: &Repository) -> Option<PathBuf> {
-  let rebase_merge = repo.path().join("rebase-merge");
-  let rebase_apply = repo.path().join("rebase-apply");
-  let dir = if rebase_merge.exists() {
-    rebase_merge
-  } else if rebase_apply.exists() {
-    rebase_apply
-  } else {
-    return None;
-  };
-  Some(dir)
-}
-
 /// Displays a header line for an active rebase. Includes the source and
 /// destination branches, and the current progress.
 fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
@@ -697,10 +643,6 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
   Ok(out)
 }
 
-fn is_merge_active(repo: &Repository) -> bool {
-  repo.path().join("MERGE_HEAD").exists()
-}
-
 /// Displays a summary of an ongoing merge
 fn display_merge_header(repo: &Repository) -> Result<String> {
   let merge_head = get_merge_head(repo)?.context("Reference MERGE_HEAD does not exist")?;
@@ -732,10 +674,6 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
   Ok(out)
 }
 
-fn is_pick_active(repo: &Repository) -> bool {
-  repo.path().join("CHERRY_PICK_HEAD").exists()
-}
-
 /// Displays a header line for an active cherry-pick conflict
 fn display_pick_header(repo: &Repository) -> Result<String> {
   let pick_head = get_pick_head(repo)?.context("Reference CHERRY_PICK_HEAD does not exist")?;
@@ -757,10 +695,6 @@ fn display_pick_header(repo: &Repository) -> Result<String> {
   Ok(out)
 }
 
-fn is_revert_active(repo: &Repository) -> bool {
-  repo.path().join("REVERT_HEAD").exists()
-}
-
 fn display_revert_header(repo: &Repository) -> Result<String> {
   let revert_head = get_revert_head(repo)?.context("Reference REVERT_HEAD does not exist")?;
   let revert_commit = revert_head.peel_to_commit()?;
@@ -780,11 +714,6 @@ fn display_revert_header(repo: &Repository) -> Result<String> {
 
   display_authorship(repo, &mut out, " as ")?;
   Ok(out)
-}
-
-fn is_bisect_active(repo: &Repository) -> bool {
-  let dir = repo.path();
-  dir.join("BISECT_START").exists() || dir.join("BISECT_LOG").exists()
 }
 
 fn display_bisect_header(repo: &Repository) -> Result<String> {

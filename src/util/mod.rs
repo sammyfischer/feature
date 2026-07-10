@@ -31,6 +31,7 @@ pub mod branch;
 pub mod branch_meta;
 pub mod diff;
 pub mod display;
+pub mod status;
 pub mod string;
 pub mod tag;
 pub mod term;

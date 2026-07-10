@@ -34,6 +34,7 @@
   - create parent commits containing staged, unstaged, and untracked. use to build diffs and restore changes correctly
   - possibly rename command to `wip`, since it's designed for per-feature, in-progress work
   - could be an option to operate on the default stash, `refs/stash`
+  - sync should check each stash and delete all dangling stash references
 - `wip`
   - quick creation of wip commits
   - standard message format: "WIP on <branch>: message"

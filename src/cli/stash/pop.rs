@@ -1,11 +1,11 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::ErrorCode;
+use git2::build::CheckoutBuilder;
+use git2::{DiffOptions, IndexAddOption, Repository, Tree};
 
-use crate::App;
-use crate::util::branch_meta::BranchMeta;
-use crate::util::diff::DiffSummary;
+use crate::util::status::display_file_statuses;
 use crate::util::string::ToStrLossy;
+use crate::{App, data};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Applies and drops a stash entry")]
@@ -29,71 +29,92 @@ impl PopArgs {
 
     let index = self.index.unwrap_or(0);
 
-    let branch = BranchMeta::from_reference(&head.resolve()?)?;
-    let stash_refname = format!("refs/feature/stashes/{}", branch.name());
+    let stash_refname = format!("refs/feature/stashes/{}", head.resolve()?.shorthand()?);
     let mut reflog = repo.reflog(&stash_refname)?;
 
-    let commit_id = reflog
-      .get(index)
-      .context("There are no stash entries!")?
-      .id_new();
+    let stash = {
+      let id = reflog
+        .get(index)
+        .context("There are no stash entries!")?
+        .id_new();
+      repo.find_commit(id)?
+    };
 
-    let stash = repo.find_commit(commit_id)?;
     let parent = stash
       .parent(0)
       .context("Failed to get first parent of stash commit")?;
 
-    let diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&stash.tree()?), None)?;
+    let workdir = self
+      .get_workdir_tree(repo)
+      .context("Failed to build tree from workdir")?;
+    let mut merge = repo.merge_trees(&parent.tree()?, &workdir, &stash.tree()?, None)?;
 
-    // TODO: force apply, leaving conflicts, and don't drop entry if there are
-    match repo.apply(&diff, git2::ApplyLocation::WorkDir, None) {
-      Ok(_) => {
-        if !self.keep {
-          // remove stash entry if apply was successful
-          reflog
-            .remove(index, true)
-            .context("Failed to remove stash entry")?;
-          reflog.write()?;
+    if merge.has_conflicts() {
+      let mut checkout = CheckoutBuilder::new();
+      checkout.force();
+      repo.checkout_index(Some(&mut merge), Some(&mut checkout))?;
 
-          // if that was the only entry, delete the entire reflog and ref
-          if reflog.is_empty() {
-            let mut stash_ref = repo.find_reference(&stash_refname)?;
-            stash_ref.delete()?; // automatically deletes reflog
-          }
+      println!(
+        "{} with conflicts: {}\n{}",
+        style("Applied").yellow(),
+        stash.message_bytes().to_str_lossy(),
+        style("(stash entry was kept)").dim()
+      );
+    } else {
+      let merged_tree = {
+        let id = merge.write_tree_to(repo)?;
+        repo.find_tree(id)?
+      };
+
+      let mut checkout = CheckoutBuilder::new();
+      checkout.force();
+      repo.checkout_tree(merged_tree.as_object(), Some(&mut checkout))?;
+
+      if !self.keep {
+        // remove stash entry if apply was successful
+        reflog
+          .remove(index, true)
+          .context("Failed to remove stash entry")?;
+        reflog.write()?;
+
+        // if that was the only entry, delete the entire reflog and ref
+        if reflog.is_empty() {
+          let mut stash_ref = repo.find_reference(&stash_refname)?;
+          stash_ref.delete()?; // automatically deletes reflog
         }
       }
-      Err(e) if e.code() == ErrorCode::ApplyFail => return Err(anyhow!("Failed to apply stash")),
-      Err(e) => return Err(anyhow!(e)),
-    };
 
-    println!(
-      "{} stash entry {}{}{}",
-      style("Popped").green(),
-      style(branch.name()).cyan(),
-      style(":").dim(),
-      style(index).cyan()
-    );
-
-    println!("{}", stash.message_bytes().to_str_lossy());
-
-    let old_tree = repo.head()?.peel_to_tree()?;
-
-    let mut staged = repo.diff_tree_to_index(Some(&old_tree), None, None)?;
-    staged.find_similar(None)?;
-
-    let staged = DiffSummary::new(&staged)?;
-    if staged.num_files > 0 {
-      println!("\n{} - {}", style("Staged").green(), staged);
+      println!(
+        "{}: {}",
+        style("Popped").green(),
+        stash.message_bytes().to_str_lossy()
+      );
     }
 
-    let mut unstaged = repo.diff_index_to_workdir(None, None)?;
-    unstaged.find_similar(None)?;
+    let show_untracked = data::get_status_untracked(&repo.config()?.snapshot()?)?;
 
-    let unstaged = DiffSummary::new(&unstaged)?;
-    if unstaged.num_files > 0 {
-      println!("\n{} - {}", style("Unstaged").red(), staged);
+    let statuses = display_file_statuses(repo, show_untracked)?;
+    if !statuses.is_empty() {
+      println!("\n{}", display_file_statuses(repo, show_untracked)?);
     }
 
     Ok(())
+  }
+
+  /// Writes the entire workdir as a tree to the odb and returns it
+  fn get_workdir_tree<'tree>(&self, repo: &'tree Repository) -> Result<Tree<'tree>> {
+    let head_tree = repo.head()?.peel_to_tree()?;
+
+    let mut opts = DiffOptions::new();
+    opts.include_untracked(true);
+    opts.recurse_untracked_dirs(true);
+
+    // build index starting from head, then just adding all files in workdir (except
+    // ignored)
+    let mut index = repo.index()?;
+    index.read_tree(&head_tree)?;
+    index.add_all(["*"], IndexAddOption::DEFAULT, None)?;
+    let id = index.write_tree_to(repo)?;
+    Ok(repo.find_tree(id)?)
   }
 }
