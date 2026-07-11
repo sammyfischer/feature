@@ -3,10 +3,11 @@ use console::style;
 use git2::build::CheckoutBuilder;
 use git2::{DiffOptions, IndexAddOption, Repository, Tree};
 
+use crate::App;
 use crate::core::status::display_file_statuses;
 use crate::core::string::ToStrLossy;
+use crate::core::user_config::UserConfig;
 use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
-use crate::{App, data};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Applies and drops a wip entry")]
@@ -89,7 +90,7 @@ impl PopArgs {
       );
     }
 
-    let show_untracked = data::get_status_untracked(&repo.config()?.snapshot()?)?;
+    let show_untracked = UserConfig::new(repo)?.status_untracked()?;
 
     let statuses = display_file_statuses(repo, show_untracked)?;
     if !statuses.is_empty() {

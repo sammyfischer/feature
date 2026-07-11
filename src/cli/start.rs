@@ -4,11 +4,12 @@ use anyhow::{Context, Result};
 use clap::ValueHint;
 use console::style;
 
+use crate::App;
 use crate::core::branch::switch;
 use crate::core::branch_info::BranchInfo;
 use crate::core::string::ToStrLossyOwned;
+use crate::core::user_config::{UserConfig, set_feature_base};
 use crate::templater::{LongVar, ShortVar, Templater};
-use crate::{App, data};
 
 const LONG_ABOUT: &str = r#"Creates and switches to a new branch.
 
@@ -115,7 +116,7 @@ impl Args {
     };
 
     let mut config = state.repo.config()?;
-    data::set_feature_base(&mut config, &branch_name, &feature_base_name)?;
+    set_feature_base(&mut config, &branch_name, &feature_base_name)?;
 
     Ok(())
   }
@@ -139,11 +140,13 @@ impl Args {
       return Ok(main_part);
     }
 
+    let config = UserConfig::new(&state.repo)?;
+
     let mut templater = Templater::new()
       .short(ShortVar::eager('s', &main_part))
       .long(LongVar::lazy("user", || {
-        let config = state.repo.config()?.snapshot()?;
-        data::get_feature_user(&config)?
+        config
+          .user()?
           .context("No value for feature.user. Set it with \"git config feature.user <username>\".")
       }))
       .long(LongVar::eager("base", base_name))

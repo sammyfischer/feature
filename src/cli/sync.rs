@@ -20,16 +20,17 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::prune::prune_branches;
-use crate::config::projects::ProjectEntry;
-use crate::config::{self, Config};
 use crate::core::branch::{get_current_branch_name, hard_reset};
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::{DiffSummary, has_workdir_changes};
 use crate::core::fetch::{fetch_all, get_credentials_cb};
+use crate::core::project_config::projects::ProjectEntry;
+use crate::core::project_config::{self, ProjectConfig};
 use crate::core::string::ToStrLossyOwned;
 use crate::core::term::TICK_STRINGS;
+use crate::core::user_config::UserConfig;
 use crate::core::wip::{WIP_NAMESPACE, get_wip_refname};
-use crate::{App, data, style};
+use crate::{App, style};
 
 const LONG_ABOUT: &str = r"Updates all branches with their remotes (if they have one), then prunes merged
 feature branches.
@@ -128,8 +129,8 @@ impl Args {
 
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();
-    let app_config = &state.config;
-    let git_config = state.repo.config()?.snapshot()?;
+    let proj_config = &state.config;
+    let user_config = UserConfig::new(&state.repo)?;
 
     // progress bars
     let multi = MultiProgress::new();
@@ -150,7 +151,7 @@ impl Args {
     // project names and bars
     let skip_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_sync_projects(&git_config)?,
+      None => !user_config.sync_projects()?,
     };
     let proj_progresses: Vec<_> = if skip_projects {
       Vec::new()
@@ -170,7 +171,7 @@ impl Args {
 
     let skip_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_sync_modules(&git_config)?,
+      None => !user_config.sync_modules()?,
     };
     let mod_progresses: Vec<_> = if skip_modules {
       Vec::new()
@@ -199,7 +200,7 @@ impl Args {
 
     // main repo must run first, since projects/submodule state could change as a
     // result
-    let main_result = self.sync_repo(&state.repo, app_config, &main_progress.1)?;
+    let main_result = self.sync_repo(&state.repo, &user_config, proj_config, &main_progress.1)?;
 
     let (proj_results, mod_results) = thread::scope(|scope| -> Result<_> {
       // SYNC ALL PROJECTS
@@ -210,7 +211,7 @@ impl Args {
           proj_progresses
             .par_iter()
             .map(|(name, progress)| {
-              let project = &app_config.projects[name];
+              let project = &proj_config.projects[name];
               self.sync_or_clone_project(project, progress)
             })
             .collect()
@@ -283,15 +284,15 @@ impl Args {
   fn sync_repo(
     &self,
     repo: &Repository,
-    config: &Config,
+    user_config: &UserConfig,
+    proj_config: &ProjectConfig,
     progress: &ProgressBar,
   ) -> Result<SyncAction> {
     progress.enable_steady_tick(Duration::from_millis(100));
 
-    let git_config = repo.config()?.snapshot()?;
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
-      None => !data::get_feature_autofetch(&git_config)?,
+      None => !user_config.autofetch()?,
     };
 
     if !skip_fetch {
@@ -321,12 +322,12 @@ impl Args {
 
     let skip_prune = match self.no_prune {
       Some(it) => it,
-      None => !data::get_sync_prune(&git_config)?,
+      None => !user_config.sync_prune()?,
     };
 
     if !skip_prune {
       progress.set_message("Pruning branches");
-      let results = prune_branches(repo, config, self.dry_run)?;
+      let results = prune_branches(repo, user_config, proj_config, self.dry_run)?;
       for action in results {
         updates.push(action);
       }
@@ -365,10 +366,17 @@ impl Args {
     match Repository::open(&project.path) {
       // already cloned, sync it
       Ok(repo) => {
-        let app_config = config::load_with_path(&project.path)?;
-        let mut git_config = repo.config()?;
-        git_config.set_bool("feature.project", true)?;
-        self.sync_repo(&repo, &app_config, progress)
+        // make sure it's set as a project
+        {
+          let mut git_config = repo.config()?;
+          git_config.set_bool("feature.project", true)?;
+          // drop mutable reference
+        }
+
+        let proj_config = project_config::load_with_path(&project.path)?;
+        let user_config = UserConfig::new(&repo)?;
+
+        self.sync_repo(&repo, &user_config, &proj_config, progress)
       }
 
       // doesn't exist, just clone and continue

@@ -205,9 +205,10 @@ pub fn display_file_statuses(repo: &Repository, untracked: bool) -> Result<Strin
 
   let staged = get_staged_changes(repo)?;
   if staged.num_files != 0 {
-    if !first_paragraph {
-      write!(out, "\n\n")?;
+    if first_paragraph {
       first_paragraph = false;
+    } else {
+      write!(out, "\n\n")?;
     }
     write!(out, "{} - {}", style("Staged").green(), staged)?;
   }

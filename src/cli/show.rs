@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use git2::{ErrorClass, ErrorCode};
 
-use crate::config::PageWhen;
+use crate::App;
 use crate::core::diff::{DiffSummary, get_formatted_diff};
 use crate::core::display::{
   DisplayCommitMessageLevel,
@@ -11,9 +11,10 @@ use crate::core::display::{
   display_commit,
   display_tag,
 };
+use crate::core::project_config::PageWhen;
 use crate::core::string::ToStrLossy;
 use crate::core::term::{is_term, paginate};
-use crate::{App, data};
+use crate::core::user_config::UserConfig;
 
 const LONG_ABOUT: &str = r#"Show info about a commit
 
@@ -60,7 +61,7 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?.snapshot()?;
+    let config = UserConfig::new(&state.repo)?;
 
     let buf = if self.tag {
       self.show_tag(state, &config)?
@@ -69,7 +70,7 @@ impl Args {
     };
 
     // use config value only if it's not explicitly set in the command line
-    let paging = self.paging.unwrap_or(data::get_show_paging(&config)?);
+    let paging = self.paging.unwrap_or(config.show_paging()?);
     match (paging, is_term()) {
       (PageWhen::Auto, true) | (PageWhen::Always, _) => paginate(&buf),
       (PageWhen::Auto, false) | (PageWhen::Never, _) => {
@@ -79,7 +80,7 @@ impl Args {
     }
   }
 
-  fn show_commit(&self, state: &App, git_config: &git2::Config) -> Result<Vec<u8>> {
+  fn show_commit(&self, state: &App, config: &UserConfig) -> Result<Vec<u8>> {
     use std::io::Write;
     let mut buf: Vec<u8> = Vec::new();
 
@@ -93,10 +94,10 @@ impl Args {
       buf,
       "{}",
       display_commit(&commit, &DisplayCommitOptions {
-        message: self.message.unwrap_or(data::get_show_message(git_config)?),
+        message: self.message.unwrap_or(config.show_message()?),
         time: DisplayTimeOptions {
-          relative: data::get_format_relative(git_config)?,
-          fmt: data::get_format_date(git_config)?
+          relative: config.format_relative()?,
+          fmt: config.format_date()?,
         }
       })?
     )?;
@@ -118,9 +119,7 @@ impl Args {
       .diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), None)?;
     diff.find_similar(None)?;
 
-    let show_summary = !self
-      .no_summary
-      .unwrap_or(!data::get_show_summary(git_config)?);
+    let show_summary = !self.no_summary.unwrap_or(!config.show_summary()?);
     if show_summary {
       let summary = DiffSummary::new(&diff)?;
       if summary.num_files != 0 {
@@ -128,7 +127,7 @@ impl Args {
       }
     }
 
-    let show_patch = !self.no_patch.unwrap_or(!data::get_show_patch(git_config)?);
+    let show_patch = !self.no_patch.unwrap_or(!config.show_patch()?);
     if show_patch {
       buf.extend_from_slice(&get_formatted_diff(&diff)?);
     }
@@ -136,7 +135,7 @@ impl Args {
     Ok(buf)
   }
 
-  fn show_tag(&self, state: &App, git_config: &git2::Config) -> Result<Vec<u8>> {
+  fn show_tag(&self, state: &App, config: &UserConfig) -> Result<Vec<u8>> {
     use std::io::Write;
     let mut buf: Vec<u8> = Vec::new();
 
@@ -170,10 +169,10 @@ impl Args {
       buf,
       "{}",
       display_tag(&tag, &DisplayCommitOptions {
-        message: self.message.unwrap_or(data::get_show_message(git_config)?),
+        message: self.message.unwrap_or(config.show_message()?),
         time: DisplayTimeOptions {
-          relative: data::get_format_relative(git_config)?,
-          fmt: data::get_format_date(git_config)?
+          relative: config.format_relative()?,
+          fmt: config.format_date()?,
         }
       })?
     )?;

@@ -2,9 +2,10 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
 
+use crate::App;
 use crate::core::branch_info::BranchInfo;
 use crate::core::push::check::{PushCheckStatus, check_base, check_upstream};
-use crate::{App, data};
+use crate::core::user_config::UserConfig;
 
 const LONG_ABOUT: &str = r"Performs checks on a branch similar to the push/prune commands.
 
@@ -73,7 +74,7 @@ impl Args {
 
     let base = match self.base.as_ref() {
       Some(base_name) => BranchInfo::from_name_dwim(&state.repo, base_name)?,
-      None => data::get_feature_base(&state.repo, branch.name())?,
+      None => UserConfig::new(&state.repo)?.branch_base(branch.name())?,
     };
 
     if let Some(base) = base {

@@ -4,10 +4,11 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use git2::Branch;
 
+use crate::App;
 use crate::core::branch::get_upstream;
 use crate::core::branch_info::BranchInfo;
 use crate::core::string::ToStrLossyOwned;
-use crate::{App, data};
+use crate::core::user_config;
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
 
@@ -61,7 +62,7 @@ impl Args {
 
     // get again as writable config
     let mut config = state.repo.config()?;
-    data::set_feature_base(&mut config, branch.name(), &feature_base_name)?;
+    user_config::set_feature_base(&mut config, branch.name(), &feature_base_name)?;
 
     Ok(())
   }

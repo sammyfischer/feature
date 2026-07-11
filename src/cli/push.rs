@@ -18,7 +18,8 @@ use crate::core::push::{
 };
 use crate::core::string::TrimPrefix;
 use crate::core::trim_hash;
-use crate::{App, data, style};
+use crate::core::user_config::UserConfig;
+use crate::{App, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
 argument, e.g. "feature push my-branch".""#;
@@ -120,8 +121,10 @@ impl Args {
       PushCheckStatus::Diverged => return Err(anyhow!(UPSTREAM_DIVERGED_MSG)),
     }
 
+    let user_config = UserConfig::new(&state.repo)?;
+
     // fetches the latest base, checks if new changes can be resolved
-    let base = data::get_feature_base(&state.repo, branch.name())?;
+    let base = user_config.branch_base(branch.name())?;
     match check_base(&state.repo, &branch, base.as_ref(), self.force)? {
       PushCheckStatus::NoBranch => {}
       PushCheckStatus::Forced => {}

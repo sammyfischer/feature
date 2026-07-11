@@ -5,19 +5,18 @@ use clap::{CommandFactory, FromArgMatches};
 use git2::{ErrorClass, ErrorCode, Repository};
 
 use crate::cli::{Args, Command};
-use crate::config::Config;
 use crate::core::diff::status_guide;
+use crate::core::project_config::{ProjectConfig, load_config, load_with_path, local};
+use crate::core::user_config::UserConfig;
 
 mod cli;
-mod config;
 mod core;
-mod data;
 mod templater;
 
 /// Shared state of the cli
 pub struct App {
-  /// Fully layered config struct
-  pub config: Config,
+  /// Fully layered project config struct
+  pub config: ProjectConfig,
 
   /// Path to the project-level config file. May not exist.
   pub config_path: PathBuf,
@@ -51,13 +50,13 @@ impl App {
 
     let (config, config_path) = match args.config {
       // always use command-specified file
-      Some(path) => (config::load_with_path(&path)?, path),
+      Some(path) => (load_with_path(&path)?, path),
 
       None => {
-        let git_config = repo.config()?.snapshot()?;
+        let user_config = UserConfig::new(&repo)?;
 
         // if this repo is a project
-        if data::get_feature_project(&git_config)?.is_some_and(|it| it) {
+        if user_config.project()? {
           let mut cursor = Some(
             repo
               .workdir()
@@ -86,11 +85,11 @@ impl App {
           };
 
           match file {
-            Some(file) => (config::load_with_path(&file)?, file.to_owned()),
-            None => (config::load()?, config::project::path()),
+            Some(file) => (load_with_path(&file)?, file.to_owned()),
+            None => (load_config()?, local::path()),
           }
         } else {
-          (config::load()?, config::project::path())
+          (load_config()?, local::path())
         }
       }
     };

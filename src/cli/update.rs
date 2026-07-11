@@ -3,7 +3,8 @@ use clap::ValueHint;
 
 use crate::core::branch_info::BranchInfo;
 use crate::core::fetch::fetch_upstream_branch;
-use crate::{App, await_child, data, git, style};
+use crate::core::user_config::UserConfig;
+use crate::{App, await_child, git, style};
 
 const LONG_ABOUT: &str = r"Rebases this branch onto its base. The available commands are similar to a git
 rebase.";
@@ -58,7 +59,9 @@ impl Args {
     let base = match &self.base {
       Some(base_name) => BranchInfo::from_name_dwim(&state.repo, base_name)?
         .ok_or(anyhow!("Branch not found: {}", base_name))?,
-      None => data::get_feature_base(&state.repo, branch.name())?.ok_or(anyhow!(NO_BASE_MSG))?,
+      None => UserConfig::new(&state.repo)?
+        .branch_base(branch.name())?
+        .ok_or(anyhow!(NO_BASE_MSG))?,
     };
 
     if self.dry_run {

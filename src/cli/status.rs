@@ -16,7 +16,6 @@ use git2::{
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::config::projects::ProjectEntry;
 use crate::core::advice::{
   BISECT_ADVICE,
   MERGE_CONFLICT_ADVICE,
@@ -37,12 +36,14 @@ use crate::core::branch_info::BranchInfo;
 use crate::core::commit::find_branch_at_commit;
 use crate::core::diff::DiffSummary;
 use crate::core::display::{display_commit_compact, display_plus_minus, display_signature};
+use crate::core::project_config::projects::ProjectEntry;
 use crate::core::status::{display_file_statuses, is_pick_active};
 use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::core::tag::find_current_semver;
 use crate::core::term::{get_term_width, is_term};
+use crate::core::user_config::UserConfig;
 use crate::core::{get_signature, open_repo_from_dirs, trim_hash};
-use crate::{App, data, opt_advice, style};
+use crate::{App, opt_advice, style};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -68,17 +69,17 @@ impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();
-    let app_config = &state.config;
-    let git_config = &state.repo.config()?.snapshot()?;
+    let proj_config = &state.config;
+    let user_config = UserConfig::new(&state.repo)?;
 
     let hide_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_feature_show_projects(git_config)?,
+      None => !user_config.show_projects()?,
     };
 
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_feature_show_modules(git_config)?,
+      None => !user_config.show_modules()?,
     };
     let mod_names: Vec<_> = if hide_modules {
       Vec::new()
@@ -101,7 +102,7 @@ impl Args {
         if hide_projects {
           return Vec::new();
         }
-        app_config
+        proj_config
           .projects
           .par_iter()
           .map(|project| -> Result<String> {
@@ -160,46 +161,46 @@ impl Args {
   fn display_main_repo(&self, repo: &Repository) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
-    let config = repo.config()?.snapshot()?;
+    let config = UserConfig::new(repo)?;
     let head = get_head(repo)?;
 
     let (header, advice) = match repo.state() {
       // TODO: custom header/advice for git am
       RepositoryState::ApplyMailbox | RepositoryState::Clean => (
         display_normal_header(repo, head.as_ref())?,
-        opt_advice!(data::get_advice_status(&config)?, STATUS_ADVICE),
+        opt_advice!(config.advice_status()?, STATUS_ADVICE),
       ),
 
       RepositoryState::Merge => (
         display_merge_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, MERGE_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, MERGE_CONFLICT_ADVICE),
       ),
 
       RepositoryState::Revert | RepositoryState::RevertSequence => (
         display_revert_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, REVERT_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, REVERT_CONFLICT_ADVICE),
       ),
 
       RepositoryState::CherryPick | RepositoryState::CherryPickSequence => (
         display_pick_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, PICK_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, PICK_CONFLICT_ADVICE),
       ),
 
       RepositoryState::Bisect => (
         display_bisect_header(repo)?,
-        opt_advice!(data::get_advice_status(&config)?, BISECT_ADVICE),
+        opt_advice!(config.advice_status()?, BISECT_ADVICE),
       ),
 
       RepositoryState::Rebase
       | RepositoryState::RebaseInteractive
       | RepositoryState::RebaseMerge => (
         display_rebase_header(repo, &repo.path().join("rebase-merge"))?,
-        opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
       ),
 
       RepositoryState::ApplyMailboxOrRebase => (
         display_rebase_header(repo, &repo.path().join("rebase-apply"))?,
-        opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
       ),
     };
 
@@ -230,7 +231,7 @@ impl Args {
 
     let show_untracked = match self.no_untracked {
       Some(hide) => !hide,
-      None => data::get_status_untracked(&config)?,
+      None => config.status_untracked()?,
     };
 
     let statuses = display_file_statuses(repo, show_untracked)?;
@@ -252,7 +253,7 @@ impl Args {
   ) -> Result<String> {
     let mut out = String::new();
     let (name, project) = project;
-    let config = repo.config()?.snapshot()?;
+    let config = UserConfig::new(repo)?;
 
     out.push_str(&style(name).cyan().to_string());
 
@@ -294,7 +295,7 @@ impl Args {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
-      if data::get_feature_show_authorship(&config)? {
+      if config.show_authorship()? {
         out.push_str(&self.display_different_signature(repo, &proj_repo)?);
       }
       out.push_str(&self.display_subrepo_changes(&proj_repo, &commit)?);
@@ -312,7 +313,7 @@ impl Args {
     let mut out = String::new();
     out.push_str(&style(mod_name).cyan().to_string());
 
-    let config = repo.config()?.snapshot()?;
+    let config = UserConfig::new(repo)?;
     let module = repo.find_submodule(mod_name)?;
 
     let mod_repo = match module.open() {
@@ -368,7 +369,7 @@ impl Args {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
-      if data::get_feature_show_authorship(&config)? {
+      if config.show_authorship()? {
         out.push_str(&self.display_different_signature(repo, &mod_repo)?);
       }
       out.push_str(&self.display_subrepo_changes(&mod_repo, &commit)?);
@@ -413,7 +414,7 @@ impl Args {
     let mut opts = DiffOptions::new();
     let include = match self.no_untracked {
       Some(it) => !it,
-      None => data::get_status_untracked(&repo.config()?.snapshot()?)?,
+      None => UserConfig::new(repo)?.status_untracked()?,
     };
     opts.include_untracked(include);
     let mut unstaged = repo.diff_index_to_workdir(None, Some(&mut opts))?;
@@ -550,7 +551,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     }
 
     // base row
-    let base = data::get_feature_base(repo, branch.name())?;
+    let base = UserConfig::new(repo)?.branch_base(branch.name())?;
     if let Some(base) = base {
       let (a, b) = get_ahead_behind(repo, &base.resolve(repo)?, &branch_ref)
         .context("Failed to get ahead/behind for base")?;
@@ -744,7 +745,8 @@ fn display_authorship<'buf>(
   buf: &'buf mut String,
   prefix: &str,
 ) -> Result<&'buf mut String> {
-  if data::get_feature_show_authorship(&repo.config()?.snapshot()?)? {
+  let config = UserConfig::new(repo)?;
+  if config.show_authorship()? {
     write!(
       buf,
       "{}{}",

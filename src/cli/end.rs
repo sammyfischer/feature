@@ -8,9 +8,10 @@ use crate::core::branch_info::BranchInfo;
 use crate::core::fetch::fetch_upstream_branch;
 use crate::core::push::{PushStatus, get_push_callbacks};
 use crate::core::string::ToStrLossy;
+use crate::core::user_config::UserConfig;
 use crate::core::wip::get_wip_refname;
 use crate::core::{delete_config_section, trim_hash};
-use crate::{App, data, style};
+use crate::{App, style};
 
 const LONG_ABOUT: &str = r#"Safely deletes a feature branch, checking if it's merged into its base. If
 currently checked-out, switches to the base branch."#;
@@ -51,7 +52,7 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?.snapshot()?;
+    let config = UserConfig::new(&state.repo)?;
 
     let branch = match &self.branch {
       Some(name) => BranchInfo::from_name_dwim(&state.repo, name)?,
@@ -61,7 +62,7 @@ impl Args {
 
     let base = match &self.base {
       Some(name) => BranchInfo::from_name_dwim(&state.repo, name)?,
-      None => data::get_feature_base(&state.repo, branch.name())?,
+      None => config.branch_base(branch.name())?,
     };
 
     let Some(base) = base else {
@@ -70,7 +71,7 @@ impl Args {
 
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
-      None => !data::get_feature_autofetch(&config)?,
+      None => !config.autofetch()?,
     };
 
     // check if it's merged before deleting (unless --force)
@@ -114,7 +115,7 @@ impl Args {
 
     let delete_remote = match self.remote {
       Some(it) => it,
-      None => data::get_end_remote(&config)?,
+      None => config.end_remote()?,
     };
 
     // begin actual deletions

@@ -16,11 +16,13 @@ pub mod commit;
 pub mod diff;
 pub mod display;
 pub mod fetch;
+pub mod project_config;
 pub mod push;
 pub mod status;
 pub mod string;
 pub mod tag;
 pub mod term;
+pub mod user_config;
 pub mod wip;
 
 /// Opens a repo given a `.git` dir. If the workdir is `None`, it's assumed to

@@ -13,6 +13,7 @@ use clap::ValueHint;
 use console::{strip_ansi_codes, style};
 use git2::{Commit, Diff, ErrorCode, MergeOptions, Oid, Reference, Repository, Tree};
 
+use crate::App;
 use crate::core::advice::NO_SIGNATURE_MSG;
 use crate::core::branch::{
   get_current_branch_name,
@@ -33,7 +34,7 @@ use crate::core::display::{
 use crate::core::get_signature;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::term::get_user_confirmation;
-use crate::{App, data};
+use crate::core::user_config::UserConfig;
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
@@ -98,9 +99,10 @@ enum CommitType {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?.snapshot()?;
+    let config = UserConfig::new(&state.repo)?;
+
     // if there's a pick active and the user has pick advice enabled
-    if get_pick_head(&state.repo)?.is_some() && data::get_advice_conflict(&config)? {
+    if get_pick_head(&state.repo)?.is_some() && config.advice_conflict()? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_PICK)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -109,7 +111,7 @@ impl Args {
     }
 
     // if there's a revert active and the user has revert advice enabled
-    if get_revert_head(&state.repo)?.is_some() && data::get_advice_conflict(&config)? {
+    if get_revert_head(&state.repo)?.is_some() && config.advice_conflict()? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_REVERT)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -251,10 +253,7 @@ impl Args {
       );
 
       let new_commit = state.repo.find_commit(new_id)?;
-      println!(
-        "{}",
-        display_commit_details(&new_commit, &diff, &state.repo.config()?.snapshot()?)?
-      );
+      println!("{}", display_commit_details(&new_commit, &diff, &config)?);
 
       self.post_commit_hook(&state.repo)?;
       self.post_rewrite_hook(&state.repo, target.commit.id(), new_id)?;
@@ -775,16 +774,12 @@ fn display_merge_header(
 /// with two exceptions:
 /// 1. The time is always absolute
 /// 2. It always displays the entire commit message
-fn display_commit_details(
-  commit: &Commit<'_>,
-  diff: &Diff,
-  config: &git2::Config,
-) -> Result<String> {
+fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &UserConfig) -> Result<String> {
   let commit_output = display_commit(commit, &DisplayCommitOptions {
     time: DisplayTimeOptions {
       // relative is not useful, commit just occured
       relative: false,
-      fmt: data::get_format_date(config)?,
+      fmt: config.format_date()?,
     },
     // want the user to see the entire message just for reference
     message: DisplayCommitMessageLevel::Full,

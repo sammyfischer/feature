@@ -10,9 +10,9 @@ use figment::providers::{Format, Serialized, Toml};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::config::branch::BranchConfig;
-use crate::config::projects::ProjectsConfig;
-use crate::config::tag::TagConfig;
+use crate::core::project_config::branch::BranchConfig;
+use crate::core::project_config::projects::ProjectsConfig;
+use crate::core::project_config::tag::TagConfig;
 
 pub mod branch;
 pub mod projects;
@@ -20,7 +20,7 @@ pub mod tag;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub struct Config {
+pub struct ProjectConfig {
   /// Name of the remote to use when one can't be determined automatically
   pub default_remote: String,
 
@@ -38,7 +38,7 @@ pub struct Config {
   pub projects: ProjectsConfig,
 }
 
-impl Default for Config {
+impl Default for ProjectConfig {
   fn default() -> Self {
     Self {
       default_remote: "origin".into(),
@@ -72,23 +72,23 @@ impl Display for PageWhen {
 }
 
 /// Loads a layered config, searching the default locations for each.
-pub fn load() -> Result<Config> {
-  load_with_path(&project::path())
+pub fn load_config() -> Result<ProjectConfig> {
+  load_with_path(&local::path())
 }
 
 /// Loads a layered config, using the given path as the project-level config
 /// file. The global config file cannot be changed.
-pub fn load_with_path(project: &Path) -> Result<Config> {
+pub fn load_with_path(project: &Path) -> Result<ProjectConfig> {
   // load defaults
-  let mut figment = Figment::new().merge(Serialized::defaults(Config::default()));
+  let mut figment = Figment::new().merge(Serialized::defaults(ProjectConfig::default()));
 
-  // override with user config
+  // override with global config
   // ignore error, just don't load and move on
-  if let Ok(path) = user::path() {
+  if let Ok(path) = global::path() {
     figment = figment.merge(Toml::file(&path));
   }
 
-  // override with project config
+  // override with local config
   {
     let path = project;
     if path.exists() {
@@ -96,7 +96,7 @@ pub fn load_with_path(project: &Path) -> Result<Config> {
     }
   }
 
-  let config: Config = figment.extract()?;
+  let config: ProjectConfig = figment.extract()?;
   Ok(config)
 }
 
@@ -110,14 +110,14 @@ fn get_schema_url() -> String {
   )
 }
 
-pub mod project {
+pub mod local {
   use std::fs::File;
   use std::io::Write;
   use std::path::PathBuf;
 
   use anyhow::Result;
 
-  use crate::config::{Config, get_schema_url};
+  use crate::core::project_config::{ProjectConfig, get_schema_url};
 
   pub fn path() -> PathBuf {
     PathBuf::from("feature.toml")
@@ -126,7 +126,7 @@ pub mod project {
   /// Saves an entire default config to the project directory
   pub fn save_default() -> Result<()> {
     let path = self::path();
-    let mut config = Config::default();
+    let mut config = ProjectConfig::default();
 
     // branch.template's default is None, but this is an example config so it
     // should have some value
@@ -142,17 +142,19 @@ pub mod project {
   }
 }
 
-pub mod user {
+pub mod global {
   use std::fs::{self, File};
   use std::io::{ErrorKind, Write};
   use std::path::PathBuf;
 
   use anyhow::{Result, anyhow};
 
-  use crate::config::{Config, get_schema_url};
+  use crate::core::project_config::{ProjectConfig, get_schema_url};
 
   /// Returns the config file located in the platform's standard config
-  /// directory # Errors
+  /// directory
+  ///
+  /// # Errors
   /// Returns an error if the config directory cannot be obtained.
   pub fn path() -> Result<PathBuf> {
     let mut path = dirs::config_dir().ok_or(anyhow!("Failed to find user config directory",))?;
@@ -182,10 +184,10 @@ pub mod user {
     Ok(path)
   }
 
-  /// Saves an entire default config to the user config directory
+  /// Saves an entire default config to the user's config directory
   pub fn save_default() -> Result<()> {
     let path = self::ensure_path()?;
-    let config = Config::default();
+    let config = ProjectConfig::default();
     let toml_raw = toml::to_string_pretty(&config)?;
 
     let mut file = File::create(&path)?;

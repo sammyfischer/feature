@@ -10,7 +10,8 @@ use crate::core::open_repo_from_dirs;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::tag::{SemverTag, get_semver_tags};
 use crate::core::term::paginate;
-use crate::{App, data, style};
+use crate::core::user_config::UserConfig;
+use crate::{App, style};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Lists semver tags", disable_help_subcommand = true)]
@@ -35,17 +36,17 @@ impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();
-    let app_config = &state.config;
-    let git_config = state.repo.config()?.snapshot()?;
+    let proj_config = &state.config;
+    let user_config = UserConfig::new(&state.repo)?;
 
     let hide_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_feature_show_projects(&git_config)?,
+      None => !user_config.show_projects()?,
     };
 
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_feature_show_modules(&git_config)?,
+      None => !user_config.show_modules()?,
     };
     let mod_names: Vec<_> = if hide_modules {
       Vec::new()
@@ -70,7 +71,7 @@ impl Args {
         if hide_projects {
           Vec::new()
         } else {
-          app_config
+          proj_config
             .projects
             .par_iter()
             .map(|(name, project)| -> Result<_> {

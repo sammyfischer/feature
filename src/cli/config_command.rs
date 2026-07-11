@@ -5,7 +5,7 @@ use clap::{Subcommand, ValueHint};
 use schemars::schema_for;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{self, Config};
+use crate::core::project_config::{self, ProjectConfig};
 use crate::core::term::get_user_confirmation;
 
 /// Serializes the value into a toml string
@@ -46,13 +46,9 @@ pub enum ConfigCommand {
 #[derive(Clone, Debug, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum WhichConfig {
-  /// Project (local) config file
-  Project,
-  /// Project (local) config file
+  /// Local project config file
   Local,
-  /// Global (user) config file
-  User,
-  /// Global (user) config file
+  /// Global project config file
   Global,
 }
 
@@ -65,7 +61,7 @@ pub struct GetArgs {
 }
 
 impl Args {
-  pub fn run(&self, config: &Config) -> Result<()> {
+  pub fn run(&self, config: &ProjectConfig) -> Result<()> {
     let which = if self.global {
       &WhichConfig::Global
     } else {
@@ -81,9 +77,9 @@ impl Args {
 
   pub fn create(&self, which: &WhichConfig) -> Result<()> {
     match which {
-      WhichConfig::Project | WhichConfig::Local => {
+      WhichConfig::Local => {
         // if it already exists, prompt user for confirmation
-        if config::project::path().exists() {
+        if project_config::local::path().exists() {
           let choice = get_user_confirmation(
             "A local config file already exists. Do you want to overwrite it?",
           )?;
@@ -93,12 +89,12 @@ impl Args {
             return Ok(());
           }
         }
-        config::project::save_default()
+        project_config::local::save_default()
       }
 
-      WhichConfig::User | WhichConfig::Global => {
+      WhichConfig::Global => {
         // if it already exists, prompt user for confirmation
-        if config::user::path()?.exists() {
+        if project_config::global::path()?.exists() {
           let choice = get_user_confirmation(
             "A global config file already exists. Do you want to overwrite it?",
           )?;
@@ -108,12 +104,12 @@ impl Args {
             return Ok(());
           }
         }
-        config::user::save_default()
+        project_config::global::save_default()
       }
     }
   }
 
-  pub fn get(&self, args: &GetArgs, config: &Config) -> Result<()> {
+  pub fn get(&self, args: &GetArgs, config: &ProjectConfig) -> Result<()> {
     for key in &args.keys {
       let value = match &**key {
         "default_remote" => config.default_remote.clone(),
@@ -139,7 +135,7 @@ impl Args {
 }
 
 fn generate_schema() -> Result<()> {
-  let schema = schema_for!(Config);
+  let schema = schema_for!(ProjectConfig);
   let json = serde_json::to_string_pretty(&schema)?;
   println!("{}", json);
   Ok(())

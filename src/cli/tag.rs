@@ -3,6 +3,7 @@ use clap::ValueHint;
 use console::style;
 use git2::{ErrorCode, PushOptions};
 
+use crate::App;
 use crate::cli::push::display_push_status;
 use crate::core::display::{
   DisplayCommitMessageLevel,
@@ -13,7 +14,7 @@ use crate::core::display::{
 use crate::core::push::{PushStatus, get_push_callbacks};
 use crate::core::string::ToStrLossyOwned;
 use crate::core::tag::SemverTag;
-use crate::{App, data};
+use crate::core::user_config::UserConfig;
 
 const LONG_ABOUT: &str = r#"Creates and pushes a semver tag.
 
@@ -108,7 +109,7 @@ impl Args {
           time: DisplayTimeOptions {
             // tag was just created, relative is not useful
             relative: false,
-            fmt: data::get_format_date(&repo.config()?)?,
+            fmt: UserConfig::new(repo)?.format_date()?,
           },
           message: DisplayCommitMessageLevel::Full,
         })?
