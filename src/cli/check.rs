@@ -2,9 +2,8 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
 
-use super::push::PushCheckStatus;
-use crate::cli::push::{check_base, check_upstream};
 use crate::core::branch_info::BranchInfo;
+use crate::core::push::check::{PushCheckStatus, check_base, check_upstream};
 use crate::{App, data};
 
 const LONG_ABOUT: &str = r"Performs checks on a branch similar to the push/prune commands.

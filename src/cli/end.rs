@@ -2,10 +2,11 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::{PushOptions, Repository};
 
+use crate::cli::push::display_push_status;
 use crate::core::branch::{find_local_of_upstream, get_current_branch_name, is_merged, switch};
 use crate::core::branch_info::BranchInfo;
 use crate::core::fetch::fetch_upstream_branch;
-use crate::core::push::{PushOutput, get_push_callbacks};
+use crate::core::push::{PushStatus, get_push_callbacks};
 use crate::core::string::ToStrLossy;
 use crate::core::wip::get_wip_refname;
 use crate::core::{delete_config_section, trim_hash};
@@ -161,15 +162,14 @@ fn delete_upstream(repo: &Repository, branch: &BranchInfo) -> Result<()> {
     let remote_name = remote_name.to_str_lossy();
     let mut remote = repo.find_remote(&remote_name)?;
 
-    let mut output = PushOutput::new();
+    let mut status = PushStatus::new();
     {
       let mut opts = PushOptions::new();
-      opts.remote_callbacks(get_push_callbacks(&mut output)?);
+      opts.remote_callbacks(get_push_callbacks(&mut status)?);
       remote.push(&[&refspec], Some(&mut opts))?;
     }
 
-    // TODO: print output (reimplement display function in frontend, call it here)
-    // output.print();
+    println!("{}", display_push_status(repo, status)?);
 
     // delete local copy
     upstream.delete()?;

@@ -3,13 +3,14 @@ use clap::ValueHint;
 use console::style;
 use git2::{ErrorCode, PushOptions};
 
+use crate::cli::push::display_push_status;
 use crate::core::display::{
   DisplayCommitMessageLevel,
   DisplayCommitOptions,
   DisplayTimeOptions,
   display_tag,
 };
-use crate::core::push::{PushOutput, get_push_callbacks};
+use crate::core::push::{PushStatus, get_push_callbacks};
 use crate::core::string::ToStrLossyOwned;
 use crate::core::tag::SemverTag;
 use crate::{App, data};
@@ -133,14 +134,14 @@ impl Args {
 
       match repo.find_remote(remote_name) {
         Ok(mut remote) => {
-          let mut output = PushOutput::new();
+          let mut status = PushStatus::new();
           {
             let mut opts = PushOptions::new();
-            opts.remote_callbacks(get_push_callbacks(&mut output)?);
+            opts.remote_callbacks(get_push_callbacks(&mut status)?);
             remote.push(&[&refname], Some(&mut opts))?;
           }
-          // TODO: frontend impl
-          // output.print();
+
+          println!("{}", display_push_status(repo, status)?);
 
           println!(
             "{} tag {} to {}",

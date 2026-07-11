@@ -3,13 +3,21 @@ use std::fmt::Write;
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{Branch, BranchType, ErrorClass, ErrorCode, PushOptions, Repository};
+use git2::{Branch, ErrorClass, ErrorCode, PushOptions, Repository};
 
-use crate::core::branch::get_ahead_behind;
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
-use crate::core::fetch::fetch_upstream_branch;
-use crate::core::push::{PushOutput, get_push_callbacks};
+use crate::core::display::display_hash;
+use crate::core::push::check::{PushCheckStatus, check_base, check_upstream};
+use crate::core::push::{
+  PushRejection,
+  PushStatus,
+  PushUpdate,
+  PushUpdateKind,
+  get_push_callbacks,
+};
+use crate::core::string::TrimPrefix;
+use crate::core::trim_hash;
 use crate::{App, data, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
@@ -181,10 +189,10 @@ impl Args {
       .with_context(|| format!("Failed to get reference to remote {}", remote_name))?;
 
     // perform push and display output
-    let mut output = PushOutput::new();
+    let mut status = PushStatus::new();
     {
       let mut opts = PushOptions::new();
-      opts.remote_callbacks(get_push_callbacks(&mut output)?);
+      opts.remote_callbacks(get_push_callbacks(&mut status)?);
 
       remote
         .push(&[&refspec], Some(&mut opts))
@@ -192,8 +200,8 @@ impl Args {
 
       // drop opts after push
     }
-    // TODO: frontend impl
-    // output.print();
+
+    println!("{}", display_push_status(&state.repo, status)?);
 
     print!(
       "{} {} to {}",
@@ -235,121 +243,85 @@ impl Args {
   }
 }
 
-pub enum PushCheckStatus {
-  /// The branch being checked against doesn't exist
-  NoBranch,
+/// Display push results
+pub fn display_push_status(repo: &Repository, output: PushStatus) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::new();
+  let mut first = true;
 
-  /// Ahead/behind checks were not performed, but the branch exists
-  Forced,
+  let (updates, rejections, response) = output.into_inner();
 
-  /// Both branches point to the same commit
-  UpToDate,
+  for update in updates {
+    if first {
+      first = false;
+    } else {
+      writeln!(out)?;
+    }
+    write!(out, "{}", &display_push_update(repo, &update)?)?;
+  }
 
-  /// Ahead of the branch being checked against
-  Ahead,
+  for rejection in rejections {
+    if first {
+      first = false;
+    } else {
+      writeln!(out)?;
+    }
+    write!(out, "{}", &display_push_rejection(&rejection))?;
+  }
 
-  /// Behind the branch being checked against
-  Behind,
+  if !first {
+    writeln!(out)?;
+  }
+  write!(out, "{}", response.trim())?;
 
-  /// Branches have diverged
-  Diverged,
+  Ok(out)
 }
 
-/// Fetches the latest upstream ensures that we have all the needed changes
-pub fn check_upstream(
-  repo: &Repository,
-  branch: &BranchInfo,
-  upstream: Option<&BranchInfo>,
-  force: bool,
-) -> Result<PushCheckStatus> {
-  let Some(upstream) = upstream else {
-    return Ok(PushCheckStatus::NoBranch);
-  };
+fn display_push_update(repo: &Repository, update: &PushUpdate) -> Result<String> {
+  let name = update.refname.trim_prefix_opt("refs/remotes/");
+  match update.kind {
+    PushUpdateKind::Create(id) => {
+      let commit = repo.find_commit(id)?;
 
-  if !upstream.is_remote() {
-    return Err(anyhow!(
-      "Upstream is not a remote branch: {}",
-      upstream.refname()
-    ));
-  }
-
-  fetch_upstream_branch(repo, upstream)?;
-  println!("{}", style!("Fetched {}", upstream.name()).dim());
-
-  if force {
-    return Ok(PushCheckStatus::Forced);
-  }
-
-  let branch_tip = branch.resolve(repo)?.peel_to_commit()?;
-  let upstream_tip = upstream.resolve(repo)?.peel_to_commit()?;
-
-  // get the new reference after the fetch
-  let ab = repo.graph_ahead_behind(branch_tip.id(), upstream_tip.id())?;
-
-  Ok(match ab {
-    // up to date, continue to check against base
-    (a, b) if a == 0 && b == 0 => PushCheckStatus::UpToDate,
-
-    // local is ahead, continue with push (and check against base)
-    (a, b) if a > 0 && b == 0 => PushCheckStatus::Ahead,
-
-    // local is behind, fast forward (soft reset)
-    (a, b) if a == 0 && b > 0 => PushCheckStatus::Behind,
-
-    // divergent histories, user must resolve
-    (a, b) if a > 0 && b > 0 => PushCheckStatus::Diverged,
-
-    (a, b) => {
-      return Err(anyhow!(
-        "Unexpected ahead/behind against upstream: ahead {}, behind {}",
-        a,
-        b
-      ));
+      Ok(format!(
+        "{} {}: {}",
+        style("Created").green(),
+        name,
+        display_hash(commit.as_object())?
+      ))
     }
-  })
+
+    PushUpdateKind::Update(old_id, new_id) => {
+      let old_commit = repo.find_commit(old_id)?;
+      let new_commit = repo.find_commit(new_id)?;
+
+      Ok(format!(
+        "{} {}: {} -> {}",
+        style("Updated").green(),
+        name,
+        display_hash(old_commit.as_object())?,
+        display_hash(new_commit.as_object())?
+      ))
+    }
+
+    PushUpdateKind::Delete(id) => {
+      let commit = repo.find_commit(id)?;
+
+      Ok(format!(
+        "{} {} {}",
+        style("Deleted").red(),
+        name,
+        style!("(was {})", trim_hash(commit.as_object())?)
+      ))
+    }
+  }
 }
 
-/// Fetches the latest base ensures that we have all the needed changes
-pub fn check_base(
-  repo: &Repository,
-  branch: &BranchInfo,
-  base: Option<&BranchInfo>,
-  force: bool,
-) -> Result<PushCheckStatus> {
-  let Some(base) = base else {
-    return Ok(PushCheckStatus::NoBranch);
-  };
-
-  if base.ty() == BranchType::Remote {
-    fetch_upstream_branch(repo, base)?;
-    println!("{}", style!("Fetched {}", base.name()).dim());
-  }
-
-  if force {
-    return Ok(PushCheckStatus::Forced);
-  }
-
-  let ab = get_ahead_behind(repo, &branch.resolve(repo)?, &base.resolve(repo)?)?;
-
-  Ok(match ab {
-    // already up to date, continue with push
-    (a, b) if a == 0 && b == 0 => PushCheckStatus::UpToDate,
-
-    // branch is ahead, continue with push
-    (a, b) if a > 0 && b == 0 => PushCheckStatus::Ahead,
-
-    // branch is behind, need those changes
-    (a, b) if a == 0 && b > 0 => PushCheckStatus::Behind,
-
-    // divergent histories, user must resolve
-    (a, b) if a > 0 && b > 0 => PushCheckStatus::Diverged,
-
-    (a, b) => {
-      return Err(anyhow!(
-        "Unexpected ahead/behind against upstream: ahead {}, behind {}",
-        a,
-        b
-      ));
-    }
-  })
+fn display_push_rejection(rejection: &PushRejection) -> String {
+  format!(
+    "{} to push {}: {}",
+    style("Failed").red(),
+    style(rejection.refname.trim_prefix_opt("refs/remotes/")).cyan(),
+    rejection.status
+  )
 }

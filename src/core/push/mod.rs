@@ -10,16 +10,19 @@ use crate::core::fetch::get_credentials_cb;
 use crate::core::string::ToStrLossy;
 use crate::core::term::{PROGRESS_CHARS, TICK_STRINGS};
 
-/// Buffers that contain push info
-pub struct PushOutput {
+pub mod check;
+
+/// The results of a push. This includes each ref that was updated or rejected,
+/// and the arbitrary text sent by the server.
+pub struct PushStatus {
   /// Each branch that was updated in the local repository
-  pub updates: Rc<RefCell<Vec<PushUpdate>>>,
+  updates: Rc<RefCell<Vec<PushUpdate>>>,
 
   /// Each branch that failed to push
-  pub rejections: Rc<RefCell<Vec<PushRejection>>>,
+  rejections: Rc<RefCell<Vec<PushRejection>>>,
 
   /// Arbitrary server reponse
-  pub server: Rc<RefCell<String>>,
+  server: Rc<RefCell<String>>,
 }
 
 pub struct PushUpdate {
@@ -38,21 +41,37 @@ pub struct PushRejection {
   pub status: String,
 }
 
-impl PushOutput {
+impl PushStatus {
   pub fn new() -> Self {
-    PushOutput {
+    PushStatus {
       updates: Rc::new(RefCell::new(Vec::new())),
       rejections: Rc::new(RefCell::new(Vec::new())),
       server: Rc::new(RefCell::new(String::new())),
     }
+  }
+
+  /// Consumes this [PushStatus], returning the output structures
+  pub fn into_inner(self) -> (Vec<PushUpdate>, Vec<PushRejection>, String) {
+    (
+      Rc::into_inner(self.updates)
+        .unwrap_or_default()
+        .into_inner(),
+      Rc::into_inner(self.rejections)
+        .unwrap_or_default()
+        .into_inner(),
+      Rc::into_inner(self.server).unwrap_or_default().into_inner(),
+    )
   }
 }
 
 /// Gets fully configured push callbacks. This creates and begins ticking a
 /// progress bar, so callbacks should be obtained close to when the actual push
 /// is performed.
+///
+/// # Params
+/// - `status` - the [PushStatus] structure to hold the results of the push
 pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
-  output: &'cbs mut PushOutput,
+  status: &'cbs mut PushStatus,
 ) -> Result<RemoteCallbacks<'cbs>> {
   let mut cbs = RemoteCallbacks::new();
   cbs.credentials(get_credentials_cb());
@@ -83,7 +102,7 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
   });
 
   // called on each remote tracking branch that's updated
-  let updates = output.updates.clone();
+  let updates = status.updates.clone();
   cbs.update_tips(move |name: &str, old_id: Oid, new_id: Oid| -> bool {
     if old_id == new_id {
       return true;
@@ -97,13 +116,6 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
           refname: name.to_string(),
           kind: PushUpdateKind::Create(new),
         });
-        // let _ = writeln!(
-        //   update_buf.borrow_mut(),
-        //   "{} {} {}",
-        //   style("Created").green(),
-        //   name,
-        //   hash
-        // );
       }
 
       (old, new) if new == zero && old != zero => {
@@ -111,13 +123,6 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
           refname: name.to_string(),
           kind: PushUpdateKind::Delete(old),
         });
-        // let _ = writeln!(
-        //   update_buf.borrow_mut(),
-        //   "{} {} {}",
-        //   style("Deleted").red(),
-        //   name,
-        //   style(&format!("(was {})", hash)).dim()
-        // );
       }
 
       (old, new) => {
@@ -125,14 +130,6 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
           refname: name.to_string(),
           kind: PushUpdateKind::Update(old, new),
         });
-        // let _ = writeln!(
-        //   update_buf.borrow_mut(),
-        //   "{} {} {} -> {}",
-        //   style("Updated").green(),
-        //   name,
-        //   old_hash,
-        //   new_hash
-        // );
       }
     }
 
@@ -140,7 +137,7 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
   });
 
   // print error if push fails
-  let rejection_buf = output.rejections.clone();
+  let rejection_buf = status.rejections.clone();
   cbs.push_update_reference(move |refname, status| {
     // a status of Some means push was rejected
     if let Some(msg) = status {
@@ -148,14 +145,6 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
         refname: refname.to_string(),
         status: msg.to_string(),
       });
-      // let _ = writeln!(
-      //   rejection_buf.borrow_mut(),
-      //   "{} to {} {}: {}",
-      //   style("Push").red(),
-      //   refname,
-      //   style("failed").red(),
-      //   msg
-      // );
       return Err(git2::Error::from_str(msg));
     }
     Ok(())
@@ -164,7 +153,7 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
   // this is arbitrary text sent by the server. on github/gitlab, this usually
   // contains info on how to create a pull request for newly pushed branches
   use std::fmt::Write;
-  let response_buf = output.server.clone();
+  let response_buf = status.server.clone();
   cbs.sideband_progress(move |bytes| {
     let _ = write!(response_buf.borrow_mut(), "{}", bytes.to_str_lossy());
     true
