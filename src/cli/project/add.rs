@@ -1,23 +1,15 @@
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
-use clap::{Subcommand, ValueHint};
 use console::style;
 use git2::{ErrorClass, ErrorCode, Repository};
 use toml_edit::{DocumentMut, Item, Table, value};
 
 use crate::{App, style};
 
-const LONG_ABOUT: &str = r"Interact with feature projects.
-
-Feature projects are a way of including other git repos as subprojects of this
-repo. This allows you to create a monorepo out of a project that spans multiple
-repos.";
-
-const ADD_LONG_ABOUT: &str = r"Add a project to this repo.
+const LONG_ABOUT: &str = r"Add a project to this repo.
 
 If you've already cloned the project, just specify the path and name. If not,
 you can specify the url and the project will automatically be cloned.
@@ -25,36 +17,10 @@ you can specify the url and the project will automatically be cloned.
 If you omit the path, feature will attempt to create a dir with the name of the
 project in this repo's root.";
 
-const RM_LONG_ABOUT: &str = r#"Remove a project from this repo.
-
-This simply removes the metadata to track the project (entries in feature.toml
-and .gitignore). To protect against data loss, it doesn't delete the repo
-itself."#;
-
-#[derive(clap::Args, Debug)]
-#[command(
-  about = "Interact with projects",
-  visible_alias = "proj",
-  long_about = LONG_ABOUT,
-  disable_help_subcommand = true
-)]
-pub struct Args {
-  #[command(subcommand)]
-  command: ProjectCommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ProjectCommand {
-  Add(AddArgs),
-  Rm(RmArgs),
-  Ls(LsArgs),
-  Each(EachArgs),
-}
-
 #[derive(clap::Args, Debug)]
 #[command(
   about = "Add a project to this repo",
-  long_about = ADD_LONG_ABOUT,
+  long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
 pub struct AddArgs {
@@ -70,51 +36,6 @@ pub struct AddArgs {
   name: String,
 }
 
-#[derive(clap::Args, Debug)]
-#[command(
-  about = "Remove a project from this repo",
-  visible_alias = "remove",
-  long_about = RM_LONG_ABOUT,
-  disable_help_subcommand = true
-)]
-pub struct RmArgs {
-  /// The name of the project
-  name: String,
-}
-
-#[derive(clap::Args, Debug)]
-#[command(
-  about = "List all projects in this repo",
-  visible_alias = "list",
-  disable_help_subcommand = true
-)]
-pub struct LsArgs {}
-
-#[derive(clap::Args, Debug)]
-#[command(
-  about = "Run a command in each project",
-  disable_help_subcommand = true
-)]
-pub struct EachArgs {
-  /// Filter projects by prefix of name (comma-separate for multiple)
-  #[arg(short, long, value_delimiter = ',')]
-  pub filter: Vec<String>,
-
-  #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true, value_hint = ValueHint::CommandWithArguments)]
-  pub args: Vec<String>,
-}
-
-impl Args {
-  pub fn run(&self, state: &App) -> Result<()> {
-    match &self.command {
-      ProjectCommand::Add(args) => args.run(state),
-      ProjectCommand::Rm(args) => args.run(state),
-      ProjectCommand::Ls(args) => args.run(state),
-      ProjectCommand::Each(args) => args.run(state),
-    }
-  }
-}
-
 struct ProjectInfo {
   name: String,
   uri: String,
@@ -122,7 +43,7 @@ struct ProjectInfo {
 }
 
 impl AddArgs {
-  fn run(&self, state: &App) -> Result<()> {
+  pub fn run(&self, state: &App) -> Result<()> {
     let parent_root = state.repo.workdir().unwrap_or_else(|| state.repo.path());
 
     let project = match (self.repo.as_ref(), self.path.as_ref()) {
@@ -336,162 +257,6 @@ impl AddArgs {
       style("Added").green(),
       style(path_string).cyan()
     );
-    Ok(())
-  }
-}
-
-impl RmArgs {
-  fn run(&self, state: &App) -> Result<()> {
-    let project_path = self.remove_config_entry(&state.config_path)?;
-
-    self.remove_gitignore_entry(
-      state.repo.workdir().unwrap_or_else(|| state.repo.path()),
-      &project_path,
-    )?;
-
-    Ok(())
-  }
-
-  /// Removes the entry from the project config file and return's the path of
-  /// the subproject.
-  fn remove_config_entry(&self, config_path: &Path) -> Result<String> {
-    let mut file = OpenOptions::new()
-      .read(true)
-      .write(true)
-      .create(false)
-      .truncate(false)
-      .open(config_path)?;
-
-    file.lock()?;
-
-    let mut toml = String::new();
-    file.read_to_string(&mut toml)?;
-    let mut doc = toml.parse::<DocumentMut>()?;
-
-    let mut old = doc["projects"]
-      .as_table_like_mut()
-      .context("Failed to get 'projects' as table!")?
-      .remove(&self.name)
-      .with_context(|| format!("No config entry for '{}'!", &self.name))?;
-    let old = old
-      .as_table_like_mut()
-      .with_context(|| format!("'{}' is not a table!", &self.name))?;
-
-    let toml = doc.to_string();
-    let toml = toml.as_bytes();
-
-    file.seek(SeekFrom::Start(0))?;
-    file.set_len(toml.len() as u64)?;
-    file.write_all(toml)?;
-    file.unlock()?;
-
-    // need path to remove gitignore entry
-    let path = old
-      .get("path")
-      .with_context(|| format!("No value for 'path' in '{}'", &self.name))?;
-    let path_string = path.as_str().context("'path' is not a string!")?.to_owned();
-    println!(
-      "{} {} from {}",
-      style("Removed").red(),
-      style(&self.name).cyan(),
-      config_path.to_string_lossy()
-    );
-    if let Some(url) = old.get("url") {
-      println!("  url ={}", url);
-    }
-    println!("  path ={}", path);
-
-    Ok(path_string)
-  }
-
-  fn remove_gitignore_entry(&self, root_path: &Path, project_path: &str) -> Result<()> {
-    let path = root_path.join(".gitignore");
-    if !path.exists() {
-      return Ok(());
-    }
-
-    let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
-    file.lock()?;
-
-    let mut ignore = String::new();
-    file.read_to_string(&mut ignore)?;
-
-    let mut new_ignore = ignore
-      .lines()
-      .filter(|line| *line != project_path)
-      .collect::<Vec<_>>()
-      .join("\n");
-    new_ignore.push('\n');
-
-    file.seek(SeekFrom::Start(0))?;
-    file.set_len(new_ignore.len() as u64)?;
-    file.write_all(new_ignore.as_bytes())?;
-    file.unlock()?;
-
-    println!(
-      "{} \"{}\" from .gitignore",
-      style("Removed").red(),
-      style(project_path).cyan()
-    );
-    Ok(())
-  }
-}
-
-impl LsArgs {
-  pub fn run(&self, state: &App) -> Result<()> {
-    for (name, project) in &state.config.projects {
-      println!("{}", style(name).cyan());
-      println!("  url = {}", project.url);
-      println!("  path = {}", project.path.to_string_lossy());
-    }
-    Ok(())
-  }
-}
-
-impl EachArgs {
-  pub fn run(&self, state: &App) -> Result<()> {
-    let root = state.repo.workdir().unwrap_or_else(|| state.repo.path());
-    let mut first = true;
-
-    // run sequentially rather than in parallel bc we have no knowledge of the
-    // command being run
-    for (name, project) in &state.config.projects {
-      // if any filters were specified
-      if !self.filter.is_empty() {
-        // if name doesn't start with one of the filters
-        if !self.filter.iter().any(|filter| name.starts_with(filter)) {
-          continue;
-        }
-      }
-
-      if !first {
-        println!();
-      }
-      first = false;
-      println!("{}", style(name).bold().cyan());
-
-      let mut cmd_line = self.args.iter();
-      let cmd = cmd_line.next().context("Must specify a command!")?;
-      let args: Vec<&String> = cmd_line.collect();
-
-      let st = Command::new(cmd)
-        .current_dir(root.join(&project.path))
-        .args(args)
-        .status()
-        .with_context(|| {
-          format!(
-            "Failed to run project '{}' (path: {})",
-            name,
-            project.path.to_string_lossy()
-          )
-        })?;
-
-      if st.success() {
-        println!("{} {}", style(name).cyan(), style("succeeded").green());
-      } else {
-        println!("{} {} {}", style(name).cyan(), style("failed").red(), st);
-      }
-    }
     Ok(())
   }
 }
