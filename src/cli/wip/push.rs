@@ -4,10 +4,10 @@ use git2::build::CheckoutBuilder;
 use git2::{Commit, DiffOptions, ErrorCode};
 
 use crate::App;
+use crate::cli::advice::NOT_ON_BRANCH_MSG;
 use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
 use crate::cli::display::diff::display_summary;
 use crate::cli::display::time::DisplayTimeOptions;
-use crate::core::advice::NOT_ON_BRANCH_MSG;
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
 use crate::core::user_config::CommitMessageLevel;

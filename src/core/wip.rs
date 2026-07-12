@@ -2,7 +2,6 @@ use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::Repository;
 
-use crate::core::advice::NOT_ON_BRANCH_MSG;
 use crate::core::branch_info::BranchInfo;
 
 /// The base ref namespace for feature wips. Doesn't include a trailing slash.
@@ -44,7 +43,7 @@ pub fn parse_wip_spec(repo: &Repository, spec: Option<&str>) -> Result<(BranchIn
       None => {
         let head = repo.head()?;
         if !head.is_branch() {
-          return Err(anyhow!(NOT_ON_BRANCH_MSG));
+          return Err(anyhow!("Not on a branch"));
         }
         BranchInfo::from_reference(&head.resolve()?)?
       }

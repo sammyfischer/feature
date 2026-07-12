@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand, ValueHint};
 
 use crate::App;
 
+mod advice;
 mod base;
 mod branches;
 mod check;

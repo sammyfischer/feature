@@ -16,11 +16,7 @@ use git2::{
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::cli::display::commit::display_commit_compact;
-use crate::cli::display::diff::{display_summary, display_summary_header};
-use crate::cli::display::{display_plus_minus, display_signature};
-use crate::cli::term::{get_term_width, is_term};
-use crate::core::advice::{
+use crate::cli::advice::{
   BISECT_ADVICE,
   MERGE_CONFLICT_ADVICE,
   PICK_CONFLICT_ADVICE,
@@ -28,6 +24,10 @@ use crate::core::advice::{
   REVERT_CONFLICT_ADVICE,
   STATUS_ADVICE,
 };
+use crate::cli::display::commit::display_commit_compact;
+use crate::cli::display::diff::{display_summary, display_summary_header};
+use crate::cli::display::{display_plus_minus, display_signature};
+use crate::cli::term::{get_term_width, is_term};
 use crate::core::branch::{
   get_ahead_behind,
   get_current_branch_or_commit,
