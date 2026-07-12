@@ -12,7 +12,7 @@ mod check;
 mod commit;
 mod complete;
 mod completions;
-mod config_command;
+mod config;
 mod end;
 mod project;
 mod prune;
@@ -105,7 +105,7 @@ pub enum Command {
   Show(show::Args),
 
   // ==== META / FEATURE COMMANDS ====
-  Config(config_command::Args),
+  Config(config::Args),
   Completions(completions::Args),
   Complete(complete::Args),
 }
