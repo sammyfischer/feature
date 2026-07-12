@@ -7,10 +7,10 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::display::display_hash;
 use crate::cli::display::time::{DisplayTimeOptions, display_time, display_time_relative};
+use crate::cli::term::paginate;
 use crate::core::open_repo_from_dirs;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::tag::{SemverTag, get_semver_tags};
-use crate::core::term::paginate;
 use crate::core::user_config::UserConfig;
 use crate::{App, style};
 

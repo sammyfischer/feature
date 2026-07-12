@@ -1,12 +1,15 @@
 use std::fmt::Write;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{Branch, ErrorClass, ErrorCode, PushOptions, Repository};
+use git2::{Branch, ErrorClass, ErrorCode, PushOptions, Remote, RemoteCallbacks, Repository};
+use indicatif::{BinaryBytes, HumanCount, ProgressBar, ProgressStyle};
 
 use crate::cli::display::diff::display_summary;
 use crate::cli::display::display_hash;
+use crate::cli::term::{PROGRESS_CHARS, TICK_STRINGS};
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
 use crate::core::push::check::{PushCheckStatus, check_base, check_upstream};
@@ -193,18 +196,7 @@ impl Args {
       .with_context(|| format!("Failed to get reference to remote {}", remote_name))?;
 
     // perform push and display output
-    let mut status = PushStatus::new();
-    {
-      let mut opts = PushOptions::new();
-      opts.remote_callbacks(get_push_callbacks(&mut status)?);
-
-      remote
-        .push(&[&refspec], Some(&mut opts))
-        .context("Failed to push")?;
-
-      // drop opts after push
-    }
-
+    let status = configure_and_push(&mut remote, &refspec)?;
     println!("{}", display_push_status(&state.repo, status)?);
 
     print!(
@@ -245,6 +237,52 @@ impl Args {
 
     Ok(())
   }
+}
+
+/// Push the refspec to the remote. Creates a progress bar in the terminal.
+/// Returns a handle to the results of the push.
+pub fn configure_and_push(remote: &mut Remote, refspec: &str) -> Result<PushStatus> {
+  let mut status = PushStatus::new();
+  {
+    let mut opts = PushOptions::new();
+    let mut cbs = get_push_callbacks(&mut status)?;
+    set_push_progress_bar(&mut cbs)?;
+    opts.remote_callbacks(cbs);
+    remote.push(&[refspec], Some(&mut opts))?;
+  }
+  Ok(status)
+}
+
+/// Creates a progress bar. Sets the `transfer_progress` callback to set the
+/// progress on the bar. The bar begins ticking immediately when this function
+/// is called.
+pub fn set_push_progress_bar(cbs: &mut RemoteCallbacks) -> Result<()> {
+  let transfer_progress = ProgressBar::new(0).with_style(
+    ProgressStyle::with_template("{spinner:.cyan} {elapsed} [{bar:40.cyan}] {msg}")?
+      .progress_chars(PROGRESS_CHARS)
+      .tick_strings(&TICK_STRINGS),
+  );
+  transfer_progress.enable_steady_tick(Duration::from_millis(100));
+
+  cbs.push_transfer_progress(move |current, total, bytes| {
+    if transfer_progress.length().is_none() || transfer_progress.length() == Some(0) {
+      transfer_progress.set_length(total as u64);
+    }
+
+    transfer_progress.set_position(current as u64);
+
+    if current != total {
+      transfer_progress.set_message(format!("Transferring {}/{} objects", current, total));
+    } else {
+      transfer_progress.finish_with_message(format!(
+        "Transferred {} objects ({})",
+        HumanCount(total as u64),
+        BinaryBytes(bytes as u64)
+      ));
+    }
+  });
+
+  Ok(())
 }
 
 /// Display push results

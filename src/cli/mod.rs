@@ -24,6 +24,7 @@ pub mod status;
 mod sync;
 mod tag;
 mod tags;
+mod term;
 mod update;
 mod version_log;
 mod wip;

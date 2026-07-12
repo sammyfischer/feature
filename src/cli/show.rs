@@ -7,10 +7,10 @@ use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
 use crate::cli::display::diff::display_summary;
 use crate::cli::display::time::DisplayTimeOptions;
 use crate::cli::tag::display_tag;
+use crate::cli::term::{is_term, paginate};
 use crate::core::diff::{DiffSummary, get_formatted_diff};
 use crate::core::project_config::PageWhen;
 use crate::core::string::ToStrLossy;
-use crate::core::term::{is_term, paginate};
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
 const LONG_ABOUT: &str = r#"Show info about a commit

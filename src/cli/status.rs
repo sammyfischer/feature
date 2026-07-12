@@ -19,6 +19,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use crate::cli::display::commit::display_commit_compact;
 use crate::cli::display::diff::{display_summary, display_summary_header};
 use crate::cli::display::{display_plus_minus, display_signature};
+use crate::cli::term::{get_term_width, is_term};
 use crate::core::advice::{
   BISECT_ADVICE,
   MERGE_CONFLICT_ADVICE,
@@ -48,7 +49,6 @@ use crate::core::status::{
 };
 use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::core::tag::find_current_semver;
-use crate::core::term::{get_term_width, is_term};
 use crate::core::user_config::UserConfig;
 use crate::core::{get_signature, open_repo_from_dirs, trim_hash};
 use crate::{App, opt_advice, style};

@@ -18,6 +18,7 @@ use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
 use crate::cli::display::diff::display_summary;
 use crate::cli::display::display_hash;
 use crate::cli::display::time::DisplayTimeOptions;
+use crate::cli::term::get_user_confirmation;
 use crate::core::advice::NO_SIGNATURE_MSG;
 use crate::core::branch::{
   get_current_branch_name,
@@ -31,7 +32,6 @@ use crate::core::diff::DiffSummary;
 use crate::core::get_signature;
 use crate::core::status::has_index_changes;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
-use crate::core::term::get_user_confirmation;
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.

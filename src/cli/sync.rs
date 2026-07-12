@@ -21,6 +21,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::display::diff::display_summary_header;
 use crate::cli::prune::prune_branches;
+use crate::cli::term::TICK_STRINGS;
 use crate::core::branch::{get_current_branch_name, hard_reset};
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
@@ -29,7 +30,6 @@ use crate::core::project_config::projects::ProjectEntry;
 use crate::core::project_config::{self, ProjectConfig};
 use crate::core::status::has_workdir_changes;
 use crate::core::string::ToStrLossyOwned;
-use crate::core::term::TICK_STRINGS;
 use crate::core::user_config::UserConfig;
 use crate::core::wip::{WIP_NAMESPACE, get_wip_refname};
 use crate::{App, style};

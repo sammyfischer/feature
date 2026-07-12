@@ -1,14 +1,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Duration;
 
 use anyhow::Result;
 use git2::{Oid, RemoteCallbacks};
-use indicatif::{BinaryBytes, HumanCount, ProgressBar, ProgressStyle};
 
 use crate::core::fetch::get_credentials_cb;
 use crate::core::string::ToStrLossy;
-use crate::core::term::{PROGRESS_CHARS, TICK_STRINGS};
 
 pub mod check;
 
@@ -64,9 +61,7 @@ impl PushStatus {
   }
 }
 
-/// Gets fully configured push callbacks. This creates and begins ticking a
-/// progress bar, so callbacks should be obtained close to when the actual push
-/// is performed.
+/// Gets fully configured push callbacks.
 ///
 /// # Params
 /// - `status` - the [PushStatus] structure to hold the results of the push
@@ -75,31 +70,6 @@ pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
 ) -> Result<RemoteCallbacks<'cbs>> {
   let mut cbs = RemoteCallbacks::new();
   cbs.credentials(get_credentials_cb());
-
-  let transfer_progress = ProgressBar::new(0).with_style(
-    ProgressStyle::with_template("{spinner:.cyan} {elapsed} [{bar:40.cyan}] {msg}")?
-      .progress_chars(PROGRESS_CHARS)
-      .tick_strings(&TICK_STRINGS),
-  );
-  transfer_progress.enable_steady_tick(Duration::from_millis(100));
-
-  cbs.push_transfer_progress(move |current, total, bytes| {
-    if transfer_progress.length().is_none() || transfer_progress.length() == Some(0) {
-      transfer_progress.set_length(total as u64);
-    }
-
-    transfer_progress.set_position(current as u64);
-
-    if current != total {
-      transfer_progress.set_message(format!("Transferring {}/{} objects", current, total));
-    } else {
-      transfer_progress.finish_with_message(format!(
-        "Transferred {} objects ({})",
-        HumanCount(total as u64),
-        BinaryBytes(bytes as u64)
-      ));
-    }
-  });
 
   // called on each remote tracking branch that's updated
   let updates = status.updates.clone();

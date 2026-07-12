@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 
 use crate::App;
 use crate::cli::display::diff::display_summary;
+use crate::cli::term::paginate;
 use crate::core::diff::DiffSummary;
 use crate::core::string::ToStrLossy;
-use crate::core::term::paginate;
 use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
 
 #[derive(clap::Args, Clone, Debug)]

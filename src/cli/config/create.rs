@@ -1,8 +1,8 @@
 use anyhow::Result;
 
 use crate::cli::config::WhichConfig;
+use crate::cli::term::get_user_confirmation;
 use crate::core::project_config::{global, local};
-use crate::core::term::get_user_confirmation;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(disable_help_subcommand = true)]

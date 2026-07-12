@@ -1,14 +1,13 @@
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{ErrorCode, PushOptions, Tag};
+use git2::{ErrorCode, Tag};
 
 use crate::App;
 use crate::cli::display::commit::DisplayCommitOptions;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::display::{display_hash, display_signature};
-use crate::cli::push::display_push_status;
-use crate::core::push::{PushStatus, get_push_callbacks};
+use crate::cli::push::{configure_and_push, display_push_status};
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::tag::SemverTag;
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
@@ -132,13 +131,7 @@ impl Args {
 
       match repo.find_remote(remote_name) {
         Ok(mut remote) => {
-          let mut status = PushStatus::new();
-          {
-            let mut opts = PushOptions::new();
-            opts.remote_callbacks(get_push_callbacks(&mut status)?);
-            remote.push(&[&refname], Some(&mut opts))?;
-          }
-
+          let status = configure_and_push(&mut remote, &refname)?;
           println!("{}", display_push_status(repo, status)?);
 
           println!(

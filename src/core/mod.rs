@@ -20,7 +20,6 @@ pub mod push;
 pub mod status;
 pub mod string;
 pub mod tag;
-pub mod term;
 pub mod user_config;
 pub mod wip;
 
