@@ -3,9 +3,10 @@
 use anyhow::{Context, Result, anyhow};
 use clap::ValueEnum;
 use git2::{Config, ErrorClass, ErrorCode, Repository};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::core::branch_info::BranchInfo;
-use crate::core::display::DisplayCommitMessageLevel;
 use crate::core::project_config::PageWhen;
 
 /// Generates the function to get a variable from git config.
@@ -50,6 +51,18 @@ macro_rules! get_option {
 pub struct UserConfig<'config> {
   repo: &'config Repository,
   config: Config,
+}
+
+/// The level of a commit message to show
+#[derive(
+  Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum, JsonSchema,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum CommitMessageLevel {
+  None,
+  Subject,
+  #[default]
+  Full,
 }
 
 impl<'config> UserConfig<'config> {
@@ -145,12 +158,12 @@ impl<'config> UserConfig<'config> {
 
   /// Gets `feature.show.message`. Defaults to
   /// [DisplayCommitMessageLevel::default()].
-  pub fn show_message(&self) -> Result<DisplayCommitMessageLevel> {
+  pub fn show_message(&self) -> Result<CommitMessageLevel> {
     let value =
       (get_option!(&self.config, get_str, "feature.show.message") as Result<Option<&str>>)?;
     Ok(match value {
-      Some(value) => DisplayCommitMessageLevel::from_str(value, true).map_err(|e| anyhow!(e))?,
-      None => DisplayCommitMessageLevel::default(),
+      Some(value) => CommitMessageLevel::from_str(value, true).map_err(|e| anyhow!(e))?,
+      None => CommitMessageLevel::default(),
     })
   }
 

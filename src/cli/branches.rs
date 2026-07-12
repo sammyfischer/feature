@@ -6,8 +6,9 @@ use git2::{Branch, BranchType, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::App;
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
+use crate::cli::display::{display_hash, display_plus_minus};
 use crate::core::branch::{get_current_branch_name, get_upstream, get_worktree_branch_names};
-use crate::core::display::{DisplayTimeOptions, display_hash, display_plus_minus, display_time};
 use crate::core::open_repo_from_dirs;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::term::paginate;

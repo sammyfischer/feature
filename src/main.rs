@@ -4,8 +4,8 @@ use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches};
 use git2::{ErrorClass, ErrorCode, Repository};
 
+use crate::cli::status::status_guide;
 use crate::cli::{Args, Command};
-use crate::core::diff::status_guide;
 use crate::core::project_config::{ProjectConfig, load_config, load_with_path, local};
 use crate::core::user_config::UserConfig;
 

@@ -1,20 +1,17 @@
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{ErrorCode, PushOptions};
+use git2::{ErrorCode, PushOptions, Tag};
 
 use crate::App;
+use crate::cli::display::commit::DisplayCommitOptions;
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
+use crate::cli::display::{display_hash, display_signature};
 use crate::cli::push::display_push_status;
-use crate::core::display::{
-  DisplayCommitMessageLevel,
-  DisplayCommitOptions,
-  DisplayTimeOptions,
-  display_tag,
-};
 use crate::core::push::{PushStatus, get_push_callbacks};
-use crate::core::string::ToStrLossyOwned;
+use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::tag::SemverTag;
-use crate::core::user_config::UserConfig;
+use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
 const LONG_ABOUT: &str = r#"Creates and pushes a semver tag.
 
@@ -111,7 +108,7 @@ impl Args {
             relative: false,
             fmt: UserConfig::new(repo)?.format_date()?,
           },
-          message: DisplayCommitMessageLevel::Full,
+          message: CommitMessageLevel::Full,
         })?
       );
     } else {
@@ -159,4 +156,46 @@ impl Args {
 
     Ok(())
   }
+}
+
+/// Displays a tag object in a format similar to a commit. Reuses
+/// [DisplayCommitOptions] for convenience.
+pub fn display_tag(tag: &Tag, options: &DisplayCommitOptions) -> Result<String> {
+  use std::fmt::Write;
+  // around 60 chars for hash/time/author, another 80 for message (most of the
+  // time this will only be a subject line)
+  let mut out = String::with_capacity(140);
+
+  // hash
+  write!(out, "{}", display_hash(tag.as_object())?)?;
+
+  if let Some(tagger) = tag.tagger().as_ref() {
+    // timestamp
+    write!(
+      out,
+      " {}",
+      style(display_time(&tagger.when(), &options.time)?).magenta()
+    )?;
+
+    // author
+    write!(out, " by {}", display_signature(Some(tagger)))?;
+  }
+
+  if let Some(msg) = tag.message_bytes() {
+    match options.message {
+      CommitMessageLevel::None => {}
+
+      // there is no subject line for tags. could just parse it out myself but I'd rather not
+      // support it if it's non standard
+      CommitMessageLevel::Subject | CommitMessageLevel::Full => {
+        // write each line tabbed by 2 spaces
+        writeln!(out)?;
+        for line in msg.to_str_lossy().lines() {
+          write!(out, "\n  {}", line)?;
+        }
+      }
+    };
+  }
+
+  Ok(out)
 }

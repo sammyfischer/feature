@@ -3,7 +3,7 @@ use console::style;
 use git2::{Reflog, Repository};
 
 use crate::App;
-use crate::core::display::{DisplayTimeOptions, display_time};
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::core::string::ToStrLossyOwned;
 use crate::core::user_config::UserConfig;
 use crate::core::wip::{display_wip_spec, get_wip_refname};

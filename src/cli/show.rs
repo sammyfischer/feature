@@ -3,18 +3,15 @@ use clap::ValueHint;
 use git2::{ErrorClass, ErrorCode};
 
 use crate::App;
+use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
+use crate::cli::display::diff::display_summary;
+use crate::cli::display::time::DisplayTimeOptions;
+use crate::cli::tag::display_tag;
 use crate::core::diff::{DiffSummary, get_formatted_diff};
-use crate::core::display::{
-  DisplayCommitMessageLevel,
-  DisplayCommitOptions,
-  DisplayTimeOptions,
-  display_commit,
-  display_tag,
-};
 use crate::core::project_config::PageWhen;
 use crate::core::string::ToStrLossy;
 use crate::core::term::{is_term, paginate};
-use crate::core::user_config::UserConfig;
+use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
 const LONG_ABOUT: &str = r#"Show info about a commit
 
@@ -42,7 +39,7 @@ pub struct Args {
 
   /// How much of the commit message to show
   #[arg(short, long, value_name = "LEVEL")]
-  message: Option<DisplayCommitMessageLevel>,
+  message: Option<CommitMessageLevel>,
 
   /// When to page output
   #[arg(long, value_name = "WHEN")]
@@ -123,7 +120,7 @@ impl Args {
     if show_summary {
       let summary = DiffSummary::new(&diff)?;
       if summary.num_files != 0 {
-        writeln!(buf, "\n{}", summary)?;
+        writeln!(buf, "\n{}", display_summary(&summary))?;
       }
     }
 

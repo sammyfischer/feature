@@ -4,15 +4,13 @@ use git2::build::CheckoutBuilder;
 use git2::{Commit, DiffOptions, ErrorCode};
 
 use crate::App;
+use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
+use crate::cli::display::diff::display_summary;
+use crate::cli::display::time::DisplayTimeOptions;
 use crate::core::advice::NOT_ON_BRANCH_MSG;
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
-use crate::core::display::{
-  DisplayCommitMessageLevel,
-  DisplayCommitOptions,
-  DisplayTimeOptions,
-  display_commit,
-};
+use crate::core::user_config::CommitMessageLevel;
 use crate::core::wip::get_wip_refname;
 
 #[derive(clap::Args, Clone, Debug)]
@@ -183,7 +181,7 @@ impl PushArgs {
           relative: false,
           fmt: String::new(),
         },
-        message: DisplayCommitMessageLevel::Full,
+        message: CommitMessageLevel::Full,
       },)?
     );
 
@@ -195,7 +193,7 @@ impl PushArgs {
     diff.find_similar(None)?;
 
     let summary = DiffSummary::new(&diff)?;
-    println!("\n{}", summary);
+    println!("\n{}", display_summary(&summary));
 
     Ok(())
   }

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 
 use crate::App;
+use crate::cli::display::diff::display_summary;
 use crate::core::diff::DiffSummary;
 use crate::core::string::ToStrLossy;
 use crate::core::term::paginate;
@@ -42,7 +43,7 @@ impl ShowArgs {
 
     writeln!(out, "Wip {}", display_wip_spec(branch.name(), num))?;
 
-    writeln!(out, "\n{}\n", summary)?;
+    writeln!(out, "\n{}\n", display_summary(&summary))?;
 
     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
       writeln!(out, "{}", line.content().to_str_lossy()).is_ok()

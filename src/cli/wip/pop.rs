@@ -4,7 +4,7 @@ use git2::build::CheckoutBuilder;
 use git2::{DiffOptions, IndexAddOption, Repository, Tree};
 
 use crate::App;
-use crate::core::status::display_file_statuses;
+use crate::cli::status::display_file_statuses;
 use crate::core::string::ToStrLossy;
 use crate::core::user_config::UserConfig;
 use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};

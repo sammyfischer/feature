@@ -5,9 +5,10 @@ use clap::ValueHint;
 use console::style;
 use git2::{Branch, ErrorClass, ErrorCode, PushOptions, Repository};
 
+use crate::cli::display::diff::display_summary;
+use crate::cli::display::display_hash;
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
-use crate::core::display::display_hash;
 use crate::core::push::check::{PushCheckStatus, check_base, check_upstream};
 use crate::core::push::{
   PushRejection,
@@ -149,7 +150,7 @@ impl Args {
       diff.find_similar(None)?;
 
       let summary = DiffSummary::new(&diff)?;
-      Some(summary.to_string())
+      Some(display_summary(&summary))
     } else {
       None
     };

@@ -16,6 +16,9 @@ use git2::{
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::cli::display::commit::display_commit_compact;
+use crate::cli::display::diff::{display_summary, display_summary_header};
+use crate::cli::display::{display_plus_minus, display_signature};
 use crate::core::advice::{
   BISECT_ADVICE,
   MERGE_CONFLICT_ADVICE,
@@ -35,9 +38,14 @@ use crate::core::branch::{
 use crate::core::branch_info::BranchInfo;
 use crate::core::commit::find_branch_at_commit;
 use crate::core::diff::DiffSummary;
-use crate::core::display::{display_commit_compact, display_plus_minus, display_signature};
 use crate::core::project_config::projects::ProjectEntry;
-use crate::core::status::{display_file_statuses, is_pick_active};
+use crate::core::status::{
+  get_conflicts,
+  get_staged_changes,
+  get_unstaged_changes,
+  is_conflictable_active,
+  is_pick_active,
+};
 use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::core::tag::find_current_semver;
 use crate::core::term::{get_term_width, is_term};
@@ -221,7 +229,12 @@ impl Args {
       let summary = DiffSummary::new(&diff)?.non_conflicts();
 
       if summary.num_files != 0 {
-        write!(out, "\n\n{} - {}", style("Resolved").green(), summary)?;
+        write!(
+          out,
+          "\n\n{} - {}",
+          style("Resolved").green(),
+          display_summary(&summary)
+        )?;
       }
 
       // cherry picked changes have no difference with head (except for conflicts), so
@@ -425,14 +438,14 @@ impl Args {
       out.push_str(&format!(
         "\n  {} - {}",
         style("Staged").green(),
-        staged.display_header()
+        display_summary_header(&staged)
       ));
     }
     if unstaged.num_files > 0 {
       out.push_str(&format!(
         "\n  {} - {}",
         style("Unstaged").red(),
-        unstaged.display_header()
+        display_summary_header(&unstaged)
       ));
     }
 
@@ -756,4 +769,96 @@ fn display_authorship<'buf>(
   }
 
   Ok(buf)
+}
+
+/// Gets conflicted, staged, and unstaged changes, and builds a printable
+/// output.
+///
+/// # Params
+/// - `untracked` - whether to include untracked files in the unstaged section
+pub fn display_file_statuses(repo: &Repository, untracked: bool) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::new();
+  let mut first_paragraph = true;
+
+  let conflicts = get_conflicts(repo)?;
+  if !conflicts.is_empty() {
+    first_paragraph = false;
+
+    write!(
+      out,
+      "{} - {} files",
+      style("Conflicts").yellow(),
+      style(conflicts.len()).cyan()
+    )?;
+
+    for conflict in conflicts {
+      write!(out, "\n  {}", conflict)?;
+    }
+  } else if is_conflictable_active(repo) {
+    // state that could have conflicts, but there are currently no conflicts
+    write!(
+      out,
+      "{} - {}",
+      style("Conflicts").yellow(),
+      style("none").green()
+    )?;
+  }
+
+  let staged = get_staged_changes(repo)?;
+  if staged.num_files != 0 {
+    if first_paragraph {
+      first_paragraph = false;
+    } else {
+      write!(out, "\n\n")?;
+    }
+    write!(
+      out,
+      "{} - {}",
+      style("Staged").green(),
+      display_summary(&staged)
+    )?;
+  }
+
+  let unstaged = get_unstaged_changes(repo, untracked)?;
+  if unstaged.num_files != 0 {
+    if !first_paragraph {
+      write!(out, "\n\n")?;
+    }
+    write!(
+      out,
+      "{} - {}",
+      style("Unstaged").red(),
+      display_summary(&unstaged)
+    )?;
+  }
+
+  Ok(out)
+}
+
+/// Guide for what each letter means
+pub fn status_guide() -> String {
+  use std::fmt::Write;
+  let mut out = String::with_capacity(400);
+
+  writeln!(out, "Meaning of each file status").unwrap();
+  writeln!(out, "  {} Added", style("A").green()).unwrap();
+  writeln!(out, "  {} Deleted", style("D").red()).unwrap();
+  writeln!(out, "  {} Modified", style("M").yellow()).unwrap();
+  writeln!(out, "  {} Untracked", style("U").cyan()).unwrap();
+  writeln!(out, "  {} Conflicted", style("X").red()).unwrap();
+
+  writeln!(out, "These display the old and new name").unwrap();
+  writeln!(out, "  {} Renamed", style("R").magenta()).unwrap();
+  writeln!(out, "  {} Copied", style("C").magenta()).unwrap();
+
+  writeln!(out, "These appear under conflicts").unwrap();
+  writeln!(out, "  {} None (file not present)", style("-").dim()).unwrap();
+
+  writeln!(out, "These generally won't appear in regular statuses").unwrap();
+  writeln!(out, "  {} Unmodified", style("=").dim()).unwrap();
+  writeln!(out, "  {} Ignored", style("I").dim()).unwrap();
+  writeln!(out, "  {} Typechange", style("T").yellow()).unwrap();
+  writeln!(out, "  {} Unreadable", style("?").red()).unwrap();
+  out
 }

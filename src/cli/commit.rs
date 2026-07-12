@@ -14,6 +14,10 @@ use console::{strip_ansi_codes, style};
 use git2::{Commit, Diff, ErrorCode, MergeOptions, Oid, Reference, Repository, Tree};
 
 use crate::App;
+use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
+use crate::cli::display::diff::display_summary;
+use crate::cli::display::display_hash;
+use crate::cli::display::time::DisplayTimeOptions;
 use crate::core::advice::NO_SIGNATURE_MSG;
 use crate::core::branch::{
   get_current_branch_name,
@@ -23,18 +27,12 @@ use crate::core::branch::{
   get_revert_head,
 };
 use crate::core::commit::resolve_commit_name;
-use crate::core::diff::{DiffSummary, has_index_changes};
-use crate::core::display::{
-  DisplayCommitMessageLevel,
-  DisplayCommitOptions,
-  DisplayTimeOptions,
-  display_commit,
-  display_hash,
-};
+use crate::core::diff::DiffSummary;
 use crate::core::get_signature;
+use crate::core::status::has_index_changes;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::term::get_user_confirmation;
-use crate::core::user_config::UserConfig;
+use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
@@ -714,7 +712,7 @@ fn build_msg_template(initial: &[u8], to: Option<&str>, diff: &Diff) -> Result<V
   }
 
   let summary = DiffSummary::new(diff)?;
-  let summary = summary.to_string();
+  let summary = display_summary(&summary);
 
   for line in summary.lines() {
     out.extend_from_slice(format!("\n# {}", strip_ansi_codes(line)).as_bytes());
@@ -782,9 +780,13 @@ fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &UserConfig)
       fmt: config.format_date()?,
     },
     // want the user to see the entire message just for reference
-    message: DisplayCommitMessageLevel::Full,
+    message: CommitMessageLevel::Full,
   })?;
 
   let summary = DiffSummary::new(diff)?;
-  Ok(format!("{}\n\n{}", commit_output, summary))
+  Ok(format!(
+    "{}\n\n{}",
+    commit_output,
+    display_summary(&summary)
+  ))
 }
