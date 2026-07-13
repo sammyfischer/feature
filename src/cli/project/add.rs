@@ -7,6 +7,7 @@ use console::style;
 use git2::{ErrorClass, ErrorCode, Repository};
 use toml_edit::{DocumentMut, Item, Table, value};
 
+use crate::core::NotFoundExt;
 use crate::{App, style};
 
 const LONG_ABOUT: &str = r"Add a project to this repo.
@@ -51,16 +52,9 @@ impl AddArgs {
       (None, None) => {
         let path = PathBuf::from(&self.name);
 
-        let repo = match Repository::open(&path) {
-          Ok(it) => it,
-          Err(e) if e.class() == ErrorClass::Repository && e.code() == ErrorCode::NotFound => {
-            return Err(anyhow!(
-              "No repo found at path: {}",
-              &path.to_string_lossy()
-            ));
-          }
-          Err(e) => return Err(e.into()),
-        };
+        let repo = Repository::open(&path)
+          .repo_not_found_ok()?
+          .with_context(|| format!("Repo not found at: {}", path.to_string_lossy()))?;
 
         self.add_from_existing(repo, path)
       }

@@ -6,6 +6,7 @@ use git2::{Config, ErrorClass, ErrorCode, Repository};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::core::NotFoundExt;
 use crate::core::branch_info::BranchInfo;
 use crate::core::project_config::PageWhen;
 
@@ -76,16 +77,12 @@ impl<'config> UserConfig<'config> {
   /// # Param
   /// - `branch_name` - the short name of the branch
   pub fn branch_base(&self, branch_name: &str) -> Result<Option<BranchInfo>> {
-    let branch = match self
+    self
       .config
       .get_string(&format!("branch.{}.feature-base", &branch_name))
-    {
-      Ok(refname) => Some(BranchInfo::from_refname(self.repo, &refname)?),
-      Err(e) if e.code() == ErrorCode::NotFound => None,
-      Err(e) => return Err(anyhow!(e)),
-    };
-
-    Ok(branch)
+      .not_found_ok()?
+      .map(|refname| BranchInfo::from_refname(self.repo, &refname))
+      .transpose()
   }
 
   /// `feature.project`, default `false`

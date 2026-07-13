@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::{strip_ansi_codes, style};
-use git2::{Commit, Diff, ErrorCode, MergeOptions, Oid, Reference, Repository, Tree};
+use git2::{Commit, Diff, MergeOptions, Oid, Reference, Repository, Tree};
 
 use crate::App;
 use crate::cli::advice::NO_SIGNATURE_MSG;
@@ -20,17 +20,11 @@ use crate::cli::display::diff::display_summary;
 use crate::cli::display::display_hash;
 use crate::cli::display::time::DisplayTimeOptions;
 use crate::cli::term::get_user_confirmation;
-use crate::core::branch::{
-  get_current_branch_name,
-  get_head,
-  get_merge_head,
-  get_pick_head,
-  get_revert_head,
-};
+use crate::core::NotFoundExt;
+use crate::core::branch::{get_current_branch_name, get_head_resolved, get_merge_head};
 use crate::core::commit::resolve_commit_name;
 use crate::core::diff::DiffSummary;
-use crate::core::get_signature;
-use crate::core::status::has_index_changes;
+use crate::core::status::{has_index_changes, is_merge_active, is_pick_active, is_revert_active};
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
@@ -100,7 +94,7 @@ impl Args {
     let config = UserConfig::new(&state.repo)?;
 
     // if there's a pick active and the user has pick advice enabled
-    if get_pick_head(&state.repo)?.is_some() && config.advice_conflict()? {
+    if is_pick_active(&state.repo) && config.advice_conflict()? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_PICK)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -109,7 +103,7 @@ impl Args {
     }
 
     // if there's a revert active and the user has revert advice enabled
-    if get_revert_head(&state.repo)?.is_some() && config.advice_conflict()? {
+    if is_revert_active(&state.repo) && config.advice_conflict()? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_REVERT)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -128,7 +122,7 @@ impl Args {
         })
       }
 
-      None => match get_head(&state.repo)? {
+      None => match get_head_resolved(&state.repo)? {
         Some(head) => Some(CommitTarget {
           commit: head.peel_to_commit()?,
           display_name: head.shorthand_bytes().to_str_lossy_owned(),
@@ -162,7 +156,11 @@ impl Args {
     self.pre_commit_hook(&state.repo)?;
 
     let (tree, diff) = self.get_changes(&state.repo, target.as_ref())?;
-    let sig = get_signature(&state.repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
+    let sig = state
+      .repo
+      .signature()
+      .not_found_ok()?
+      .ok_or(anyhow!(NO_SIGNATURE_MSG))?;
 
     let cli_msg = self.words.join(" ");
     let msg_source = self.get_msg_source(&state.repo, commit_type)?;
@@ -298,7 +296,7 @@ impl Args {
 
     // committing during an active merge completes the merge, we should clean up the
     // merge files
-    if merge_head.is_some() {
+    if is_merge_active(&state.repo) {
       state.repo.cleanup_state()?;
     }
 
@@ -321,7 +319,7 @@ impl Args {
       let tree_id = index.write_tree()?;
       let tree = repo.find_tree(tree_id)?;
 
-      let head_tree = match get_head(repo)? {
+      let head_tree = match get_head_resolved(repo)? {
         Some(head) => Some(head.peel_to_tree()?),
         None => None,
       };
@@ -332,7 +330,7 @@ impl Args {
     };
 
     // committing to another branch, compute changes with a merge
-    let head = get_head(repo)?
+    let head = get_head_resolved(repo)?
       .context("Can't commit to a different branch when there are no commits yet!")?;
     let mut stage = repo.index()?;
 
@@ -623,10 +621,8 @@ fn get_editor(repo: &Repository) -> Result<String> {
 
   // 2. core.editor config var
   let config = repo.config()?.snapshot()?;
-  match config.get_string("core.editor") {
-    Ok(it) => return Ok(it),
-    Err(e) if e.code() == ErrorCode::NotFound => {}
-    Err(e) => return Err(e.into()),
+  if let Some(it) = config.get_string("core.editor").not_found_ok()? {
+    return Ok(it);
   };
 
   // 3, 4. VISUAL, EDITOR env vars

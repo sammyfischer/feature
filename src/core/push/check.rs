@@ -1,7 +1,6 @@
 use anyhow::{Result, anyhow};
 use git2::{BranchType, Repository};
 
-use crate::core::branch::get_ahead_behind;
 use crate::core::branch_info::BranchInfo;
 use crate::core::fetch::fetch_upstream_branch;
 use crate::style;
@@ -101,7 +100,9 @@ pub fn check_base(
     return Ok(PushCheckStatus::Forced);
   }
 
-  let ab = get_ahead_behind(repo, &branch.resolve(repo)?, &base.resolve(repo)?)?;
+  let local = branch.resolve(repo)?.peel_to_commit()?.id();
+  let upstream = base.resolve(repo)?.peel_to_commit()?.id();
+  let ab = repo.graph_ahead_behind(local, upstream)?;
 
   Ok(match ab {
     // already up to date, continue with push

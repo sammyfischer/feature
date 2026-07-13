@@ -6,22 +6,14 @@ use std::{fs, thread};
 use anyhow::Result;
 use console::style;
 use git2::build::RepoBuilder;
-use git2::{
-  Branch,
-  BranchType,
-  ErrorClass,
-  ErrorCode,
-  FetchOptions,
-  RemoteCallbacks,
-  Repository,
-  SubmoduleUpdateOptions,
-};
+use git2::{Branch, BranchType, FetchOptions, RemoteCallbacks, Repository, SubmoduleUpdateOptions};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::display::diff::display_summary_header;
 use crate::cli::prune::prune_branches;
 use crate::cli::term::TICK_STRINGS;
+use crate::core::NotFoundExt;
 use crate::core::branch::{get_current_branch_name, hard_reset};
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
@@ -347,12 +339,18 @@ impl Args {
         .strip_prefix(&format!("{}/", WIP_NAMESPACE))
         .expect("Invalid wip refname");
 
-      match repo.find_reference(&format!("refs/heads/{}", branch_name)) {
-        // branch was deleted, cleanup wip
-        Err(e) if e.code() == ErrorCode::NotFound => r.delete()?,
+      // ignore Err
+      if let Ok(branch) = repo
+        .find_reference(&format!("refs/heads/{}", branch_name))
+        .not_found_ok()
+      {
+        match branch {
+          // branch exists, do nothing
+          Some(_) => {}
 
-        // branch exists or different error, do nothing
-        _ => {}
+          // branch was deleted, cleanup wip
+          None => r.delete()?,
+        }
       }
     }
 
@@ -365,9 +363,8 @@ impl Args {
     project: &ProjectEntry,
     progress: &ProgressBar,
   ) -> Result<SyncAction> {
-    match Repository::open(&project.path) {
-      // already cloned, sync it
-      Ok(repo) => {
+    match Repository::open(&project.path).repo_not_found_ok()? {
+      Some(repo) => {
         // make sure it's set as a project
         {
           let mut git_config = repo.config()?;
@@ -381,11 +378,7 @@ impl Args {
         self.sync_repo(&repo, &user_config, &proj_config, progress)
       }
 
-      // doesn't exist, just clone and continue
-      Err(e)
-        if (e.class() == ErrorClass::Os && e.code() == ErrorCode::NotFound)
-          || (e.class() == ErrorClass::Repository && e.code() == ErrorCode::NotFound) =>
-      {
+      None => {
         progress.set_message("Cloning project");
         progress.enable_steady_tick(Duration::from_millis(100));
 
@@ -410,8 +403,6 @@ impl Args {
         progress.finish_with_message("Cloned project");
         Ok(SyncAction::ProjectInit)
       }
-
-      Err(e) => Err(e.into()),
     }
   }
 
@@ -424,16 +415,7 @@ impl Args {
     progress: &ProgressBar,
   ) -> Result<SyncAction> {
     let mut module = repo.find_submodule(mod_name)?;
-    let mod_repo = match module.open() {
-      Ok(repo) => Some(repo),
-      Err(e)
-        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
-          && e.code() == ErrorCode::NotFound =>
-      {
-        None
-      }
-      Err(e) => return Err(e.into()),
-    };
+    let mod_repo = module.open().repo_not_found_ok()?;
 
     progress.set_message("Updating module");
     progress.enable_steady_tick(Duration::from_millis(100));

@@ -1,13 +1,14 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{ErrorCode, Tag};
+use git2::Tag;
 
 use crate::App;
 use crate::cli::display::commit::DisplayCommitOptions;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::display::{display_hash, display_signature};
 use crate::cli::push::{configure_and_push, display_push_status};
+use crate::core::NotFoundExt;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::tag::SemverTag;
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
@@ -129,21 +130,16 @@ impl Args {
     if self.push {
       let remote_name = self.remote.as_ref().unwrap_or(&state.config.default_remote);
 
-      match repo.find_remote(remote_name) {
-        Ok(mut remote) => {
-          let status = configure_and_push(&mut remote, &refname)?;
-          println!("{}", display_push_status(repo, status)?);
+      if let Some(mut remote) = repo.find_remote(remote_name).not_found_ok()? {
+        let status = configure_and_push(&mut remote, &refname)?;
+        println!("{}", display_push_status(repo, status)?);
 
-          println!(
-            "{} tag {} to {}",
-            style("Pushed").green(),
-            style(&name).cyan(),
-            style(remote_name).blue()
-          );
-        }
-
-        Err(e) if e.code() == ErrorCode::NotFound => {}
-        Err(e) => return Err(e).context("Failed to find remote"),
+        println!(
+          "{} tag {} to {}",
+          style("Pushed").green(),
+          style(&name).cyan(),
+          style(remote_name).blue()
+        );
       };
     }
 

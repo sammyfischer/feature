@@ -4,16 +4,7 @@ use std::{fs, thread};
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{
-  Commit,
-  DiffOptions,
-  ErrorClass,
-  ErrorCode,
-  Oid,
-  Reference,
-  Repository,
-  RepositoryState,
-};
+use git2::{Commit, DiffOptions, Oid, Reference, Repository, RepositoryState};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::advice::{
@@ -29,9 +20,8 @@ use crate::cli::display::diff::{display_summary, display_summary_header};
 use crate::cli::display::{display_plus_minus, display_signature};
 use crate::cli::term::{get_term_width, is_term};
 use crate::core::branch::{
-  get_ahead_behind,
   get_current_branch_or_commit,
-  get_head,
+  get_head_resolved,
   get_merge_head,
   get_pick_head,
   get_revert_head,
@@ -50,7 +40,7 @@ use crate::core::status::{
 use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::core::tag::find_current_semver;
 use crate::core::user_config::UserConfig;
-use crate::core::{get_signature, open_repo_from_dirs, trim_hash};
+use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
 use crate::{App, opt_advice, style};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -170,7 +160,7 @@ impl Args {
     use std::fmt::Write;
     let mut out = String::new();
     let config = UserConfig::new(repo)?;
-    let head = get_head(repo)?;
+    let head = get_head_resolved(repo)?;
 
     let (header, advice) = match repo.state() {
       // TODO: custom header/advice for git am
@@ -270,19 +260,15 @@ impl Args {
 
     out.push_str(&style(name).cyan().to_string());
 
-    let proj_repo = match Repository::open(&project.path) {
-      Ok(it) => it,
-      Err(e)
-        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
-          && e.code() == ErrorCode::NotFound =>
-      {
+    let proj_repo = match Repository::open(&project.path).repo_not_found_ok()? {
+      Some(it) => it,
+      None => {
         out.push_str(" not initialized");
         return Ok(out);
       }
-      Err(e) => return Err(e.into()),
     };
 
-    if let Some(head) = get_head(&proj_repo)? {
+    if let Some(head) = get_head_resolved(&proj_repo)? {
       let commit = head.peel_to_commit()?;
 
       if head.is_branch() || head.is_remote() {
@@ -290,7 +276,9 @@ impl Args {
         out.push_str(&format!(" on {}", style(branch_info.name()).green()));
 
         if let Some(upstream) = branch_info.upstream(&proj_repo)? {
-          let (ahead, behind) = get_ahead_behind(&proj_repo, &head, upstream.get())?;
+          let upstream_tip = upstream.get().peel_to_commit()?.id();
+          let (ahead, behind) = proj_repo.graph_ahead_behind(commit.id(), upstream_tip)?;
+
           out.push_str(&format!(
             " {}{}{}",
             style("[").dim(),
@@ -329,16 +317,12 @@ impl Args {
     let config = UserConfig::new(repo)?;
     let module = repo.find_submodule(mod_name)?;
 
-    let mod_repo = match module.open() {
-      Ok(it) => it,
-      Err(e)
-        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
-          && e.code() == ErrorCode::NotFound =>
-      {
+    let mod_repo = match module.open().repo_not_found_ok()? {
+      Some(it) => it,
+      None => {
         out.push_str(" not initialized");
         return Ok(out);
       }
-      Err(e) => return Err(e.into()),
     };
 
     // committed state of submodule (commit parent expects module to be on)
@@ -369,7 +353,7 @@ impl Args {
     }
 
     // actual repo info
-    if let Some(head) = get_head(&mod_repo)? {
+    if let Some(head) = get_head_resolved(&mod_repo)? {
       let commit = head.peel_to_commit()?;
 
       if head.is_branch() || head.is_remote() || head.is_tag() {
@@ -395,8 +379,8 @@ impl Args {
   /// from parent
   fn display_different_signature(&self, parent: &Repository, child: &Repository) -> Result<String> {
     let mut out = String::new();
-    let parent_sig = get_signature(parent)?;
-    let child_sig = get_signature(child)?;
+    let parent_sig = parent.signature().not_found_ok()?;
+    let child_sig = child.signature().not_found_ok()?;
 
     if let Some(child_sig) = child_sig {
       if let Some(parent_sig) = parent_sig
@@ -545,8 +529,12 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     // upstream row
     let upstream = branch.upstream(repo)?;
     if let Some(upstream) = upstream {
-      let upstream = BranchInfo::from_branch(&upstream)?;
-      let (a, b) = get_ahead_behind(repo, &upstream.resolve(repo)?, &branch_ref)
+      let upstream_info = BranchInfo::from_branch(&upstream)?;
+      let upstream_tip = upstream.get().peel_to_commit()?.id();
+      let branch_tip = branch_ref.peel_to_commit()?.id();
+
+      let (a, b) = repo
+        .graph_ahead_behind(upstream_tip, branch_tip)
         .context("Failed to get ahead/behind for upstream")?;
 
       let row = [
@@ -554,7 +542,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         format!(
           "{}{} {}{}",
           style("[").dim(),
-          style(upstream.name()),
+          style(upstream_info.name()),
           display_plus_minus(a, b),
           style("]").dim(),
         ),
@@ -566,7 +554,11 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     // base row
     let base = UserConfig::new(repo)?.branch_base(branch.name())?;
     if let Some(base) = base {
-      let (a, b) = get_ahead_behind(repo, &base.resolve(repo)?, &branch_ref)
+      let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
+      let branch_tip = branch_ref.peel_to_commit()?.id();
+
+      let (a, b) = repo
+        .graph_ahead_behind(base_tip, branch_tip)
         .context("Failed to get ahead/behind for base")?;
 
       let row = [
@@ -764,7 +756,7 @@ fn display_authorship<'buf>(
       buf,
       "{}{}",
       prefix,
-      display_signature(get_signature(repo)?.as_ref())
+      display_signature(repo.signature().not_found_ok()?.as_ref())
     )?;
   }
 

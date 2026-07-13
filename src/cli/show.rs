@@ -8,6 +8,7 @@ use crate::cli::display::diff::display_summary;
 use crate::cli::display::time::DisplayTimeOptions;
 use crate::cli::tag::display_tag;
 use crate::cli::term::{is_term, paginate};
+use crate::core::NotFoundExt;
 use crate::core::diff::{DiffSummary, get_formatted_diff};
 use crate::core::project_config::PageWhen;
 use crate::core::string::ToStrLossy;
@@ -99,11 +100,7 @@ impl Args {
       })?
     )?;
 
-    let parent = match commit.parent(0) {
-      Ok(it) => Some(it),
-      Err(e) if e.code() == ErrorCode::NotFound => None,
-      Err(e) => return Err(anyhow!(e)),
-    };
+    let parent = commit.parent(0).not_found_ok()?;
 
     let new_tree = commit.tree()?;
     let old_tree = match parent {

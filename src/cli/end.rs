@@ -97,19 +97,23 @@ impl Args {
     }
 
     // if we're on the branch being deleted, we have to switch off
-    let current = get_current_branch_name(&state.repo)?;
-    if current.is_some_and(|it| it == branch.name()) {
-      if base.is_remote() {
-        let base_local = find_local_of_upstream(&state.repo, &base)?
-          .with_context(|| format!("Failed to find local branch tracking {}", base.refname()))?;
+    match get_current_branch_name(&state.repo)? {
+      Some(name) if name == branch.name() => {
+        if base.is_remote() {
+          let base_local = find_local_of_upstream(&state.repo, &base)?
+            .with_context(|| format!("Failed to find local branch tracking {}", base.refname()))?;
 
-        let info = BranchInfo::from_branch(&base_local)?;
-        switch(&state.repo, &info)?;
-        println!("{} to {}", style("Switched").green(), info.name());
-      } else {
-        switch(&state.repo, &base)?;
-        println!("{} to {}", style("Switched").green(), base.name());
+          let info = BranchInfo::from_branch(&base_local)?;
+          switch(&state.repo, &info)?;
+          println!("{} to {}", style("Switched").green(), info.name());
+        } else {
+          switch(&state.repo, &base)?;
+          println!("{} to {}", style("Switched").green(), base.name());
+        }
       }
+
+      // else do nothing
+      _ => {}
     }
 
     let delete_remote = match self.remote {

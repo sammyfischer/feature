@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use console::style;
-use git2::{Branch, BranchType, ErrorCode, Repository};
+use git2::{Branch, BranchType, Repository};
 use indicatif::{MultiProgress, ProgressBar};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -22,7 +22,7 @@ use crate::core::project_config::{self, ProjectConfig};
 use crate::core::string::ToStrLossyOwned;
 use crate::core::user_config::UserConfig;
 use crate::core::wip::get_wip_refname;
-use crate::core::{delete_config_section, open_repo_from_dirs};
+use crate::core::{NotFoundExt, delete_config_section, open_repo_from_dirs};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
 • have a known base branch
@@ -269,11 +269,10 @@ fn prune_branch(
   }
 
   // skip branches that have never been pushed
-  match repo.branch_upstream_remote(info.refname()) {
-    Ok(_) => {}
-    Err(e) if e.code() == ErrorCode::NotFound => return Ok(UpdateAction::None),
-    Err(e) => return Err(e.into()),
-  }
+  match repo.branch_upstream_remote(info.refname()).not_found_ok()? {
+    Some(_) => {}
+    None => return Ok(UpdateAction::None),
+  };
 
   // find base branch from db, else skip
   let base = match user_config.branch_base(info.name())? {

@@ -1,13 +1,14 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::build::CheckoutBuilder;
-use git2::{Commit, DiffOptions, ErrorCode};
+use git2::{Commit, DiffOptions};
 
 use crate::App;
 use crate::cli::advice::NOT_ON_BRANCH_MSG;
 use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
 use crate::cli::display::diff::display_summary;
 use crate::cli::display::time::DisplayTimeOptions;
+use crate::core::NotFoundExt;
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
 use crate::core::user_config::CommitMessageLevel;
@@ -109,14 +110,14 @@ impl PushArgs {
 
     // create/update reference
     let wip_refname = get_wip_refname(branch.name());
-    match repo.find_reference(&wip_refname) {
+    match repo.find_reference(&wip_refname).not_found_ok()? {
       // a wip ref exists for this branch, update it
-      Ok(mut wip_ref) => {
+      Some(mut wip_ref) => {
         wip_ref.set_target(commit_id, &msg)?;
       }
 
       // no wip ref exists for this branch, create it
-      Err(e) if e.code() == ErrorCode::NotFound => {
+      None => {
         repo.reference(&wip_refname, commit_id, false, &msg)?;
 
         // create the wip's reflog (not done automatically)
@@ -124,8 +125,6 @@ impl PushArgs {
         reflog.append(commit_id, &sig, Some(&msg))?;
         reflog.write()?;
       }
-
-      Err(e) => return Err(anyhow!(e)),
     }
 
     // remove changes from workdir

@@ -9,10 +9,10 @@ use crate::App;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::display::{display_hash, display_plus_minus};
 use crate::cli::term::paginate;
-use crate::core::branch::{get_current_branch_name, get_upstream, get_worktree_branch_names};
-use crate::core::open_repo_from_dirs;
+use crate::core::branch::{get_current_branch_name, get_worktree_branch_names};
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::user_config::UserConfig;
+use crate::core::{NotFoundExt, open_repo_from_dirs};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Lists branches", disable_help_subcommand = true)]
@@ -190,7 +190,7 @@ impl Args {
       .dim(),
     );
 
-    if let Some(upstream) = get_upstream(branch)? {
+    if let Some(upstream) = branch.upstream().not_found_ok()? {
       let upstream_name = upstream.name_bytes()?.to_str_lossy();
       let mut col = style(&upstream_name).blue().to_string();
 

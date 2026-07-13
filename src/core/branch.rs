@@ -5,10 +5,14 @@ use git2::{Branch, BranchType, ErrorCode, ObjectType, Reference, Repository, Res
 
 use crate::core::branch_info::BranchInfo;
 use crate::core::commit::get_current_commit;
-use crate::core::string::ToStrLossyOwned;
-use crate::core::trim_hash;
+use crate::core::{NotFoundExt, trim_hash};
 
-pub fn get_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
+/// Gets HEAD and resolves to a direct reference
+///
+/// # Returns
+/// The direct reference to the commit pointed to by HEAD, or `None` if the
+/// branch is unborn (i.e. there are no commits yet)
+pub fn get_head_resolved<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {
   match repo.head() {
     Ok(it) => Ok(Some(it)),
     Err(e) if e.code() == ErrorCode::UnbornBranch => Ok(None),
@@ -16,80 +20,59 @@ pub fn get_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo
   }
 }
 
-pub fn get_merge_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
-  match repo.find_reference("MERGE_HEAD") {
-    Ok(it) => Ok(Some(it)),
-    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-    Err(e) => Err(anyhow!(e).context("Failed to get reference to MERGE_HEAD")),
-  }
+pub fn get_merge_head<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {
+  repo.find_reference("MERGE_HEAD").not_found_ok()
 }
 
-pub fn get_pick_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
-  match repo.find_reference("CHERRY_PICK_HEAD") {
-    Ok(it) => Ok(Some(it)),
-    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-    Err(e) => Err(anyhow!(e).context("Failed to get reference to CHERRY_PICK_HEAD")),
-  }
+pub fn get_pick_head<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {
+  repo.find_reference("CHERRY_PICK_HEAD").not_found_ok()
 }
 
-pub fn get_revert_head<'repo>(repo: &'repo Repository) -> Result<Option<Reference<'repo>>> {
-  match repo.find_reference("REVERT_HEAD") {
-    Ok(it) => Ok(Some(it)),
-    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-    Err(e) => Err(anyhow!(e).context("Failed to get reference to REVERT_HEAD")),
-  }
+pub fn get_revert_head<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {
+  repo.find_reference("REVERT_HEAD").not_found_ok()
 }
 
 /// Get the name of the current branch, or the trimmed hash if the repo is in
 /// detached HEAD, or None if the repo is empty
 pub fn get_current_branch_or_commit(repo: &Repository) -> Result<Option<String>> {
-  Ok(match get_current_branch_name(repo) {
-    Err(e) => return Err(e),
+  if let Some(name) = get_current_branch_name(repo)? {
+    return Ok(Some(name));
+  };
 
-    Ok(branch) => match branch {
-      Some(branch) => Some(branch),
-
-      // no current branch, get commit instead
-      None => match get_current_commit(repo) {
-        Err(e) => return Err(e),
-
-        Ok(commit) => match commit {
-          Some(commit) => Some(trim_hash(commit.as_object())?),
-          None => None,
-        },
-      },
-    },
-  })
-}
-
-pub fn get_upstream<'repo>(branch: &Branch<'repo>) -> Result<Option<Branch<'repo>>> {
-  match branch.upstream() {
-    Ok(it) => Ok(Some(it)),
-    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-    Err(e) => Err(anyhow!(e).context("Unknown error when trying to get upstream")),
+  if let Some(commit) = get_current_commit(repo)? {
+    return Ok(Some(trim_hash(commit.as_object())?));
   }
+
+  Ok(None)
 }
 
+/// Gets the name of the currently checked-out branch.
+///
+/// # Returns
+/// `None` if:
+/// - HEAD doesn't exist (unlikely)
+/// - HEAD doesn't point to a branch
+/// - HEAD points to an unborn branch (there are no commits in repo)
 pub fn get_current_branch_name(repo: &Repository) -> Result<Option<String>> {
-  match get_head(repo)? {
-    Some(head) => {
-      if !head.is_branch() {
+  match get_head_resolved(repo)? {
+    Some(rf) => {
+      if !rf.is_branch() {
         return Ok(None);
       }
 
-      Ok(Some(head.shorthand_bytes().to_str_lossy_owned()))
+      Ok(Some(rf.shorthand()?.to_string()))
     }
     None => Ok(None),
   }
 }
 
 /// Finds the local copy of an upstream tracking branch
-pub fn find_local_of_upstream<'repo>(
-  repo: &'repo Repository,
+pub fn find_local_of_upstream<'branch>(
+  repo: &'branch Repository,
   upstream: &BranchInfo,
-) -> Result<Option<Branch<'repo>>> {
+) -> Result<Option<Branch<'branch>>> {
   for (branch, _) in repo.branches(Some(BranchType::Local))?.flatten() {
-    let Some(branch_upstream) = get_upstream(&branch)? else {
+    let Some(branch_upstream) = branch.upstream().not_found_ok()? else {
       continue;
     };
     if upstream.refname().as_bytes() == branch_upstream.get().name_bytes() {
@@ -115,17 +98,6 @@ pub fn get_worktree_branch_names(repo: &Repository) -> Result<Vec<String>> {
   }
 
   Ok(names)
-}
-
-pub fn get_ahead_behind(
-  repo: &Repository,
-  branch: &Reference,
-  upstream: &Reference,
-) -> Result<(usize, usize)> {
-  let branch_tip = branch.peel_to_commit()?.id();
-  let upstream_tip = upstream.peel_to_commit()?.id();
-  let ab = repo.graph_ahead_behind(branch_tip, upstream_tip)?;
-  Ok(ab)
 }
 
 /// Reset current branch and HEAD to `branch`

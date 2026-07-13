@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
-use git2::{Branch, BranchType, ErrorCode, Reference, Repository};
+use git2::{Branch, BranchType, Reference, Repository};
 
+use crate::core::NotFoundExt;
 use crate::core::string::ToStrLossyOwned;
 
 /// Collected metadata for a branch
@@ -41,11 +42,7 @@ impl BranchInfo {
   /// Resolves this branch and gets its upstream if it has one
   #[inline]
   pub fn upstream<'branch>(&self, repo: &'branch Repository) -> Result<Option<Branch<'branch>>> {
-    match Branch::wrap(self.resolve(repo)?).upstream() {
-      Ok(upstream) => Ok(Some(upstream)),
-      Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-      Err(e) => Err(e.into()),
-    }
+    Branch::wrap(self.resolve(repo)?).upstream().not_found_ok()
   }
 
   /// Whether this branch is a remote branch
@@ -118,11 +115,11 @@ impl BranchInfo {
   /// Creates a [BranchInfo] from (what is usually) user input
   #[inline]
   pub fn from_name_dwim(repo: &Repository, name: &str) -> Result<Option<Self>> {
-    Ok(match repo.resolve_reference_from_short_name(name) {
-      Ok(it) => Some(Self::from_reference(&it)?),
-      Err(e) if e.code() == ErrorCode::NotFound => None,
-      Err(e) => return Err(e.into()),
-    })
+    repo
+      .resolve_reference_from_short_name(name)
+      .not_found_ok()?
+      .map(|it| Self::from_reference(&it))
+      .transpose()
   }
 
   /// Creates a [BranchInfo] of the currently checked-out branch

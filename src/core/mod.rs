@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use git2::{ErrorCode, Object, Repository, Signature};
+use git2::{ErrorClass, ErrorCode, Object, Repository};
 
 use crate::core::string::ToStrLossyOwned;
 use crate::{await_child, git};
@@ -21,6 +21,47 @@ pub mod string;
 pub mod tag;
 pub mod user_config;
 pub mod wip;
+
+/// An extension trait to map non-existence errors into options, while
+/// maintaining any other errors.
+pub trait NotFoundExt<T> {
+  /// Converts [NotFound] errors to `Ok(None)`. Wraps all other errors in
+  /// [anyhow::Error].
+  ///
+  /// [NotFound]: git2::ErrorCode::NotFound
+  fn not_found_ok(self) -> Result<Option<T>, anyhow::Error>;
+
+  /// When used on one of the `Repository::open*` functions, returns `Ok(None)`
+  /// when the repo is not found.
+  ///
+  /// [NotFound]: git2::ErrorCode::NotFound
+  fn repo_not_found_ok(self) -> Result<Option<T>, anyhow::Error>;
+}
+
+impl<T> NotFoundExt<T> for core::result::Result<T, git2::Error> {
+  fn not_found_ok(self) -> Result<Option<T>, anyhow::Error> {
+    match self {
+      Ok(it) => Ok(Some(it)),
+      Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
+      Err(e) => Err(anyhow!(e)),
+    }
+  }
+
+  fn repo_not_found_ok(self) -> Result<Option<T>, anyhow::Error> {
+    match self {
+      Ok(it) => Ok(Some(it)),
+      Err(e)
+      // class == Os         => workdir doesn't exist
+      // class == Repository => workdir exists, but no .git dir
+        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
+          && e.code() == ErrorCode::NotFound =>
+      {
+        Ok(None)
+      }
+      Err(e) => Err(anyhow!(e)),
+    }
+  }
+}
 
 /// Opens a repo given a `.git` dir. If the workdir is `None`, it's assumed to
 /// be the parent of repo_dir. If `Some`, the repo is assumed to be bare.
@@ -52,14 +93,6 @@ pub fn open_repo_from_dirs(repo_dir: &Path, work_dir: Option<&Path>) -> Result<R
 /// Gets the short id of the given object
 pub fn trim_hash(obj: &Object) -> Result<String> {
   Ok(obj.short_id()?.to_str_lossy_owned())
-}
-
-pub fn get_signature<'repo>(repo: &'repo Repository) -> Result<Option<Signature<'repo>>> {
-  match repo.signature() {
-    Ok(it) => Ok(Some(it)),
-    Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-    Err(e) => Err(anyhow!(e).context("Failed to get default signature")),
-  }
 }
 
 /// Deletes an entire section from git config

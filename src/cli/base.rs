@@ -5,10 +5,9 @@ use clap::ValueHint;
 use git2::Branch;
 
 use crate::App;
-use crate::core::branch::get_upstream;
 use crate::core::branch_info::BranchInfo;
 use crate::core::string::ToStrLossyOwned;
-use crate::core::user_config;
+use crate::core::{NotFoundExt, user_config};
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
 
@@ -49,7 +48,9 @@ impl Args {
 
     let feature_base_name = {
       // we want the upstream of the base, e.g. refs/remotes/origin/main
-      let base_upstream = get_upstream(&Branch::wrap(base.resolve(&state.repo)?))
+      let base_upstream = Branch::wrap(base.resolve(&state.repo)?)
+        .upstream()
+        .not_found_ok()
         .with_context(|| format!("Failed to check if {} has an upstream", &self.base))?;
 
       match base_upstream {
