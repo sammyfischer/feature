@@ -67,7 +67,7 @@ impl Args {
         let user_config = UserConfig::new(&repo)?;
 
         let table = self.build_table(&repo, &user_config)?;
-        self.display_table(table)
+        self.display_table(table, &user_config)
       });
 
       let proj_thread = scope.spawn(|| {
@@ -84,7 +84,7 @@ impl Args {
 
               let table = self.build_table(&repo, &user_config)?;
               out.push('\n');
-              out.push_str(&self.display_table(table)?);
+              out.push_str(&self.display_table(table, &user_config)?);
               Ok(out)
             })
             .collect()
@@ -106,7 +106,7 @@ impl Args {
               let mut out = format!("\n{} {}", style("Module").bold(), style(name).cyan());
               let table = self.build_table(&mod_repo, &user_config)?;
               out.push('\n');
-              out.push_str(&self.display_table(table)?);
+              out.push_str(&self.display_table(table, &user_config)?);
               Ok(out)
             })
             .collect()
@@ -271,7 +271,7 @@ impl Args {
     width
   }
 
-  fn display_table(&self, table: Vec<Row>) -> Result<String> {
+  fn display_table(&self, table: Vec<Row>, user_config: &UserConfig) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
 
@@ -289,14 +289,26 @@ impl Args {
 
       write!(out, "{}", &row.branch)?;
 
+      let nerd_font = user_config.nerd_font()?;
+
       if let Some(upstream) = &row.upstream {
         // include leading space
-        write!(ab_buf, " {} {}", style("U").blue(), upstream)?;
+        write!(
+          ab_buf,
+          " {} {}",
+          style(if nerd_font { "" } else { "U" }).blue(),
+          upstream
+        )?;
       }
 
       if let Some(base) = &row.base {
         // include leading space here too
-        write!(ab_buf, " {} {}", style("B").magenta(), base)?;
+        write!(
+          ab_buf,
+          " {} {}",
+          style(if nerd_font { "" } else { "B" }).magenta(),
+          base
+        )?;
       }
 
       let name_width = measure_text_width(&row.branch);

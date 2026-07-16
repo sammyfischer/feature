@@ -100,6 +100,11 @@ impl<'config> UserConfig<'config> {
     get_option!(&self.config, get_bool, "feature.autofetch", true)
   }
 
+  /// `feature.nerdfont`, default `false`
+  pub fn nerd_font(&self) -> Result<bool> {
+    get_option!(&self.config, get_bool, "feature.nerdfont", false)
+  }
+
   /// `feature.showAuthorship`, default `true`
   pub fn show_authorship(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.showAuthorship", true)
