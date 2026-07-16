@@ -5,12 +5,14 @@ use console::style;
 use git2::{Branch, BranchType, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::util::branch::{get_current_branch_name, get_upstream, get_worktree_branch_names};
-use crate::util::display::{DisplayTimeOptions, display_hash, display_plus_minus, display_time};
-use crate::util::open_repo_from_dirs;
-use crate::util::string::{ToStrLossy, ToStrLossyOwned};
-use crate::util::term::paginate;
-use crate::{App, data};
+use crate::App;
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
+use crate::cli::display::{display_hash, display_plus_minus};
+use crate::cli::term::paginate;
+use crate::core::branch::{get_current_branch_name, get_worktree_branch_names};
+use crate::core::string::{ToStrLossy, ToStrLossyOwned};
+use crate::core::user_config::UserConfig;
+use crate::core::{NotFoundExt, open_repo_from_dirs};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Lists branches", disable_help_subcommand = true)]
@@ -37,16 +39,16 @@ impl Args {
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();
     let app_config = &state.config;
-    let git_config = state.repo.config()?.snapshot()?;
+    let user_config = UserConfig::new(&state.repo)?;
 
     let hide_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_feature_show_projects(&git_config)?,
+      None => !user_config.show_projects()?,
     };
 
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_feature_show_modules(&git_config)?,
+      None => !user_config.show_modules()?,
     };
     let mod_names: Vec<_> = if hide_modules {
       Vec::new()
@@ -62,8 +64,9 @@ impl Args {
     let out = thread::scope(|scope| -> Result<String> {
       let repo_thead = scope.spawn(|| -> Result<_> {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+        let user_config = UserConfig::new(&repo)?;
 
-        let table = self.build_table(&repo)?;
+        let table = self.build_table(&repo, &user_config)?;
         self.display_table(table)
       });
 
@@ -77,8 +80,9 @@ impl Args {
             .map(|(name, project)| -> Result<_> {
               let mut out = format!("\n{} {}", style("Project").bold(), style(name).cyan());
               let repo = Repository::open(&project.path)?;
+              let user_config = UserConfig::new(&repo)?;
 
-              let table = self.build_table(&repo)?;
+              let table = self.build_table(&repo, &user_config)?;
               out.push('\n');
               out.push_str(&self.display_table(table)?);
               Ok(out)
@@ -95,11 +99,12 @@ impl Args {
             .par_iter()
             .map(|name| -> Result<_> {
               let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+              let user_config = UserConfig::new(&repo)?;
               let module = repo.find_submodule(name)?;
               let mod_repo = module.open()?;
 
               let mut out = format!("\n{} {}", style("Module").bold(), style(name).cyan());
-              let table = self.build_table(&mod_repo)?;
+              let table = self.build_table(&mod_repo, &user_config)?;
               out.push('\n');
               out.push_str(&self.display_table(table)?);
               Ok(out)
@@ -140,7 +145,7 @@ impl Args {
     Ok(())
   }
 
-  fn build_row(&self, repo: &Repository, branch: &Branch) -> Result<Row> {
+  fn build_row(&self, repo: &Repository, user_config: &UserConfig, branch: &Branch) -> Result<Row> {
     let mut row = Row::default();
 
     let branch_name = branch.name_bytes()?.to_str_lossy();
@@ -185,7 +190,7 @@ impl Args {
       .dim(),
     );
 
-    if let Some(upstream) = get_upstream(branch)? {
+    if let Some(upstream) = branch.upstream().not_found_ok()? {
       let upstream_name = upstream.name_bytes()?.to_str_lossy();
       let mut col = style(&upstream_name).blue().to_string();
 
@@ -203,7 +208,7 @@ impl Args {
       row.upstream = Some(col);
     }
 
-    let base = data::get_feature_base(repo, &branch_name)?;
+    let base = user_config.branch_base(&branch_name)?;
     if let Some(base) = base {
       let mut col = style(base.name()).magenta().to_string();
 
@@ -228,12 +233,12 @@ impl Args {
     Ok(row)
   }
 
-  fn build_table(&self, repo: &Repository) -> Result<Vec<Row>> {
+  fn build_table(&self, repo: &Repository, user_config: &UserConfig) -> Result<Vec<Row>> {
     let mut table = Vec::new();
 
     let branches = repo.branches(Some(BranchType::Local))?;
     for (branch, _) in branches.flatten() {
-      let row = self.build_row(repo, &branch)?;
+      let row = self.build_row(repo, user_config, &branch)?;
       table.push(row);
     }
 

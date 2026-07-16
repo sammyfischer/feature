@@ -1,16 +1,17 @@
 use anyhow::{Result, anyhow};
-use git2::{Branch, BranchType, ErrorCode, Reference, Repository};
+use git2::{Branch, BranchType, Reference, Repository};
 
-use crate::util::string::ToStrLossyOwned;
+use crate::core::NotFoundExt;
+use crate::core::string::ToStrLossyOwned;
 
 /// Collected metadata for a branch
-pub struct BranchMeta {
+pub struct BranchInfo {
   refname: String,
   name: String,
   ty: BranchType,
 }
 
-impl BranchMeta {
+impl BranchInfo {
   // ASSOCIATED FUNCTIONS
 
   /// The full refname of the branch, e.g. "refs/heads/main".
@@ -41,11 +42,7 @@ impl BranchMeta {
   /// Resolves this branch and gets its upstream if it has one
   #[inline]
   pub fn upstream<'branch>(&self, repo: &'branch Repository) -> Result<Option<Branch<'branch>>> {
-    match Branch::wrap(self.resolve(repo)?).upstream() {
-      Ok(upstream) => Ok(Some(upstream)),
-      Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-      Err(e) => Err(e.into()),
-    }
+    Branch::wrap(self.resolve(repo)?).upstream().not_found_ok()
   }
 
   /// Whether this branch is a remote branch
@@ -78,14 +75,14 @@ impl BranchMeta {
 
   // CONSTRUCTORS
 
-  /// Creates a [BranchMeta] from a [Branch]
+  /// Creates a [BranchInfo] from a [Branch]
   #[inline]
   pub fn from_branch<'branch>(branch: &Branch<'branch>) -> Result<Self> {
     let reference = branch.get();
     Self::from_reference(reference)
   }
 
-  /// Creates a [BranchMeta] from a [Reference]
+  /// Creates a [BranchInfo] from a [Reference]
   pub fn from_reference<'branch>(reference: &Reference<'branch>) -> Result<Self> {
     let refname = reference.name_bytes().to_str_lossy_owned();
     if !refname.starts_with("refs/heads/") && !refname.starts_with("refs/remotes/") {
@@ -101,7 +98,7 @@ impl BranchMeta {
     Ok(Self { refname, name, ty })
   }
 
-  /// Creates a [BranchMeta] from the refname of a branch. Needs a repository to
+  /// Creates a [BranchInfo] from the refname of a branch. Needs a repository to
   /// search for the matching branch.
   pub fn from_refname(repo: &Repository, refname: &str) -> Result<Self> {
     let reference = repo.find_reference(refname)?;
@@ -115,17 +112,17 @@ impl BranchMeta {
     })
   }
 
-  /// Creates a [BranchMeta] from (what is usually) user input
+  /// Creates a [BranchInfo] from (what is usually) user input
   #[inline]
   pub fn from_name_dwim(repo: &Repository, name: &str) -> Result<Option<Self>> {
-    Ok(match repo.resolve_reference_from_short_name(name) {
-      Ok(it) => Some(Self::from_reference(&it)?),
-      Err(e) if e.code() == ErrorCode::NotFound => None,
-      Err(e) => return Err(e.into()),
-    })
+    repo
+      .resolve_reference_from_short_name(name)
+      .not_found_ok()?
+      .map(|it| Self::from_reference(&it))
+      .transpose()
   }
 
-  /// Creates a [BranchMeta] of the currently checked-out branch
+  /// Creates a [BranchInfo] of the currently checked-out branch
   ///
   /// # Returns
   ///

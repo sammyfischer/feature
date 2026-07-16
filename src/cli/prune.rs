@@ -3,10 +3,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 use console::style;
-use git2::{Branch, BranchType, ErrorCode, Repository};
+use git2::{Branch, BranchType, Repository};
 use indicatif::{MultiProgress, ProgressBar};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::App;
 use crate::cli::sync::{
   SyncAction,
   UpdateAction,
@@ -14,13 +15,14 @@ use crate::cli::sync::{
   display_sync_updates,
   set_sync_spinner_style,
 };
-use crate::config::{self, Config};
-use crate::util::branch::{fetch_all, get_current_branch_name, is_merged};
-use crate::util::branch_meta::BranchMeta;
-use crate::util::string::ToStrLossyOwned;
-use crate::util::wip::get_wip_refname;
-use crate::util::{delete_config_section, open_repo_from_dirs};
-use crate::{App, data};
+use crate::core::branch::{get_current_branch_name, is_merged};
+use crate::core::branch_info::BranchInfo;
+use crate::core::fetch::fetch_all;
+use crate::core::project_config::{self, ProjectConfig};
+use crate::core::string::ToStrLossyOwned;
+use crate::core::user_config::UserConfig;
+use crate::core::wip::get_wip_refname;
+use crate::core::{NotFoundExt, delete_config_section, open_repo_from_dirs};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
 • have a known base branch
@@ -65,8 +67,8 @@ impl Args {
 
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();
-    let app_config = &state.config;
-    let git_config = state.repo.config()?.snapshot()?;
+    let proj_config = &state.config;
+    let user_config = UserConfig::new(&state.repo)?;
 
     // progress bars
     let multi = MultiProgress::new();
@@ -86,7 +88,7 @@ impl Args {
 
     let skip_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_sync_projects(&git_config)?,
+      None => !user_config.sync_projects()?,
     };
     let proj_progresses: Vec<_> = if skip_projects {
       Vec::new()
@@ -115,7 +117,8 @@ impl Args {
       // reconfigured
       let repo_thread = scope.spawn(|| {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
-        self.prune_repo(&repo, app_config, &main_progress.1)
+        let user_config = UserConfig::new(&repo)?;
+        self.prune_repo(&repo, &user_config, proj_config, &main_progress.1)
       });
 
       let proj_thread = scope.spawn(|| {
@@ -125,10 +128,13 @@ impl Args {
           proj_progresses
             .par_iter()
             .map(|(name, progress)| {
-              let project = &app_config.projects[name];
+              let project = &proj_config.projects[name];
               let repo = Repository::open(&project.path)?;
-              let config = config::load_with_path(&project.path)?;
-              self.prune_repo(&repo, &config, progress)
+
+              let user_config = UserConfig::new(&repo)?;
+              let proj_config = project_config::load_with_path(&project.path)?;
+
+              self.prune_repo(&repo, &user_config, &proj_config, progress)
             })
             .collect()
         }
@@ -178,14 +184,15 @@ impl Args {
   fn prune_repo(
     &self,
     repo: &Repository,
-    config: &Config,
+    user_config: &UserConfig,
+    proj_config: &ProjectConfig,
     progress: &ProgressBar,
   ) -> Result<SyncAction> {
     progress.enable_steady_tick(Duration::from_millis(100));
 
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
-      None => !data::get_feature_autofetch(&repo.config()?.snapshot()?)?,
+      None => !user_config.autofetch()?,
     };
 
     if !skip_fetch {
@@ -194,7 +201,7 @@ impl Args {
     }
 
     progress.set_message("Pruning");
-    let updates = prune_branches(repo, config, self.dry_run)?;
+    let updates = prune_branches(repo, user_config, proj_config, self.dry_run)?;
 
     progress.finish_with_message("Pruned");
     Ok(SyncAction::Sync(updates))
@@ -203,7 +210,8 @@ impl Args {
 
 pub fn prune_branches(
   repo: &Repository,
-  config: &Config,
+  user_config: &UserConfig,
+  proj_config: &ProjectConfig,
   dry_run: bool,
 ) -> Result<Vec<UpdateAction>> {
   let branches = repo.branches(Some(BranchType::Local))?;
@@ -212,7 +220,14 @@ pub fn prune_branches(
   let results: Vec<_> = branches
     .flatten()
     .map(|(mut branch, _)| {
-      match prune_branch(repo, config, &mut branch, current_name.as_deref(), dry_run) {
+      match prune_branch(
+        repo,
+        user_config,
+        proj_config,
+        &mut branch,
+        current_name.as_deref(),
+        dry_run,
+      ) {
         Ok(action) => action,
         Err(e) => UpdateAction::Err {
           name: branch
@@ -240,37 +255,37 @@ pub fn prune_branches(
 /// anything going wrong. An error implies that something went wrong.
 fn prune_branch(
   repo: &Repository,
-  config: &Config,
+  user_config: &UserConfig,
+  proj_config: &ProjectConfig,
   branch: &mut Branch,
   current_branch_name: Option<&str>,
   dry_run: bool,
 ) -> Result<UpdateAction> {
-  let meta = BranchMeta::from_branch(branch)?;
+  let info = BranchInfo::from_branch(branch)?;
 
   // skip protected branches
-  if config.protect.iter().any(|it| it == meta.name()) {
+  if proj_config.protect.iter().any(|it| it == info.name()) {
     return Ok(UpdateAction::None);
   }
 
   // skip branches that have never been pushed
-  match repo.branch_upstream_remote(meta.refname()) {
-    Ok(_) => {}
-    Err(e) if e.code() == ErrorCode::NotFound => return Ok(UpdateAction::None),
-    Err(e) => return Err(e.into()),
-  }
+  match repo.branch_upstream_remote(info.refname()).not_found_ok()? {
+    Some(_) => {}
+    None => return Ok(UpdateAction::None),
+  };
 
   // find base branch from db, else skip
-  let base = match data::get_feature_base(repo, meta.name())? {
+  let base = match user_config.branch_base(info.name())? {
     Some(base) => base,
     None => return Ok(UpdateAction::None),
   };
 
   // skip current branch
-  if current_branch_name.is_some_and(|it| it == meta.name()) {
+  if current_branch_name.is_some_and(|it| it == info.name()) {
     // not necessarily an error, but the user should know that a non-protected
     // branch was skipped and may manually need to be deleted
     return Ok(UpdateAction::DeleteSkip {
-      name: meta.name().to_owned(),
+      name: info.name().to_owned(),
       reason: "currently checked-out".to_owned(),
     });
   }
@@ -288,18 +303,18 @@ fn prune_branch(
     branch.delete()?;
 
     // delete wip ref if there was one
-    let wip_refname = get_wip_refname(meta.name());
+    let wip_refname = get_wip_refname(info.name());
     if let Ok(mut wip_ref) = repo.find_reference(&wip_refname) {
       wip_ref.delete()?;
     }
 
     // git2 can't remove entire config sections, but git provides a command to do so
-    let key = format!("branch.{}", &meta.name());
+    let key = format!("branch.{}", &info.name());
     let _ = delete_config_section(&key);
   }
 
   Ok(UpdateAction::Delete {
-    name: meta.name().to_owned(),
+    name: info.name().to_owned(),
     old: commit.as_object().short_id()?.to_str_lossy_owned(),
   })
 }

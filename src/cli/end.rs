@@ -1,20 +1,16 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
-use git2::{PushOptions, Repository};
+use git2::Repository;
 
-use crate::util::branch::{
-  fetch_upstream_branch,
-  find_local_of_upstream,
-  get_current_branch_name,
-  is_merged,
-  switch,
-};
-use crate::util::branch_meta::BranchMeta;
-use crate::util::display::trim_hash;
-use crate::util::string::ToStrLossy;
-use crate::util::wip::get_wip_refname;
-use crate::util::{PushOutput, delete_config_section, get_push_callbacks};
-use crate::{App, data, style};
+use crate::cli::push::{configure_and_push, display_push_status};
+use crate::core::branch::{find_local_of_upstream, get_current_branch_name, is_merged, switch};
+use crate::core::branch_info::BranchInfo;
+use crate::core::fetch::fetch_upstream_branch;
+use crate::core::string::ToStrLossy;
+use crate::core::user_config::UserConfig;
+use crate::core::wip::get_wip_refname;
+use crate::core::{delete_config_section, trim_hash};
+use crate::{App, style};
 
 const LONG_ABOUT: &str = r#"Safely deletes a feature branch, checking if it's merged into its base. If
 currently checked-out, switches to the base branch."#;
@@ -55,17 +51,17 @@ pub struct Args {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?.snapshot()?;
+    let config = UserConfig::new(&state.repo)?;
 
     let branch = match &self.branch {
-      Some(name) => BranchMeta::from_name_dwim(&state.repo, name)?,
-      None => BranchMeta::current(&state.repo)?,
+      Some(name) => BranchInfo::from_name_dwim(&state.repo, name)?,
+      None => BranchInfo::current(&state.repo)?,
     }
     .context(NO_BRANCH_MSG)?;
 
     let base = match &self.base {
-      Some(name) => BranchMeta::from_name_dwim(&state.repo, name)?,
-      None => data::get_feature_base(&state.repo, branch.name())?,
+      Some(name) => BranchInfo::from_name_dwim(&state.repo, name)?,
+      None => config.branch_base(branch.name())?,
     };
 
     let Some(base) = base else {
@@ -74,7 +70,7 @@ impl Args {
 
     let skip_fetch = match self.no_fetch {
       Some(it) => it,
-      None => !data::get_feature_autofetch(&config)?,
+      None => !config.autofetch()?,
     };
 
     // check if it's merged before deleting (unless --force)
@@ -101,24 +97,28 @@ impl Args {
     }
 
     // if we're on the branch being deleted, we have to switch off
-    let current = get_current_branch_name(&state.repo)?;
-    if current.is_some_and(|it| it == branch.name()) {
-      if base.is_remote() {
-        let base_local = find_local_of_upstream(&state.repo, &base)?
-          .with_context(|| format!("Failed to find local branch tracking {}", base.refname()))?;
+    match get_current_branch_name(&state.repo)? {
+      Some(name) if name == branch.name() => {
+        if base.is_remote() {
+          let base_local = find_local_of_upstream(&state.repo, &base)?
+            .with_context(|| format!("Failed to find local branch tracking {}", base.refname()))?;
 
-        let meta = BranchMeta::from_branch(&base_local)?;
-        switch(&state.repo, &meta)?;
-        println!("{} to {}", style("Switched").green(), meta.name());
-      } else {
-        switch(&state.repo, &base)?;
-        println!("{} to {}", style("Switched").green(), base.name());
+          let info = BranchInfo::from_branch(&base_local)?;
+          switch(&state.repo, &info)?;
+          println!("{} to {}", style("Switched").green(), info.name());
+        } else {
+          switch(&state.repo, &base)?;
+          println!("{} to {}", style("Switched").green(), base.name());
+        }
       }
+
+      // else do nothing
+      _ => {}
     }
 
     let delete_remote = match self.remote {
       Some(it) => it,
-      None => data::get_end_remote(&config)?,
+      None => config.end_remote()?,
     };
 
     // begin actual deletions
@@ -151,10 +151,10 @@ impl Args {
   }
 }
 
-fn delete_upstream(repo: &Repository, branch: &BranchMeta) -> Result<()> {
+fn delete_upstream(repo: &Repository, branch: &BranchInfo) -> Result<()> {
   if let Some(mut upstream) = branch.upstream(repo)? {
     let tip = upstream.get().peel_to_commit()?;
-    let upstream_meta = BranchMeta::from_branch(&upstream)?;
+    let upstream_info = BranchInfo::from_branch(&upstream)?;
 
     // delete from remote: `push :upstream_refname`
     let refspec = {
@@ -166,20 +166,15 @@ fn delete_upstream(repo: &Repository, branch: &BranchMeta) -> Result<()> {
     let remote_name = remote_name.to_str_lossy();
     let mut remote = repo.find_remote(&remote_name)?;
 
-    let mut output = PushOutput::new();
-    {
-      let mut opts = PushOptions::new();
-      opts.remote_callbacks(get_push_callbacks(repo, &mut output)?);
-      remote.push(&[&refspec], Some(&mut opts))?;
-    }
-    output.print();
+    let status = configure_and_push(&mut remote, &refspec)?;
+    println!("{}", display_push_status(repo, status)?);
 
     // delete local copy
     upstream.delete()?;
     println!(
       "{} {} {}",
       style("Deleted").red(),
-      upstream_meta.name(),
+      upstream_info.name(),
       style!("(was {})", trim_hash(tip.as_object())?).dim()
     );
   }

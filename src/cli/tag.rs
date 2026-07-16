@@ -1,18 +1,17 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{ErrorCode, PushOptions};
+use git2::Tag;
 
-use crate::util::display::{
-  DisplayCommitMessageLevel,
-  DisplayCommitOptions,
-  DisplayTimeOptions,
-  display_tag,
-};
-use crate::util::string::ToStrLossyOwned;
-use crate::util::tag::SemverTag;
-use crate::util::{PushOutput, get_push_callbacks};
-use crate::{App, data};
+use crate::App;
+use crate::cli::display::commit::DisplayCommitOptions;
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
+use crate::cli::display::{display_hash, display_signature};
+use crate::cli::push::{configure_and_push, display_push_status};
+use crate::core::NotFoundExt;
+use crate::core::string::{ToStrLossy, ToStrLossyOwned};
+use crate::core::tag::SemverTag;
+use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
 const LONG_ABOUT: &str = r#"Creates and pushes a semver tag.
 
@@ -107,9 +106,9 @@ impl Args {
           time: DisplayTimeOptions {
             // tag was just created, relative is not useful
             relative: false,
-            fmt: data::get_format_date(&repo.config()?)?,
+            fmt: UserConfig::new(repo)?.format_date()?,
           },
-          message: DisplayCommitMessageLevel::Full,
+          message: CommitMessageLevel::Full,
         })?
       );
     } else {
@@ -131,29 +130,61 @@ impl Args {
     if self.push {
       let remote_name = self.remote.as_ref().unwrap_or(&state.config.default_remote);
 
-      match repo.find_remote(remote_name) {
-        Ok(mut remote) => {
-          let mut output = PushOutput::new();
-          {
-            let mut opts = PushOptions::new();
-            opts.remote_callbacks(get_push_callbacks(repo, &mut output)?);
-            remote.push(&[&refname], Some(&mut opts))?;
-          }
-          output.print();
+      if let Some(mut remote) = repo.find_remote(remote_name).not_found_ok()? {
+        let status = configure_and_push(&mut remote, &refname)?;
+        println!("{}", display_push_status(repo, status)?);
 
-          println!(
-            "{} tag {} to {}",
-            style("Pushed").green(),
-            style(&name).cyan(),
-            style(remote_name).blue()
-          );
-        }
-
-        Err(e) if e.code() == ErrorCode::NotFound => {}
-        Err(e) => return Err(e).context("Failed to find remote"),
+        println!(
+          "{} tag {} to {}",
+          style("Pushed").green(),
+          style(&name).cyan(),
+          style(remote_name).blue()
+        );
       };
     }
 
     Ok(())
   }
+}
+
+/// Displays a tag object in a format similar to a commit. Reuses
+/// [DisplayCommitOptions] for convenience.
+pub fn display_tag(tag: &Tag, options: &DisplayCommitOptions) -> Result<String> {
+  use std::fmt::Write;
+  // around 60 chars for hash/time/author, another 80 for message (most of the
+  // time this will only be a subject line)
+  let mut out = String::with_capacity(140);
+
+  // hash
+  write!(out, "{}", display_hash(tag.as_object())?)?;
+
+  if let Some(tagger) = tag.tagger().as_ref() {
+    // timestamp
+    write!(
+      out,
+      " {}",
+      style(display_time(&tagger.when(), &options.time)?).magenta()
+    )?;
+
+    // author
+    write!(out, " by {}", display_signature(Some(tagger)))?;
+  }
+
+  if let Some(msg) = tag.message_bytes() {
+    match options.message {
+      CommitMessageLevel::None => {}
+
+      // there is no subject line for tags. could just parse it out myself but I'd rather not
+      // support it if it's non standard
+      CommitMessageLevel::Subject | CommitMessageLevel::Full => {
+        // write each line tabbed by 2 spaces
+        writeln!(out)?;
+        for line in msg.to_str_lossy().lines() {
+          write!(out, "\n  {}", line)?;
+        }
+      }
+    };
+  }
+
+  Ok(out)
 }

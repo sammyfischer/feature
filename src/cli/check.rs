@@ -2,10 +2,10 @@ use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
 
-use super::push::PushCheckStatus;
-use crate::cli::push::{check_base, check_upstream};
-use crate::util::branch_meta::BranchMeta;
-use crate::{App, data};
+use crate::App;
+use crate::core::branch_info::BranchInfo;
+use crate::core::push::check::{PushCheckStatus, check_base, check_upstream};
+use crate::core::user_config::UserConfig;
 
 const LONG_ABOUT: &str = r"Performs checks on a branch similar to the push/prune commands.
 
@@ -33,15 +33,15 @@ pub struct Args {
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let branch = match &self.branch {
-      Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
+      Some(branch_name) => BranchInfo::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
-      None => BranchMeta::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
+      None => BranchInfo::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
     println!("Checking {}…", style(branch.name()).cyan());
 
     if let Some(upstream) = branch.upstream(&state.repo)? {
-      let upstream = BranchMeta::from_branch(&upstream)?;
+      let upstream = BranchInfo::from_branch(&upstream)?;
       println!();
 
       let status = match check_upstream(&state.repo, &branch, Some(&upstream), false)? {
@@ -73,8 +73,8 @@ impl Args {
     };
 
     let base = match self.base.as_ref() {
-      Some(base_name) => BranchMeta::from_name_dwim(&state.repo, base_name)?,
-      None => data::get_feature_base(&state.repo, branch.name())?,
+      Some(base_name) => BranchInfo::from_name_dwim(&state.repo, base_name)?,
+      None => UserConfig::new(&state.repo)?.branch_base(branch.name())?,
     };
 
     if let Some(base) = base {

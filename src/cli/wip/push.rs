@@ -1,19 +1,18 @@
 use anyhow::{Context, Result, anyhow};
 use console::style;
 use git2::build::CheckoutBuilder;
-use git2::{Commit, DiffOptions, ErrorCode};
+use git2::{Commit, DiffOptions};
 
 use crate::App;
-use crate::util::advice::NOT_ON_BRANCH_MSG;
-use crate::util::branch_meta::BranchMeta;
-use crate::util::diff::DiffSummary;
-use crate::util::display::{
-  DisplayCommitMessageLevel,
-  DisplayCommitOptions,
-  DisplayTimeOptions,
-  display_commit,
-};
-use crate::util::wip::get_wip_refname;
+use crate::cli::advice::NOT_ON_BRANCH_MSG;
+use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
+use crate::cli::display::diff::display_summary;
+use crate::cli::display::time::DisplayTimeOptions;
+use crate::core::NotFoundExt;
+use crate::core::branch_info::BranchInfo;
+use crate::core::diff::DiffSummary;
+use crate::core::user_config::CommitMessageLevel;
+use crate::core::wip::get_wip_refname;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Pushes a new wip to a branch")]
@@ -45,14 +44,14 @@ impl PushArgs {
     let head = repo.head()?;
 
     let branch = match &self.branch {
-      Some(name) => BranchMeta::from_name_dwim(repo, name)?
+      Some(name) => BranchInfo::from_name_dwim(repo, name)?
         .with_context(|| format!("Failed to find branch: {}", name))?,
       None => {
         if !head.is_branch() {
           return Err(anyhow!(NOT_ON_BRANCH_MSG));
         }
 
-        BranchMeta::from_reference(&head.resolve()?)?
+        BranchInfo::from_reference(&head.resolve()?)?
       }
     };
 
@@ -111,14 +110,14 @@ impl PushArgs {
 
     // create/update reference
     let wip_refname = get_wip_refname(branch.name());
-    match repo.find_reference(&wip_refname) {
+    match repo.find_reference(&wip_refname).not_found_ok()? {
       // a wip ref exists for this branch, update it
-      Ok(mut wip_ref) => {
+      Some(mut wip_ref) => {
         wip_ref.set_target(commit_id, &msg)?;
       }
 
       // no wip ref exists for this branch, create it
-      Err(e) if e.code() == ErrorCode::NotFound => {
+      None => {
         repo.reference(&wip_refname, commit_id, false, &msg)?;
 
         // create the wip's reflog (not done automatically)
@@ -126,8 +125,6 @@ impl PushArgs {
         reflog.append(commit_id, &sig, Some(&msg))?;
         reflog.write()?;
       }
-
-      Err(e) => return Err(anyhow!(e)),
     }
 
     // remove changes from workdir
@@ -183,7 +180,7 @@ impl PushArgs {
           relative: false,
           fmt: String::new(),
         },
-        message: DisplayCommitMessageLevel::Full,
+        message: CommitMessageLevel::Full,
       },)?
     );
 
@@ -195,7 +192,7 @@ impl PushArgs {
     diff.find_similar(None)?;
 
     let summary = DiffSummary::new(&diff)?;
-    println!("\n{}", summary);
+    println!("\n{}", display_summary(&summary));
 
     Ok(())
   }

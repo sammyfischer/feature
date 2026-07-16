@@ -28,7 +28,7 @@ impl Args {
     let name = cmd.get_name().to_string();
 
     match self.shell {
-      Shell::Bash => print!("{}", include_str!("../completions/bash")),
+      Shell::Bash => print!("{}", include_str!("./completions/bash")),
       _ => generate(self.shell, &mut cmd, name, &mut io::stdout()),
     }
 

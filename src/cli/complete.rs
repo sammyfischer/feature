@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use git2::{BranchType, Repository};
 
 use crate::App;
-use crate::config::Config;
-use crate::util::string::ToStrLossyOwned;
+use crate::core::project_config::ProjectConfig;
+use crate::core::string::ToStrLossyOwned;
 
 /// Dynamic shell completions
 #[derive(clap::Args, Clone, Debug)]
@@ -116,7 +116,7 @@ impl Args {
     )
   }
 
-  fn find_matching_projects(&self, config: &Config) -> Result<Vec<String>> {
+  fn find_matching_projects(&self, config: &ProjectConfig) -> Result<Vec<String>> {
     let prefix = &self.value;
     let mut names = Vec::new();
 

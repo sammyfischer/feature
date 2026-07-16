@@ -1,15 +1,29 @@
 use std::fmt::Write;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::style;
-use git2::{Branch, BranchType, ErrorClass, ErrorCode, PushOptions, Repository};
+use git2::{Branch, ErrorClass, ErrorCode, PushOptions, Remote, RemoteCallbacks, Repository};
+use indicatif::{BinaryBytes, HumanCount, ProgressBar, ProgressStyle};
 
-use crate::util::branch::{fetch_upstream_branch, get_ahead_behind};
-use crate::util::branch_meta::BranchMeta;
-use crate::util::diff::DiffSummary;
-use crate::util::{PushOutput, get_push_callbacks};
-use crate::{App, data, style};
+use crate::cli::display::diff::display_summary;
+use crate::cli::display::display_hash;
+use crate::cli::term::{PROGRESS_CHARS, TICK_STRINGS};
+use crate::core::branch_info::BranchInfo;
+use crate::core::diff::DiffSummary;
+use crate::core::push::check::{PushCheckStatus, check_base, check_upstream};
+use crate::core::push::{
+  PushRejection,
+  PushStatus,
+  PushUpdate,
+  PushUpdateKind,
+  get_push_callbacks,
+};
+use crate::core::string::TrimPrefix;
+use crate::core::trim_hash;
+use crate::core::user_config::UserConfig;
+use crate::{App, style};
 
 const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
 argument, e.g. "feature push my-branch".""#;
@@ -55,9 +69,9 @@ pub struct Args {
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let branch = match &self.branch {
-      Some(branch_name) => BranchMeta::from_name_dwim(&state.repo, branch_name)?
+      Some(branch_name) => BranchInfo::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
-      None => BranchMeta::current(&state.repo)?.context(NO_BRANCH_MSG)?,
+      None => BranchInfo::current(&state.repo)?.context(NO_BRANCH_MSG)?,
     };
 
     // allow pushing protected branches, but as fast-forward only
@@ -67,12 +81,12 @@ impl Args {
 
     let (upstream, remote_name) = match branch.upstream(&state.repo)? {
       Some(it) => {
-        let meta = BranchMeta::from_branch(&it)?;
-        let remote_name = meta
+        let info = BranchInfo::from_branch(&it)?;
+        let remote_name = info
           .split_name_and_remote()?
           .1
           .expect("Upstream should have a remote");
-        (Some(meta), remote_name)
+        (Some(info), remote_name)
       }
       None => (
         None,
@@ -111,8 +125,10 @@ impl Args {
       PushCheckStatus::Diverged => return Err(anyhow!(UPSTREAM_DIVERGED_MSG)),
     }
 
+    let user_config = UserConfig::new(&state.repo)?;
+
     // fetches the latest base, checks if new changes can be resolved
-    let base = data::get_feature_base(&state.repo, branch.name())?;
+    let base = user_config.branch_base(branch.name())?;
     match check_base(&state.repo, &branch, base.as_ref(), self.force)? {
       PushCheckStatus::NoBranch => {}
       PushCheckStatus::Forced => {}
@@ -137,7 +153,7 @@ impl Args {
       diff.find_similar(None)?;
 
       let summary = DiffSummary::new(&diff)?;
-      Some(summary.to_string())
+      Some(display_summary(&summary))
     } else {
       None
     };
@@ -180,18 +196,8 @@ impl Args {
       .with_context(|| format!("Failed to get reference to remote {}", remote_name))?;
 
     // perform push and display output
-    let mut output = PushOutput::new();
-    {
-      let mut opts = PushOptions::new();
-      opts.remote_callbacks(get_push_callbacks(&state.repo, &mut output)?);
-
-      remote
-        .push(&[&refspec], Some(&mut opts))
-        .context("Failed to push")?;
-
-      // drop opts after push
-    }
-    output.print();
+    let status = configure_and_push(&mut remote, &refspec)?;
+    println!("{}", display_push_status(&state.repo, status)?);
 
     print!(
       "{} {} to {}",
@@ -233,121 +239,131 @@ impl Args {
   }
 }
 
-pub enum PushCheckStatus {
-  /// The branch being checked against doesn't exist
-  NoBranch,
-
-  /// Ahead/behind checks were not performed, but the branch exists
-  Forced,
-
-  /// Both branches point to the same commit
-  UpToDate,
-
-  /// Ahead of the branch being checked against
-  Ahead,
-
-  /// Behind the branch being checked against
-  Behind,
-
-  /// Branches have diverged
-  Diverged,
+/// Push the refspec to the remote. Creates a progress bar in the terminal.
+/// Returns a handle to the results of the push.
+pub fn configure_and_push(remote: &mut Remote, refspec: &str) -> Result<PushStatus> {
+  let mut status = PushStatus::new();
+  {
+    let mut opts = PushOptions::new();
+    let mut cbs = get_push_callbacks(&mut status)?;
+    set_push_progress_bar(&mut cbs)?;
+    opts.remote_callbacks(cbs);
+    remote.push(&[refspec], Some(&mut opts))?;
+  }
+  Ok(status)
 }
 
-/// Fetches the latest upstream ensures that we have all the needed changes
-pub fn check_upstream(
-  repo: &Repository,
-  branch: &BranchMeta,
-  upstream: Option<&BranchMeta>,
-  force: bool,
-) -> Result<PushCheckStatus> {
-  let Some(upstream) = upstream else {
-    return Ok(PushCheckStatus::NoBranch);
-  };
+/// Creates a progress bar. Sets the `transfer_progress` callback to set the
+/// progress on the bar. The bar begins ticking immediately when this function
+/// is called.
+pub fn set_push_progress_bar(cbs: &mut RemoteCallbacks) -> Result<()> {
+  let transfer_progress = ProgressBar::new(0).with_style(
+    ProgressStyle::with_template("{spinner:.cyan} {elapsed} [{bar:40.cyan}] {msg}")?
+      .progress_chars(PROGRESS_CHARS)
+      .tick_strings(&TICK_STRINGS),
+  );
+  transfer_progress.enable_steady_tick(Duration::from_millis(100));
 
-  if !upstream.is_remote() {
-    return Err(anyhow!(
-      "Upstream is not a remote branch: {}",
-      upstream.refname()
-    ));
-  }
+  cbs.push_transfer_progress(move |current, total, bytes| {
+    if transfer_progress.length().is_none() || transfer_progress.length() == Some(0) {
+      transfer_progress.set_length(total as u64);
+    }
 
-  fetch_upstream_branch(repo, upstream)?;
-  println!("{}", style!("Fetched {}", upstream.name()).dim());
+    transfer_progress.set_position(current as u64);
 
-  if force {
-    return Ok(PushCheckStatus::Forced);
-  }
-
-  let branch_tip = branch.resolve(repo)?.peel_to_commit()?;
-  let upstream_tip = upstream.resolve(repo)?.peel_to_commit()?;
-
-  // get the new reference after the fetch
-  let ab = repo.graph_ahead_behind(branch_tip.id(), upstream_tip.id())?;
-
-  Ok(match ab {
-    // up to date, continue to check against base
-    (a, b) if a == 0 && b == 0 => PushCheckStatus::UpToDate,
-
-    // local is ahead, continue with push (and check against base)
-    (a, b) if a > 0 && b == 0 => PushCheckStatus::Ahead,
-
-    // local is behind, fast forward (soft reset)
-    (a, b) if a == 0 && b > 0 => PushCheckStatus::Behind,
-
-    // divergent histories, user must resolve
-    (a, b) if a > 0 && b > 0 => PushCheckStatus::Diverged,
-
-    (a, b) => {
-      return Err(anyhow!(
-        "Unexpected ahead/behind against upstream: ahead {}, behind {}",
-        a,
-        b
+    if current != total {
+      transfer_progress.set_message(format!("Transferring {}/{} objects", current, total));
+    } else {
+      transfer_progress.finish_with_message(format!(
+        "Transferred {} objects ({})",
+        HumanCount(total as u64),
+        BinaryBytes(bytes as u64)
       ));
     }
-  })
+  });
+
+  Ok(())
 }
 
-/// Fetches the latest base ensures that we have all the needed changes
-pub fn check_base(
-  repo: &Repository,
-  branch: &BranchMeta,
-  base: Option<&BranchMeta>,
-  force: bool,
-) -> Result<PushCheckStatus> {
-  let Some(base) = base else {
-    return Ok(PushCheckStatus::NoBranch);
-  };
+/// Display push results
+pub fn display_push_status(repo: &Repository, output: PushStatus) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::new();
+  let mut first = true;
 
-  if base.ty() == BranchType::Remote {
-    fetch_upstream_branch(repo, base)?;
-    println!("{}", style!("Fetched {}", base.name()).dim());
-  }
+  let (updates, rejections, response) = output.into_inner();
 
-  if force {
-    return Ok(PushCheckStatus::Forced);
-  }
-
-  let ab = get_ahead_behind(repo, &branch.resolve(repo)?, &base.resolve(repo)?)?;
-
-  Ok(match ab {
-    // already up to date, continue with push
-    (a, b) if a == 0 && b == 0 => PushCheckStatus::UpToDate,
-
-    // branch is ahead, continue with push
-    (a, b) if a > 0 && b == 0 => PushCheckStatus::Ahead,
-
-    // branch is behind, need those changes
-    (a, b) if a == 0 && b > 0 => PushCheckStatus::Behind,
-
-    // divergent histories, user must resolve
-    (a, b) if a > 0 && b > 0 => PushCheckStatus::Diverged,
-
-    (a, b) => {
-      return Err(anyhow!(
-        "Unexpected ahead/behind against upstream: ahead {}, behind {}",
-        a,
-        b
-      ));
+  for update in updates {
+    if first {
+      first = false;
+    } else {
+      writeln!(out)?;
     }
-  })
+    write!(out, "{}", &display_push_update(repo, &update)?)?;
+  }
+
+  for rejection in rejections {
+    if first {
+      first = false;
+    } else {
+      writeln!(out)?;
+    }
+    write!(out, "{}", &display_push_rejection(&rejection))?;
+  }
+
+  if !first {
+    writeln!(out)?;
+  }
+  write!(out, "{}", response.trim())?;
+
+  Ok(out)
+}
+
+fn display_push_update(repo: &Repository, update: &PushUpdate) -> Result<String> {
+  let name = update.refname.trim_prefix_opt("refs/remotes/");
+  match update.kind {
+    PushUpdateKind::Create(id) => {
+      let commit = repo.find_commit(id)?;
+
+      Ok(format!(
+        "{} {}: {}",
+        style("Created").green(),
+        name,
+        display_hash(commit.as_object())?
+      ))
+    }
+
+    PushUpdateKind::Update(old_id, new_id) => {
+      let old_commit = repo.find_commit(old_id)?;
+      let new_commit = repo.find_commit(new_id)?;
+
+      Ok(format!(
+        "{} {}: {} -> {}",
+        style("Updated").green(),
+        name,
+        display_hash(old_commit.as_object())?,
+        display_hash(new_commit.as_object())?
+      ))
+    }
+
+    PushUpdateKind::Delete(id) => {
+      let commit = repo.find_commit(id)?;
+
+      Ok(format!(
+        "{} {} {}",
+        style("Deleted").red(),
+        name,
+        style!("(was {})", trim_hash(commit.as_object())?)
+      ))
+    }
+  }
+}
+
+fn display_push_rejection(rejection: &PushRejection) -> String {
+  format!(
+    "{} to push {}: {}",
+    style("Failed").red(),
+    style(rejection.refname.trim_prefix_opt("refs/remotes/")).cyan(),
+    rejection.status
+  )
 }

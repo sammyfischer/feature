@@ -1,5 +1,4 @@
-//! Defines the main cli structure, most simple commands, and several helper
-//! functions and macros.
+//! CLI frontend for feature.
 
 use std::path::PathBuf;
 
@@ -7,23 +6,26 @@ use clap::{Parser, Subcommand, ValueHint};
 
 use crate::App;
 
+mod advice;
 mod base;
 mod branches;
 mod check;
 mod commit;
 mod complete;
 mod completions;
-mod config_command;
+mod config;
+mod display;
 mod end;
 mod project;
 mod prune;
 mod push;
 mod show;
 mod start;
-mod status;
+pub mod status;
 mod sync;
 mod tag;
 mod tags;
+mod term;
 mod update;
 mod version_log;
 mod wip;
@@ -106,7 +108,7 @@ pub enum Command {
   Show(show::Args),
 
   // ==== META / FEATURE COMMANDS ====
-  Config(config_command::Args),
+  Config(config::Args),
   Completions(completions::Args),
   Complete(complete::Args),
 }

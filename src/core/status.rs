@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 use anyhow::{Context, Result};
 use console::style;
-use git2::{DiffOptions, Repository};
+use git2::{DiffOptions, Repository, Status, StatusOptions};
 
-use crate::util::diff::DiffSummary;
-use crate::util::string::ToStrLossyOwned;
+use crate::core::diff::DiffSummary;
+use crate::core::string::ToStrLossyOwned;
 
 pub fn is_merge_active(repo: &Repository) -> bool {
   use git2::RepositoryState::*;
@@ -169,56 +169,54 @@ pub fn get_conflicts(repo: &Repository) -> Result<Vec<Conflict>> {
   Ok(out)
 }
 
-/// Gets conflicted, staged, and unstaged changes, and builds a printable
-/// output.
-///
-/// # Params
-/// - `untracked` - whether to include untracked files in the unstaged section
-pub fn display_file_statuses(repo: &Repository, untracked: bool) -> Result<String> {
-  use std::fmt::Write;
-  let mut out = String::new();
-  let mut first_paragraph = true;
+/// Whether there are any staged or unstaged changes
+pub fn has_workdir_changes(repo: &Repository) -> Result<bool> {
+  let mut opts = StatusOptions::new();
+  opts.include_untracked(false);
+  let statuses = repo.statuses(Some(&mut opts))?;
+  let mut has_changes = false;
 
-  let conflicts = get_conflicts(repo)?;
-  if !conflicts.is_empty() {
-    first_paragraph = false;
+  let flags = Status::INDEX_NEW
+    | Status::INDEX_MODIFIED
+    | Status::INDEX_DELETED
+    | Status::INDEX_RENAMED
+    | Status::INDEX_TYPECHANGE
+    | Status::WT_MODIFIED
+    | Status::WT_DELETED
+    | Status::WT_RENAMED
+    | Status::WT_TYPECHANGE;
 
-    write!(
-      out,
-      "{} - {} files",
-      style("Conflicts").yellow(),
-      style(conflicts.len()).cyan()
-    )?;
-
-    for conflict in conflicts {
-      write!(out, "\n  {}", conflict)?;
+  for entry in statuses.iter() {
+    let st = entry.status();
+    if st.intersects(flags) {
+      has_changes = true;
+      break;
     }
-  } else if is_conflictable_active(repo) {
-    // state that could have conflicts, but there are currently no conflicts
-    write!(
-      out,
-      "{} - {}",
-      style("Conflicts").yellow(),
-      style("none").green()
-    )?;
   }
 
-  let staged = get_staged_changes(repo)?;
-  if staged.num_files != 0 {
-    if !first_paragraph {
-      write!(out, "\n\n")?;
-      first_paragraph = false;
+  Ok(has_changes)
+}
+
+/// Whether there are any staged changes
+pub fn has_index_changes(repo: &Repository) -> Result<bool> {
+  let mut opts = StatusOptions::new();
+  opts.include_untracked(false);
+  let statuses = repo.statuses(Some(&mut opts))?;
+  let mut has_changes = false;
+
+  let flags = Status::INDEX_NEW
+    | Status::INDEX_MODIFIED
+    | Status::INDEX_DELETED
+    | Status::INDEX_RENAMED
+    | Status::INDEX_TYPECHANGE;
+
+  for entry in statuses.iter() {
+    let st = entry.status();
+    if st.intersects(flags) {
+      has_changes = true;
+      break;
     }
-    write!(out, "{} - {}", style("Staged").green(), staged)?;
   }
 
-  let unstaged = get_unstaged_changes(repo, untracked)?;
-  if unstaged.num_files != 0 {
-    if !first_paragraph {
-      write!(out, "\n\n")?;
-    }
-    write!(out, "{} - {}", style("Unstaged").red(), unstaged)?;
-  }
-
-  Ok(out)
+  Ok(has_changes)
 }

@@ -11,28 +11,22 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result, anyhow};
 use clap::ValueHint;
 use console::{strip_ansi_codes, style};
-use git2::{Commit, Diff, ErrorCode, MergeOptions, Oid, Reference, Repository, Tree};
+use git2::{Commit, Diff, MergeOptions, Oid, Reference, Repository, Tree};
 
-use crate::util::advice::NO_SIGNATURE_MSG;
-use crate::util::branch::{
-  get_current_branch_name,
-  get_head,
-  get_merge_head,
-  get_pick_head,
-  get_revert_head,
-};
-use crate::util::diff::{DiffSummary, has_index_changes};
-use crate::util::display::{
-  DisplayCommitMessageLevel,
-  DisplayCommitOptions,
-  DisplayTimeOptions,
-  display_commit,
-  display_hash,
-};
-use crate::util::string::{ToStrLossy, ToStrLossyOwned};
-use crate::util::term::get_user_confirmation;
-use crate::util::{get_signature, resolve_commit_name};
-use crate::{App, data};
+use crate::App;
+use crate::cli::advice::NO_SIGNATURE_MSG;
+use crate::cli::display::commit::{DisplayCommitOptions, display_commit};
+use crate::cli::display::diff::display_summary;
+use crate::cli::display::display_hash;
+use crate::cli::display::time::DisplayTimeOptions;
+use crate::cli::term::get_user_confirmation;
+use crate::core::NotFoundExt;
+use crate::core::branch::{get_current_branch_name, get_head_resolved, get_merge_head};
+use crate::core::commit::resolve_commit_name;
+use crate::core::diff::DiffSummary;
+use crate::core::status::{has_index_changes, is_merge_active, is_pick_active, is_revert_active};
+use crate::core::string::{ToStrLossy, ToStrLossyOwned};
+use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
 const AMEND_LONG_HELP: &str = r"Amend the previous commit. Remaining args overwrite the previous commit message.
 If no remaining args are specified, the previous commit message is used.";
@@ -97,9 +91,10 @@ enum CommitType {
 
 impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
-    let config = state.repo.config()?.snapshot()?;
+    let config = UserConfig::new(&state.repo)?;
+
     // if there's a pick active and the user has pick advice enabled
-    if get_pick_head(&state.repo)?.is_some() && data::get_advice_conflict(&config)? {
+    if is_pick_active(&state.repo) && config.advice_conflict()? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_PICK)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -108,7 +103,7 @@ impl Args {
     }
 
     // if there's a revert active and the user has revert advice enabled
-    if get_revert_head(&state.repo)?.is_some() && data::get_advice_conflict(&config)? {
+    if is_revert_active(&state.repo) && config.advice_conflict()? {
       let confirmed = get_user_confirmation(CONFIRM_DURING_REVERT)?;
       if !confirmed {
         println!("Cancelled commit");
@@ -127,7 +122,7 @@ impl Args {
         })
       }
 
-      None => match get_head(&state.repo)? {
+      None => match get_head_resolved(&state.repo)? {
         Some(head) => Some(CommitTarget {
           commit: head.peel_to_commit()?,
           display_name: head.shorthand_bytes().to_str_lossy_owned(),
@@ -161,7 +156,11 @@ impl Args {
     self.pre_commit_hook(&state.repo)?;
 
     let (tree, diff) = self.get_changes(&state.repo, target.as_ref())?;
-    let sig = get_signature(&state.repo)?.ok_or(anyhow!(NO_SIGNATURE_MSG))?;
+    let sig = state
+      .repo
+      .signature()
+      .not_found_ok()?
+      .ok_or(anyhow!(NO_SIGNATURE_MSG))?;
 
     let cli_msg = self.words.join(" ");
     let msg_source = self.get_msg_source(&state.repo, commit_type)?;
@@ -250,10 +249,7 @@ impl Args {
       );
 
       let new_commit = state.repo.find_commit(new_id)?;
-      println!(
-        "{}",
-        display_commit_details(&new_commit, &diff, &state.repo.config()?.snapshot()?)?
-      );
+      println!("{}", display_commit_details(&new_commit, &diff, &config)?);
 
       self.post_commit_hook(&state.repo)?;
       self.post_rewrite_hook(&state.repo, target.commit.id(), new_id)?;
@@ -300,7 +296,7 @@ impl Args {
 
     // committing during an active merge completes the merge, we should clean up the
     // merge files
-    if merge_head.is_some() {
+    if is_merge_active(&state.repo) {
       state.repo.cleanup_state()?;
     }
 
@@ -323,7 +319,7 @@ impl Args {
       let tree_id = index.write_tree()?;
       let tree = repo.find_tree(tree_id)?;
 
-      let head_tree = match get_head(repo)? {
+      let head_tree = match get_head_resolved(repo)? {
         Some(head) => Some(head.peel_to_tree()?),
         None => None,
       };
@@ -334,7 +330,7 @@ impl Args {
     };
 
     // committing to another branch, compute changes with a merge
-    let head = get_head(repo)?
+    let head = get_head_resolved(repo)?
       .context("Can't commit to a different branch when there are no commits yet!")?;
     let mut stage = repo.index()?;
 
@@ -625,10 +621,8 @@ fn get_editor(repo: &Repository) -> Result<String> {
 
   // 2. core.editor config var
   let config = repo.config()?.snapshot()?;
-  match config.get_string("core.editor") {
-    Ok(it) => return Ok(it),
-    Err(e) if e.code() == ErrorCode::NotFound => {}
-    Err(e) => return Err(e.into()),
+  if let Some(it) = config.get_string("core.editor").not_found_ok()? {
+    return Ok(it);
   };
 
   // 3, 4. VISUAL, EDITOR env vars
@@ -714,7 +708,7 @@ fn build_msg_template(initial: &[u8], to: Option<&str>, diff: &Diff) -> Result<V
   }
 
   let summary = DiffSummary::new(diff)?;
-  let summary = summary.to_string();
+  let summary = display_summary(&summary);
 
   for line in summary.lines() {
     out.extend_from_slice(format!("\n# {}", strip_ansi_codes(line)).as_bytes());
@@ -774,21 +768,21 @@ fn display_merge_header(
 /// with two exceptions:
 /// 1. The time is always absolute
 /// 2. It always displays the entire commit message
-fn display_commit_details(
-  commit: &Commit<'_>,
-  diff: &Diff,
-  config: &git2::Config,
-) -> Result<String> {
+fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &UserConfig) -> Result<String> {
   let commit_output = display_commit(commit, &DisplayCommitOptions {
     time: DisplayTimeOptions {
       // relative is not useful, commit just occured
       relative: false,
-      fmt: data::get_format_date(config)?,
+      fmt: config.format_date()?,
     },
     // want the user to see the entire message just for reference
-    message: DisplayCommitMessageLevel::Full,
+    message: CommitMessageLevel::Full,
   })?;
 
   let summary = DiffSummary::new(diff)?;
-  Ok(format!("{}\n\n{}", commit_output, summary))
+  Ok(format!(
+    "{}\n\n{}",
+    commit_output,
+    display_summary(&summary)
+  ))
 }

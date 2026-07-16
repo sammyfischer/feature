@@ -2,10 +2,11 @@ use anyhow::{Result, anyhow};
 use console::style;
 use git2::{Reflog, Repository};
 
-use crate::util::display::{DisplayTimeOptions, display_time};
-use crate::util::string::ToStrLossyOwned;
-use crate::util::wip::{display_wip_spec, get_wip_refname};
-use crate::{App, data};
+use crate::App;
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
+use crate::core::string::ToStrLossyOwned;
+use crate::core::user_config::UserConfig;
+use crate::core::wip::{display_wip_spec, get_wip_refname};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(visible_alias = "ls", about = "Lists wips on branch")]
@@ -58,7 +59,7 @@ impl ListArgs {
   ) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
-    let config = repo.config()?.snapshot()?;
+    let config = UserConfig::new(repo)?;
 
     let mut first = true;
     for (i, entry) in reflog.iter().enumerate() {
@@ -80,8 +81,8 @@ impl ListArgs {
         "{} {} {}",
         display_wip_spec(branch_name, i),
         style(display_time(&time, &DisplayTimeOptions {
-          relative: data::get_format_relative(&config)?,
-          fmt: data::get_format_date(&config)?,
+          relative: config.format_relative()?,
+          fmt: config.format_date()?,
         })?)
         .magenta(),
         msg

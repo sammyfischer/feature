@@ -4,20 +4,10 @@ use std::{fs, thread};
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{
-  Commit,
-  DiffOptions,
-  ErrorClass,
-  ErrorCode,
-  Oid,
-  Reference,
-  Repository,
-  RepositoryState,
-};
+use git2::{Commit, DiffOptions, Oid, Reference, Repository, RepositoryState};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::config::projects::ProjectEntry;
-use crate::util::advice::{
+use crate::cli::advice::{
   BISECT_ADVICE,
   MERGE_CONFLICT_ADVICE,
   PICK_CONFLICT_ADVICE,
@@ -25,29 +15,33 @@ use crate::util::advice::{
   REVERT_CONFLICT_ADVICE,
   STATUS_ADVICE,
 };
-use crate::util::branch::{
-  find_branch_at_commit,
-  get_ahead_behind,
+use crate::cli::display::commit::display_commit_compact;
+use crate::cli::display::diff::{display_summary, display_summary_header};
+use crate::cli::display::{display_plus_minus, display_signature};
+use crate::cli::term::{get_term_width, is_term};
+use crate::core::branch::{
   get_current_branch_or_commit,
-  get_head,
+  get_head_resolved,
   get_merge_head,
   get_pick_head,
   get_revert_head,
 };
-use crate::util::branch_meta::BranchMeta;
-use crate::util::diff::DiffSummary;
-use crate::util::display::{
-  display_commit_compact,
-  display_plus_minus,
-  display_signature,
-  trim_hash,
+use crate::core::branch_info::BranchInfo;
+use crate::core::commit::find_branch_at_commit;
+use crate::core::diff::DiffSummary;
+use crate::core::project_config::projects::ProjectEntry;
+use crate::core::status::{
+  get_conflicts,
+  get_staged_changes,
+  get_unstaged_changes,
+  is_conflictable_active,
+  is_pick_active,
 };
-use crate::util::status::{display_file_statuses, is_pick_active};
-use crate::util::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
-use crate::util::tag::find_current_semver;
-use crate::util::term::{get_term_width, is_term};
-use crate::util::{get_signature, open_repo_from_dirs};
-use crate::{App, data, opt_advice, style};
+use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
+use crate::core::tag::find_current_semver;
+use crate::core::user_config::UserConfig;
+use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
+use crate::{App, opt_advice, style};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -73,17 +67,17 @@ impl Args {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();
-    let app_config = &state.config;
-    let git_config = &state.repo.config()?.snapshot()?;
+    let proj_config = &state.config;
+    let user_config = UserConfig::new(&state.repo)?;
 
     let hide_projects = match self.no_projects {
       Some(it) => it,
-      None => !data::get_feature_show_projects(git_config)?,
+      None => !user_config.show_projects()?,
     };
 
     let hide_modules = match self.no_modules {
       Some(it) => it,
-      None => !data::get_feature_show_modules(git_config)?,
+      None => !user_config.show_modules()?,
     };
     let mod_names: Vec<_> = if hide_modules {
       Vec::new()
@@ -106,7 +100,7 @@ impl Args {
         if hide_projects {
           return Vec::new();
         }
-        app_config
+        proj_config
           .projects
           .par_iter()
           .map(|project| -> Result<String> {
@@ -165,46 +159,46 @@ impl Args {
   fn display_main_repo(&self, repo: &Repository) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
-    let config = repo.config()?.snapshot()?;
-    let head = get_head(repo)?;
+    let config = UserConfig::new(repo)?;
+    let head = get_head_resolved(repo)?;
 
     let (header, advice) = match repo.state() {
       // TODO: custom header/advice for git am
       RepositoryState::ApplyMailbox | RepositoryState::Clean => (
         display_normal_header(repo, head.as_ref())?,
-        opt_advice!(data::get_advice_status(&config)?, STATUS_ADVICE),
+        opt_advice!(config.advice_status()?, STATUS_ADVICE),
       ),
 
       RepositoryState::Merge => (
         display_merge_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, MERGE_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, MERGE_CONFLICT_ADVICE),
       ),
 
       RepositoryState::Revert | RepositoryState::RevertSequence => (
         display_revert_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, REVERT_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, REVERT_CONFLICT_ADVICE),
       ),
 
       RepositoryState::CherryPick | RepositoryState::CherryPickSequence => (
         display_pick_header(repo)?,
-        opt_advice!(data::get_advice_conflict(&config)?, PICK_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, PICK_CONFLICT_ADVICE),
       ),
 
       RepositoryState::Bisect => (
         display_bisect_header(repo)?,
-        opt_advice!(data::get_advice_status(&config)?, BISECT_ADVICE),
+        opt_advice!(config.advice_status()?, BISECT_ADVICE),
       ),
 
       RepositoryState::Rebase
       | RepositoryState::RebaseInteractive
       | RepositoryState::RebaseMerge => (
         display_rebase_header(repo, &repo.path().join("rebase-merge"))?,
-        opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
       ),
 
       RepositoryState::ApplyMailboxOrRebase => (
         display_rebase_header(repo, &repo.path().join("rebase-apply"))?,
-        opt_advice!(data::get_advice_conflict(&config)?, REBASE_CONFLICT_ADVICE),
+        opt_advice!(config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
       ),
     };
 
@@ -225,7 +219,12 @@ impl Args {
       let summary = DiffSummary::new(&diff)?.non_conflicts();
 
       if summary.num_files != 0 {
-        write!(out, "\n\n{} - {}", style("Resolved").green(), summary)?;
+        write!(
+          out,
+          "\n\n{} - {}",
+          style("Resolved").green(),
+          display_summary(&summary)
+        )?;
       }
 
       // cherry picked changes have no difference with head (except for conflicts), so
@@ -235,7 +234,7 @@ impl Args {
 
     let show_untracked = match self.no_untracked {
       Some(hide) => !hide,
-      None => data::get_status_untracked(&config)?,
+      None => config.status_untracked()?,
     };
 
     let statuses = display_file_statuses(repo, show_untracked)?;
@@ -257,31 +256,29 @@ impl Args {
   ) -> Result<String> {
     let mut out = String::new();
     let (name, project) = project;
-    let config = repo.config()?.snapshot()?;
+    let config = UserConfig::new(repo)?;
 
     out.push_str(&style(name).cyan().to_string());
 
-    let proj_repo = match Repository::open(&project.path) {
-      Ok(it) => it,
-      Err(e)
-        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
-          && e.code() == ErrorCode::NotFound =>
-      {
+    let proj_repo = match Repository::open(&project.path).repo_not_found_ok()? {
+      Some(it) => it,
+      None => {
         out.push_str(" not initialized");
         return Ok(out);
       }
-      Err(e) => return Err(e.into()),
     };
 
-    if let Some(head) = get_head(&proj_repo)? {
+    if let Some(head) = get_head_resolved(&proj_repo)? {
       let commit = head.peel_to_commit()?;
 
       if head.is_branch() || head.is_remote() {
-        let branch_meta = BranchMeta::from_reference(&head)?;
-        out.push_str(&format!(" on {}", style(branch_meta.name()).green()));
+        let branch_info = BranchInfo::from_reference(&head)?;
+        out.push_str(&format!(" on {}", style(branch_info.name()).green()));
 
-        if let Some(upstream) = branch_meta.upstream(&proj_repo)? {
-          let (ahead, behind) = get_ahead_behind(&proj_repo, &head, upstream.get())?;
+        if let Some(upstream) = branch_info.upstream(&proj_repo)? {
+          let upstream_tip = upstream.get().peel_to_commit()?.id();
+          let (ahead, behind) = proj_repo.graph_ahead_behind(commit.id(), upstream_tip)?;
+
           out.push_str(&format!(
             " {}{}{}",
             style("[").dim(),
@@ -299,7 +296,7 @@ impl Args {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
-      if data::get_feature_show_authorship(&config)? {
+      if config.show_authorship()? {
         out.push_str(&self.display_different_signature(repo, &proj_repo)?);
       }
       out.push_str(&self.display_subrepo_changes(&proj_repo, &commit)?);
@@ -317,19 +314,15 @@ impl Args {
     let mut out = String::new();
     out.push_str(&style(mod_name).cyan().to_string());
 
-    let config = repo.config()?.snapshot()?;
+    let config = UserConfig::new(repo)?;
     let module = repo.find_submodule(mod_name)?;
 
-    let mod_repo = match module.open() {
-      Ok(it) => it,
-      Err(e)
-        if (e.class() == ErrorClass::Os || e.class() == ErrorClass::Repository)
-          && e.code() == ErrorCode::NotFound =>
-      {
+    let mod_repo = match module.open().repo_not_found_ok()? {
+      Some(it) => it,
+      None => {
         out.push_str(" not initialized");
         return Ok(out);
       }
-      Err(e) => return Err(e.into()),
     };
 
     // committed state of submodule (commit parent expects module to be on)
@@ -360,7 +353,7 @@ impl Args {
     }
 
     // actual repo info
-    if let Some(head) = get_head(&mod_repo)? {
+    if let Some(head) = get_head_resolved(&mod_repo)? {
       let commit = head.peel_to_commit()?;
 
       if head.is_branch() || head.is_remote() || head.is_tag() {
@@ -373,7 +366,7 @@ impl Args {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
-      if data::get_feature_show_authorship(&config)? {
+      if config.show_authorship()? {
         out.push_str(&self.display_different_signature(repo, &mod_repo)?);
       }
       out.push_str(&self.display_subrepo_changes(&mod_repo, &commit)?);
@@ -386,8 +379,8 @@ impl Args {
   /// from parent
   fn display_different_signature(&self, parent: &Repository, child: &Repository) -> Result<String> {
     let mut out = String::new();
-    let parent_sig = get_signature(parent)?;
-    let child_sig = get_signature(child)?;
+    let parent_sig = parent.signature().not_found_ok()?;
+    let child_sig = child.signature().not_found_ok()?;
 
     if let Some(child_sig) = child_sig {
       if let Some(parent_sig) = parent_sig
@@ -418,7 +411,7 @@ impl Args {
     let mut opts = DiffOptions::new();
     let include = match self.no_untracked {
       Some(it) => !it,
-      None => data::get_status_untracked(&repo.config()?.snapshot()?)?,
+      None => UserConfig::new(repo)?.status_untracked()?,
     };
     opts.include_untracked(include);
     let mut unstaged = repo.diff_index_to_workdir(None, Some(&mut opts))?;
@@ -429,14 +422,14 @@ impl Args {
       out.push_str(&format!(
         "\n  {} - {}",
         style("Staged").green(),
-        staged.display_header()
+        display_summary_header(&staged)
       ));
     }
     if unstaged.num_files > 0 {
       out.push_str(&format!(
         "\n  {} - {}",
         style("Unstaged").red(),
-        unstaged.display_header()
+        display_summary_header(&unstaged)
       ));
     }
 
@@ -460,18 +453,18 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
 
       // display branch name or detached head indicator
       let display_branch = if head.is_branch() {
-        let meta = BranchMeta::from_reference(head)?;
-        let mut out = format!("On {}", style(meta.name()).green());
+        let info = BranchInfo::from_reference(head)?;
+        let mut out = format!("On {}", style(info.name()).green());
 
         let semver = find_current_semver(repo, &head.peel_to_commit()?)?;
         if let Some(semver) = semver {
           out.push_str(&format!(" {}", style!("({})", semver).dim()));
         }
 
-        branch = Some(meta);
+        branch = Some(info);
         out
       } else if head.is_remote() {
-        let meta = BranchMeta::from_reference(head)?;
+        let meta = BranchInfo::from_reference(head)?;
         // don't set branch because, while remotes are like branches, they cannot have
         // an upstream or base
         format!("On remote {}", style(meta.name()).green())
@@ -536,8 +529,12 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     // upstream row
     let upstream = branch.upstream(repo)?;
     if let Some(upstream) = upstream {
-      let upstream = BranchMeta::from_branch(&upstream)?;
-      let (a, b) = get_ahead_behind(repo, &upstream.resolve(repo)?, &branch_ref)
+      let upstream_info = BranchInfo::from_branch(&upstream)?;
+      let upstream_tip = upstream.get().peel_to_commit()?.id();
+      let branch_tip = branch_ref.peel_to_commit()?.id();
+
+      let (a, b) = repo
+        .graph_ahead_behind(upstream_tip, branch_tip)
         .context("Failed to get ahead/behind for upstream")?;
 
       let row = [
@@ -545,7 +542,7 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
         format!(
           "{}{} {}{}",
           style("[").dim(),
-          style(upstream.name()),
+          style(upstream_info.name()),
           display_plus_minus(a, b),
           style("]").dim(),
         ),
@@ -555,9 +552,13 @@ fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<
     }
 
     // base row
-    let base = data::get_feature_base(repo, branch.name())?;
+    let base = UserConfig::new(repo)?.branch_base(branch.name())?;
     if let Some(base) = base {
-      let (a, b) = get_ahead_behind(repo, &base.resolve(repo)?, &branch_ref)
+      let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
+      let branch_tip = branch_ref.peel_to_commit()?.id();
+
+      let (a, b) = repo
+        .graph_ahead_behind(base_tip, branch_tip)
         .context("Failed to get ahead/behind for base")?;
 
       let row = [
@@ -749,14 +750,107 @@ fn display_authorship<'buf>(
   buf: &'buf mut String,
   prefix: &str,
 ) -> Result<&'buf mut String> {
-  if data::get_feature_show_authorship(&repo.config()?.snapshot()?)? {
+  let config = UserConfig::new(repo)?;
+  if config.show_authorship()? {
     write!(
       buf,
       "{}{}",
       prefix,
-      display_signature(get_signature(repo)?.as_ref())
+      display_signature(repo.signature().not_found_ok()?.as_ref())
     )?;
   }
 
   Ok(buf)
+}
+
+/// Gets conflicted, staged, and unstaged changes, and builds a printable
+/// output.
+///
+/// # Params
+/// - `untracked` - whether to include untracked files in the unstaged section
+pub fn display_file_statuses(repo: &Repository, untracked: bool) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::new();
+  let mut first_paragraph = true;
+
+  let conflicts = get_conflicts(repo)?;
+  if !conflicts.is_empty() {
+    first_paragraph = false;
+
+    write!(
+      out,
+      "{} - {} files",
+      style("Conflicts").yellow(),
+      style(conflicts.len()).cyan()
+    )?;
+
+    for conflict in conflicts {
+      write!(out, "\n  {}", conflict)?;
+    }
+  } else if is_conflictable_active(repo) {
+    // state that could have conflicts, but there are currently no conflicts
+    write!(
+      out,
+      "{} - {}",
+      style("Conflicts").yellow(),
+      style("none").green()
+    )?;
+  }
+
+  let staged = get_staged_changes(repo)?;
+  if staged.num_files != 0 {
+    if first_paragraph {
+      first_paragraph = false;
+    } else {
+      write!(out, "\n\n")?;
+    }
+    write!(
+      out,
+      "{} - {}",
+      style("Staged").green(),
+      display_summary(&staged)
+    )?;
+  }
+
+  let unstaged = get_unstaged_changes(repo, untracked)?;
+  if unstaged.num_files != 0 {
+    if !first_paragraph {
+      write!(out, "\n\n")?;
+    }
+    write!(
+      out,
+      "{} - {}",
+      style("Unstaged").red(),
+      display_summary(&unstaged)
+    )?;
+  }
+
+  Ok(out)
+}
+
+/// Guide for what each letter means
+pub fn status_guide() -> String {
+  use std::fmt::Write;
+  let mut out = String::with_capacity(400);
+
+  writeln!(out, "Meaning of each file status").unwrap();
+  writeln!(out, "  {} Added", style("A").green()).unwrap();
+  writeln!(out, "  {} Deleted", style("D").red()).unwrap();
+  writeln!(out, "  {} Modified", style("M").yellow()).unwrap();
+  writeln!(out, "  {} Untracked", style("U").cyan()).unwrap();
+  writeln!(out, "  {} Conflicted", style("X").red()).unwrap();
+
+  writeln!(out, "These display the old and new name").unwrap();
+  writeln!(out, "  {} Renamed", style("R").magenta()).unwrap();
+  writeln!(out, "  {} Copied", style("C").magenta()).unwrap();
+
+  writeln!(out, "These appear under conflicts").unwrap();
+  writeln!(out, "  {} None (file not present)", style("-").dim()).unwrap();
+
+  writeln!(out, "These generally won't appear in regular statuses").unwrap();
+  writeln!(out, "  {} Unmodified", style("=").dim()).unwrap();
+  writeln!(out, "  {} Ignored", style("I").dim()).unwrap();
+  writeln!(out, "  {} Typechange", style("T").yellow()).unwrap();
+  writeln!(out, "  {} Unreadable", style("?").red()).unwrap();
+  out
 }
