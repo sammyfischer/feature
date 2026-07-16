@@ -1,18 +1,18 @@
 use std::thread;
 
 use anyhow::{Context, Result};
-use console::style;
+use console::{measure_text_width, style, truncate_str};
 use git2::{Branch, BranchType, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::App;
+use crate::cli::display::display_plus_minus;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
-use crate::cli::display::{display_hash, display_plus_minus};
-use crate::cli::term::paginate;
+use crate::cli::term::{get_term_width, is_term};
 use crate::core::branch::{get_current_branch_name, get_worktree_branch_names};
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::user_config::UserConfig;
 use crate::core::{NotFoundExt, open_repo_from_dirs};
+use crate::{App, style};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Lists branches", disable_help_subcommand = true)]
@@ -141,7 +141,16 @@ impl Args {
       Ok(out)
     })?;
 
-    paginate(out.as_bytes())?;
+    if is_term() {
+      let trunc = get_term_width();
+      for line in out.lines() {
+        let text = truncate_str(line, trunc, &style("\u{2026}").dim().to_string());
+        println!("{}", text);
+      }
+    } else {
+      println!("{}", out);
+    }
+
     Ok(())
   }
 
@@ -167,32 +176,22 @@ impl Args {
 
     let branch_commit = branch.get().peel_to_commit()?;
 
-    // hash Author Name, 1 hour ago - Subject line
-    // hash is yellow, so it doesn't need a character to separate it from author
-    // name. everything else is gray
-    row.commit = format!(
-      "{} {}",
-      display_hash(branch_commit.as_object())?,
-      style(&format!(
-        "{}, {} · {}",
-        branch_commit.author().name_bytes().to_str_lossy(),
-        display_time(&branch_commit.time(), &DisplayTimeOptions {
-          relative: true,
-          // fmt is irrelevant for relative times. `String::new` doesn't
-          // allocate so this is fine
-          fmt: String::new(),
-        })?,
-        branch_commit
-          .summary_bytes()
-          .expect("Commit should have a summary")
-          .to_str_lossy()
-      ))
-      .dim(),
-    );
+    row.commit = style!(
+      "{}, {} · {}",
+      branch_commit.author().name()?,
+      display_time(&branch_commit.time(), &DisplayTimeOptions {
+        relative: user_config.format_relative()?,
+        fmt: user_config.format_date()?,
+      })?,
+      branch_commit
+        .summary()?
+        .expect("Commit should have a summary")
+    )
+    .dim()
+    .to_string();
 
     if let Some(upstream) = branch.upstream().not_found_ok()? {
       let upstream_name = upstream.name_bytes()?.to_str_lossy();
-      let mut col = style(&upstream_name).blue().to_string();
 
       let (a, b) = repo
         .graph_ahead_behind(upstream.get().peel_to_commit()?.id(), branch_commit.id())
@@ -203,15 +202,11 @@ impl Args {
           )
         })?;
 
-      col.push(' ');
-      col.push_str(&display_plus_minus(a, b));
-      row.upstream = Some(col);
+      row.upstream = Some(display_plus_minus(a, b));
     }
 
     let base = user_config.branch_base(&branch_name)?;
     if let Some(base) = base {
-      let mut col = style(base.name()).magenta().to_string();
-
       let (a, b) = repo
         .graph_ahead_behind(
           base.resolve(repo)?.peel_to_commit()?.id(),
@@ -225,9 +220,7 @@ impl Args {
           )
         })?;
 
-      col.push(' ');
-      col.push_str(&display_plus_minus(a, b));
-      row.base = Some(col);
+      row.base = Some(display_plus_minus(a, b));
     }
 
     Ok(row)
@@ -245,25 +238,48 @@ impl Args {
     Ok(table)
   }
 
+  /// Calculates the width of the left column, which includes the name and
+  /// ahead/behind counts
+  fn calculate_column_width(&self, table: &Vec<Row>) -> usize {
+    let mut width = 0usize;
+
+    for row in table {
+      let mut w = measure_text_width(&row.branch);
+
+      // ahead/behind:
+      // branch-name U +15 -10 B +18 -0
+      //
+      // - the ab string in each contains just the numbers, the +/- char, and a space
+      //   in the middle
+      // - need to add a the indicator char (U or B) and the space separating that
+      // - need to add the leading space, either separates from the branch name or the
+      //   upstream ahead/behind
+
+      if let Some(ab) = row.upstream.as_deref() {
+        w += measure_text_width(ab) + 3;
+      }
+
+      if let Some(ab) = row.base.as_deref() {
+        w += measure_text_width(ab) + 3;
+      }
+
+      if w > width {
+        width = w;
+      }
+    }
+
+    width
+  }
+
   fn display_table(&self, table: Vec<Row>) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
 
-    // we want every base/upstream name to be aligned
-    let mut label_width = 0usize;
-    const UPSTREAM_LABEL: usize = "upstream".len();
-    const BASE_LABEL: usize = "base".len();
-
-    for row in &table {
-      if row.upstream.is_some() && UPSTREAM_LABEL > label_width {
-        label_width = UPSTREAM_LABEL;
-      }
-      if row.base.is_some() && BASE_LABEL > label_width {
-        label_width = BASE_LABEL;
-      }
-    }
+    let width = self.calculate_column_width(&table);
 
     let mut first = true;
+    let mut ab_buf = String::with_capacity(20);
+
     for row in table {
       if first {
         first = false;
@@ -271,29 +287,26 @@ impl Args {
         writeln!(out)?;
       }
 
-      write!(out, "{} {}", row.branch, row.commit)?;
-      if let Some(upstream) = row.upstream {
-        write!(
-          out,
-          "\n  {}{} {}{}{}",
-          style("upstream").blue(),
-          " ".repeat(label_width - UPSTREAM_LABEL),
-          style("[").dim(),
-          upstream,
-          style("]").dim()
-        )?;
+      write!(out, "{}", &row.branch)?;
+
+      if let Some(upstream) = &row.upstream {
+        // include leading space
+        write!(ab_buf, " {} {}", style("U").blue(), upstream)?;
       }
-      if let Some(base) = row.base {
-        write!(
-          out,
-          "\n  {}{} {}{}{}",
-          style("base").magenta(),
-          " ".repeat(label_width - BASE_LABEL),
-          style("[").dim(),
-          base,
-          style("]").dim()
-        )?;
+
+      if let Some(base) = &row.base {
+        // include leading space here too
+        write!(ab_buf, " {} {}", style("B").magenta(), base)?;
       }
+
+      let name_width = measure_text_width(&row.branch);
+      let ab_width = measure_text_width(&ab_buf);
+      let padding = width - name_width - ab_width;
+
+      write!(out, "{}{}", " ".repeat(padding), ab_buf)?;
+      ab_buf.clear();
+
+      write!(out, " {}", &row.commit)?;
     }
 
     Ok(out)

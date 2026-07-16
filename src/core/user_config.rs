@@ -105,12 +105,12 @@ impl<'config> UserConfig<'config> {
     get_option!(&self.config, get_bool, "feature.showAuthorship", true)
   }
 
-  /// `feature.showProjects`, default `true`.
+  /// `feature.showProjects`, default `true`
   pub fn show_projects(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.showProjects", true)
   }
 
-  /// `feature.showModules`, default `true`.
+  /// `feature.showModules`, default `true`
   pub fn show_modules(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.showModules", true)
   }
@@ -146,7 +146,7 @@ impl<'config> UserConfig<'config> {
 
   // END
 
-  /// `feature.end.remote`, default `false`.
+  /// `feature.end.remote`, default `false`
   pub fn end_remote(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.end.remote", false)
   }
@@ -154,7 +154,7 @@ impl<'config> UserConfig<'config> {
   // SHOW
 
   /// Gets `feature.show.message`. Defaults to
-  /// [DisplayCommitMessageLevel::default()].
+  /// [DisplayCommitMessageLevel::default()]
   pub fn show_message(&self) -> Result<CommitMessageLevel> {
     let value =
       (get_option!(&self.config, get_str, "feature.show.message") as Result<Option<&str>>)?;
@@ -164,17 +164,17 @@ impl<'config> UserConfig<'config> {
     })
   }
 
-  /// `feature.show.summary`, default `true`.
+  /// `feature.show.summary`, default `true`
   pub fn show_summary(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.show.summary", true)
   }
 
-  /// `feature.show.patch`, default `false`.
+  /// `feature.show.patch`, default `false`
   pub fn show_patch(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.show.patch", false)
   }
 
-  /// `feature.show.paging`, default [PageWhen::default()].
+  /// `feature.show.paging`, default [PageWhen::default]
   pub fn show_paging(&self) -> Result<PageWhen> {
     let value =
       (get_option!(&self.config, get_str, "feature.show.paging") as Result<Option<&str>>)?;
@@ -186,24 +186,24 @@ impl<'config> UserConfig<'config> {
 
   // STATUS
 
-  /// `status.showUntrackedFiles`, default `true`.
+  /// `status.showUntrackedFiles`, default `true`
   pub fn status_untracked(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "status.showUntrackedFiles", true)
   }
 
   // SYNC
 
-  /// `feature.sync.prune`, default `true`.
+  /// `feature.sync.prune`, default `true`
   pub fn sync_prune(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.sync.prune", true)
   }
 
-  /// `feature.sync.projects`, default `true`.
+  /// `feature.sync.projects`, default `true`
   pub fn sync_projects(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.sync.projects", true)
   }
 
-  /// `feature.sync.modules`, default `true`.
+  /// `feature.sync.modules`, default `true`
   pub fn sync_modules(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.sync.modules", true)
   }

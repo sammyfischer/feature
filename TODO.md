@@ -15,6 +15,7 @@
   - `config_command.rs` should probably be renamed to `config.rs`
 - paging
   - accurate pager resolution: GIT_PAGER -> core.pager -> PAGER -> less -FR -> stdout
+  - respect git's `pager.<command>` options (e.g. show)
 - per-command config
   - add global feature options like `feature.relativeTime`, `feature.paging`
   - add override for each command like `feature.stash.relativeTime`, `feature.tags.paging`
