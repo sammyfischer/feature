@@ -2,22 +2,35 @@
 
 ## Housekeeping
 
+Passive (keep in mind when writing/editing code)
+
 - use `NOT_ON_BRANCH_MSG` everywhere
-- separate core module/crate
-  - move all common/backend functionality into a separate module (should replace util module)
-  - cli module becomes just a frontend, calls common functions
-  - config and data modules should be part of core
-  - all terminal printing/formatting should be handled in cli, with common code in a `display` module
-- clearer naming
-  - every cli subcommand is a struct called `Args`, they should be renamed to contain the command name e.g. `StartArgs`
-- cli group commands should be organized in modules
-  - config/project commands are currently in one file, they should be split up
-  - `config_command.rs` should probably be renamed to `config.rs`
+- make sure all printing/term code is in `cli`, backend logic is in `core`
+
+High priority
+
+- nerdfont
+  - file statuses?
+  - status command
+  - don't go too overboard, just wherever it makes the text easier to scan
 - paging
   - accurate pager resolution: GIT_PAGER -> core.pager -> PAGER -> less -FR -> stdout
+  - all paged output goes through this, instead of manually filtering diffs through delta
+  - respect git's `pager.<command>` options (e.g. show)
 - per-command config
   - add global feature options like `feature.relativeTime`, `feature.paging`
   - add override for each command like `feature.stash.relativeTime`, `feature.tags.paging`
+
+Medium priority
+
+- `wip` command
+  - create parent commits containing staged and unstaged changes, so that popping will restore correctly
+  - add options to show to view only staged/unstaged changes in a wip (i.e. diff against each a particular parent)
+- clearer naming
+  - every cli subcommand is a struct called `Args`, they should be renamed to contain the command name e.g. `StartArgs`
+
+Low priority
+
 - support `commit.template` config option
   - template file that is used when -m is unspecified
 - custom zsh completions, maybe fish too
@@ -26,10 +39,17 @@
 
 ## Features
 
+- tag list
+  - remove commit hash
+  - show number of commits since last version
+  - tags can have stuff after semver part, e.g. `v2.0.0-rc.1`
+  - add glob filter
+  - add high detail view for single tag
+    - tag date and message, if annotated
+    - commit hash, author, date, message
+    - diff summary since last reachable version (including number of commits)
 - `squash`
   - squashes all commits on a feature branch into one
-- `wip`
-  - create parent commits containing staged, unstaged, and untracked. use to build diffs and restore changes correctly
 - auto merge/rebase
   - when branches have diverged, preventing a push, check if a merge/rebase would result in conflicts, then do it automatically
   - use default git push config to determine whether to merge or rebase

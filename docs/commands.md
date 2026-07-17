@@ -265,15 +265,16 @@ This similar to `git status`, except that:
 
 ```bash
 feature branches
+feature branches frontend*
 ```
 
-Lists all local branches (not just feature branches).
+Lists all local branches (not just feature branches). Takes an optional glob pattern to filter down the results. If a single branch is matched, it will display high-detailed info about the branch.
 
 This is similar to `git branch` except:
 
-- it shows the base branch, if present
-- it shows how many commits ahead/behind base and upstream are
+- it shows how many commits ahead/behind the base and upstream branch are
 - it shows more commit info
+- it shows a compact list-view when multiple branches are matched, but shows a high-detail view when a single branch is matched
 - it's more colorful
 
 ## Tags
