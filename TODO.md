@@ -39,6 +39,15 @@ Low priority
 
 ## Features
 
+- tag list
+  - remove commit hash
+  - show number of commits since last version
+  - tags can have stuff after semver part, e.g. `v2.0.0-rc.1`
+  - add glob filter
+  - add high detail view for single tag
+    - tag date and message, if annotated
+    - commit hash, author, date, message
+    - diff summary since last reachable version (including number of commits)
 - `squash`
   - squashes all commits on a feature branch into one
 - auto merge/rebase

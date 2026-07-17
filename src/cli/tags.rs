@@ -1,13 +1,13 @@
 use std::thread;
 
 use anyhow::{Result, anyhow};
-use console::style;
+use console::{style, truncate_str};
 use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::display::display_hash;
 use crate::cli::display::time::{DisplayTimeOptions, display_time, display_time_relative};
-use crate::cli::term::paginate;
+use crate::cli::term::{get_term_width, is_term};
 use crate::core::open_repo_from_dirs;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::tag::{SemverTag, get_semver_tags};
@@ -137,7 +137,16 @@ impl Args {
       Ok(out)
     })?;
 
-    paginate(out.as_bytes())?;
+    if is_term() {
+      let trunc = get_term_width();
+      for line in out.lines() {
+        let text = truncate_str(line, trunc, &style("\u{2026}").dim().to_string());
+        println!("{}", text);
+      }
+    } else {
+      println!("{}", out);
+    }
+
     Ok(())
   }
 
