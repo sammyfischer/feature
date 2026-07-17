@@ -90,11 +90,16 @@ impl PopArgs {
       );
     }
 
-    let show_untracked = UserConfig::new(repo)?.status_untracked()?;
+    let config = UserConfig::new(repo)?;
+    let nerd_font = config.nerd_font()?;
+    let show_untracked = config.status_untracked()?;
 
-    let statuses = display_file_statuses(repo, show_untracked)?;
+    let statuses = display_file_statuses(repo, show_untracked, nerd_font)?;
     if !statuses.is_empty() {
-      println!("\n{}", display_file_statuses(repo, show_untracked)?);
+      println!(
+        "\n{}",
+        display_file_statuses(repo, show_untracked, nerd_font)?
+      );
     }
 
     Ok(())

@@ -3,64 +3,78 @@ use git2::Delta;
 
 use crate::cli::display::display_plus_minus;
 use crate::core::diff::{DiffFileSummary, DiffSummary};
+use crate::{dim_brackets, if_nerdfont};
 
 /// Default display format for the header line. Shows number of files changed
 /// and total insertions/deletions
 pub fn display_summary_header(summary: &DiffSummary) -> String {
   format!(
-    "{} {} changed {}{}{}",
+    "{} {} changed {}",
     style(summary.num_files).cyan(),
     if summary.num_files == 1 {
       "file"
     } else {
       "files"
     },
-    style("[").dim(),
-    display_plus_minus(summary.insertions, summary.deletions),
-    style("]").dim()
+    dim_brackets!(
+      "{}",
+      display_plus_minus(summary.insertions, summary.deletions)
+    )
   )
 }
 
-pub fn display_summary(summary: &DiffSummary) -> String {
+pub fn display_summary(summary: &DiffSummary, nerd_font: bool) -> String {
   use std::fmt::Write;
   let mut out = String::new();
 
   write!(out, "{}", display_summary_header(summary)).unwrap();
   for file in &summary.files {
-    write!(out, "\n  {}", display_file_summary(file)).unwrap();
+    write!(out, "\n  {}", display_file_summary(file, nerd_font)).unwrap();
   }
 
   out
 }
 
-pub fn display_file_summary(file: &DiffFileSummary) -> String {
+pub fn display_file_summary(file: &DiffFileSummary, nerd_font: bool) -> String {
   match file.status {
     Delta::Unmodified => format!("{} {}", style("=").dim(), file.name),
 
     Delta::Added => format!(
       "{} {} {}",
-      style("A").green(),
+      style(if_nerdfont!(nerd_font, "", "A")).green(),
       file.name,
       display_plus_minus(file.insertions, file.deletions)
     ),
 
     Delta::Deleted => format!(
       "{} {} {}",
-      style("D").red(),
+      style(if_nerdfont!(nerd_font, "", "D")).red(),
       file.name,
       display_plus_minus(file.insertions, file.deletions)
     ),
 
     Delta::Modified => format!(
       "{} {} {}",
-      style("M").yellow(),
+      style(if_nerdfont!(nerd_font, "", "M")).yellow(),
       file.name,
       display_plus_minus(file.insertions, file.deletions)
     ),
 
+    Delta::Untracked => format!(
+      "{} {}",
+      style(if_nerdfont!(nerd_font, "󰘓", "U")).cyan(),
+      file.name
+    ),
+
+    Delta::Conflicted => format!(
+      "{} {}",
+      style(if_nerdfont!(nerd_font, "󰩌", "X")).red(),
+      file.name
+    ),
+
     Delta::Renamed => format!(
       "{} {} -> {} {}",
-      style("R").magenta(),
+      style(if_nerdfont!(nerd_font, "", "R")).magenta(),
       file.similar_old,
       file.name,
       // renames may have changes depending on the rename threshold
@@ -69,14 +83,13 @@ pub fn display_file_summary(file: &DiffFileSummary) -> String {
 
     Delta::Copied => format!(
       "{} {} -> {} {}",
-      style("C").magenta(),
+      style(if_nerdfont!(nerd_font, "", "C")).magenta(),
       file.similar_old,
       file.name,
       display_plus_minus(file.insertions, file.deletions)
     ),
 
     Delta::Ignored => format!("{} {}", style("I").dim(), file.name),
-    Delta::Untracked => format!("{} {}", style("U").cyan(), file.name),
 
     Delta::Typechange => format!(
       "{} {} {}",
@@ -86,6 +99,5 @@ pub fn display_file_summary(file: &DiffFileSummary) -> String {
     ),
 
     Delta::Unreadable => format!("{} {}", style("?").red(), file.name),
-    Delta::Conflicted => format!("{} {}", style("X").red(), file.name),
   }
 }

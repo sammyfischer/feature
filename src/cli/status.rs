@@ -3,8 +3,8 @@ use std::path::Path;
 use std::{fs, thread};
 
 use anyhow::{Context, Result};
-use console::{measure_text_width, pad_str, style, truncate_str};
-use git2::{Commit, DiffOptions, Oid, Reference, Repository, RepositoryState};
+use console::{style, truncate_str};
+use git2::{Commit, DiffOptions, Oid, Repository, RepositoryState};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::advice::{
@@ -17,10 +17,13 @@ use crate::cli::advice::{
 };
 use crate::cli::display::commit::display_commit_compact;
 use crate::cli::display::diff::{display_summary, display_summary_header};
-use crate::cli::display::{display_plus_minus, display_signature};
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
+use crate::cli::display::{display_hash, display_plus_minus, display_signature};
 use crate::cli::term::{get_term_width, is_term};
 use crate::core::branch::{
+  find_local_of_upstream,
   get_current_branch_or_commit,
+  get_head,
   get_head_resolved,
   get_merge_head,
   get_pick_head,
@@ -37,11 +40,11 @@ use crate::core::status::{
   is_conflictable_active,
   is_pick_active,
 };
-use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
+use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::tag::find_current_semver;
 use crate::core::user_config::UserConfig;
 use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
-use crate::{App, opt_advice, style};
+use crate::{App, dim_brackets, if_nerdfont, opt_advice, style};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
@@ -160,12 +163,11 @@ impl Args {
     use std::fmt::Write;
     let mut out = String::new();
     let config = UserConfig::new(repo)?;
-    let head = get_head_resolved(repo)?;
 
     let (header, advice) = match repo.state() {
       // TODO: custom header/advice for git am
       RepositoryState::ApplyMailbox | RepositoryState::Clean => (
-        display_normal_header(repo, head.as_ref())?,
+        display_normal_header(repo, &config)?,
         opt_advice!(config.advice_status()?, STATUS_ADVICE),
       ),
 
@@ -209,6 +211,8 @@ impl Args {
       write!(out, "\n\n{}", advice)?;
     }
 
+    let nerd_font = config.nerd_font()?;
+
     if is_pick_active(repo) {
       // cherry picks are weird bc they show no diff with head when you stage changes.
       // to show meaningful changes you have to diff with the picked commit
@@ -223,7 +227,7 @@ impl Args {
           out,
           "\n\n{} - {}",
           style("Resolved").green(),
-          display_summary(&summary)
+          display_summary(&summary, nerd_font)
         )?;
       }
 
@@ -237,9 +241,13 @@ impl Args {
       None => config.status_untracked()?,
     };
 
-    let statuses = display_file_statuses(repo, show_untracked)?;
+    let statuses = display_file_statuses(repo, show_untracked, nerd_font)?;
     if !statuses.is_empty() {
-      write!(out, "\n\n{}", display_file_statuses(repo, show_untracked)?)?;
+      write!(
+        out,
+        "\n\n{}",
+        display_file_statuses(repo, show_untracked, nerd_font)?
+      )?;
     }
     Ok(out)
   }
@@ -279,18 +287,17 @@ impl Args {
           let upstream_tip = upstream.get().peel_to_commit()?.id();
           let (ahead, behind) = proj_repo.graph_ahead_behind(commit.id(), upstream_tip)?;
 
-          out.push_str(&format!(
-            " {}{}{}",
-            style("[").dim(),
-            display_plus_minus(ahead, behind),
-            style("]").dim()
-          ));
+          out.push(' ');
+          out.push_str(dim_brackets!("{}", display_plus_minus(ahead, behind)));
         }
       } else if head.is_tag() {
         let name = head.shorthand_bytes().to_str_lossy();
         out.push_str(&format!(" on {}", style(name).green()));
       }
-      out.push_str(&format!(" -> {}", display_commit_compact(&commit)?));
+      out.push_str(&format!(
+        " -> {}",
+        display_commit_compact(&commit, &config)?
+      ));
 
       if is_term() {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
@@ -333,21 +340,13 @@ impl Args {
     match (index_id, head_id) {
       (Some(index_id), Some(head_id)) => {
         let (ahead, behind) = mod_repo.graph_ahead_behind(index_id, head_id)?;
-        out.push_str(&format!(
-          " {}{}{}",
-          style("[").dim(),
-          display_plus_minus(ahead, behind),
-          style("]").dim()
-        ));
+        out.push(' ');
+        out.push_str(dim_brackets!("{}", display_plus_minus(ahead, behind)));
       }
 
       (Some(_), None) => {
-        out.push_str(&format!(
-          " {}{}{}",
-          style("[").dim(),
-          style("untracked").red(),
-          style("]").dim()
-        ));
+        out.push(' ');
+        out.push_str(dim_brackets!("{}", style("untracked").red()));
       }
       _ => (),
     }
@@ -360,7 +359,10 @@ impl Args {
         let name = head.shorthand_bytes().to_str_lossy();
         out.push_str(&format!(" on {}", style(name).green()));
       }
-      out.push_str(&format!(" -> {}", display_commit_compact(&commit)?));
+      out.push_str(&format!(
+        " -> {}",
+        display_commit_compact(&commit, &config)?
+      ));
 
       if is_term() {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
@@ -440,150 +442,196 @@ impl Args {
 /// Displays a header when there is no other active operation (e.g. rebase/merge
 /// conflicts). Shows current branch, commit it points to, and upstream/base
 /// info if available. Unlike the others, this header takes up to 3 lines.
-fn display_normal_header(repo: &Repository, head: Option<&Reference>) -> Result<String> {
+fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<String> {
   let mut out = String::with_capacity(80);
-  let mut branch = None;
+  let nerd_font = user_config.nerd_font()?;
 
-  match head {
-    // there are commits in the repo
+  match get_head_resolved(repo)? {
     Some(head) => {
-      let commit = head
-        .peel_to_commit()
-        .context("Failed to get commit at HEAD")?;
+      if head.is_branch() {
+        // local branch
+        let branch = BranchInfo::from_reference(&head)?;
+        let commit = head.peel_to_commit()?;
 
-      // display branch name or detached head indicator
-      let display_branch = if head.is_branch() {
-        let info = BranchInfo::from_reference(head)?;
-        let mut out = format!("On {}", style(info.name()).green());
+        write!(out, "On branch {}", style(branch.name()).cyan())?;
 
-        let semver = find_current_semver(repo, &head.peel_to_commit()?)?;
-        if let Some(semver) = semver {
-          out.push_str(&format!(" {}", style!("({})", semver).dim()));
+        // extra branch info is displayed as:
+        // [U +0 -0 | B +0 -0 | v1.0.0]
+        //
+        // each piece needs to be stored in a vec and displayed with " | " separator
+        let mut info = Vec::new();
+
+        if let Some(upstream) = branch.upstream(repo)? {
+          let upstream_tip = upstream.get().peel_to_commit()?.id();
+          let (a, b) = repo.graph_ahead_behind(upstream_tip, commit.id())?;
+
+          info.push(format!(
+            "{} {}",
+            style(if_nerdfont!(nerd_font, "", "U")).blue(),
+            display_plus_minus(a, b)
+          ));
         }
 
-        branch = Some(info);
-        out
+        if let Some(base) = user_config.branch_base(branch.name())? {
+          let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
+          let (a, b) = repo.graph_ahead_behind(base_tip, commit.id())?;
+
+          info.push(format!(
+            "{} {}",
+            style(if_nerdfont!(nerd_font, "", "B")).magenta(),
+            display_plus_minus(a, b)
+          ));
+        }
+
+        if let Some(semver) = find_current_semver(repo, &commit)? {
+          info.push(
+            style!("{}{}", if_nerdfont!(nerd_font, " "), semver.name())
+              .yellow()
+              .to_string(),
+          );
+        }
+
+        if !info.is_empty() {
+          write!(
+            out,
+            " {}",
+            dim_brackets!("{}", info.join(&style(" | ").dim().to_string()))
+          )?;
+        }
+
+        let commit_line = display_commit_compact(&commit, user_config)?;
+
+        if is_term() {
+          write!(
+            out,
+            "\n{}",
+            truncate_str(
+              &commit_line,
+              get_term_width(),
+              &style("\u{2026}").dim().to_string()
+            )
+          )?;
+        } else {
+          write!(out, "\n{}", &commit_line)?;
+        }
       } else if head.is_remote() {
-        let meta = BranchInfo::from_reference(head)?;
-        // don't set branch because, while remotes are like branches, they cannot have
-        // an upstream or base
-        format!("On remote {}", style(meta.name()).green())
-      } else if head.is_tag() {
-        let name = head.name_bytes().to_str_lossy();
-        let mut out = format!("On tag {}", style(&name).green());
+        // remote/upstream branch
+        let upstream = BranchInfo::from_reference(&head)?;
+        let commit = head.peel_to_commit()?;
 
-        let semver = find_current_semver(repo, &head.peel_to_commit()?)?;
-        if let Some(semver) = semver {
-          // display semver if it's a different tag
-          if semver.name() != name {
-            out.push_str(&format!(" {}", style!("({})", semver).dim()));
-          }
+        write!(out, "On upstream {}", style(upstream.name()).green())?;
+
+        let mut info = Vec::new();
+
+        if let Some(branch) = find_local_of_upstream(repo, &upstream)? {
+          let branch_tip = branch.get().peel_to_commit()?.id();
+          let (a, b) = repo.graph_ahead_behind(commit.id(), branch_tip)?;
+
+          // doesn't need a prefix, this could only be relative to the local branch
+          info.push(display_plus_minus(a, b));
         }
 
-        out
+        if let Some(semver) = find_current_semver(repo, &commit)? {
+          info.push(
+            style!("{}{}", if_nerdfont!(nerd_font, " "), semver.name())
+              .yellow()
+              .to_string(),
+          );
+        }
+
+        if !info.is_empty() {
+          write!(
+            out,
+            " {}",
+            dim_brackets!("{}", info.join(&style(" | ").dim().to_string()))
+          )?;
+        }
+
+        let commit_line = display_commit_compact(&commit, user_config)?;
+
+        if is_term() {
+          write!(
+            out,
+            "\n{}",
+            truncate_str(
+              &commit_line,
+              get_term_width(),
+              &style("\u{2026}").dim().to_string()
+            )
+          )?;
+        } else {
+          write!(out, "\n{}", &commit_line)?;
+        }
+      } else if head.is_tag() {
+        // tag
+        let tag_name = head.shorthand()?;
+
+        write!(out, "On tag {}", style(tag_name).green())?;
+
+        // TODO: consider adding info if it's a semver tag, like commits since prev
+
+        let commit = head.peel_to_commit()?;
+        let commit_line = display_commit_compact(&commit, user_config)?;
+
+        if is_term() {
+          write!(
+            out,
+            "\n{}",
+            truncate_str(
+              &commit_line,
+              get_term_width(),
+              &style("\u{2026}").dim().to_string()
+            )
+          )?;
+        } else {
+          write!(out, "\n{}", &commit_line)?;
+        }
       } else {
-        style("Detached HEAD").red().to_string()
-      };
+        // commit
+        let commit = head.peel_to_commit()?;
 
-      write!(out, "{}", display_branch)?;
-
-      display_authorship(repo, &mut out, " as ")?;
-
-      let commit = display_commit_compact(&commit)?;
-      let commit = if is_term() {
-        truncate_str(&commit, get_term_width(), &style("…").dim().to_string()).to_string()
-      } else {
-        commit
-      };
-      write!(out, "\n{}", commit)?;
+        write!(
+          out,
+          "On commit {} {}",
+          display_hash(commit.as_object())?,
+          style!(
+            "{}, {} · {}",
+            commit.author().name()?,
+            display_time(&commit.time(), &DisplayTimeOptions {
+              relative: user_config.format_relative()?,
+              fmt: user_config.format_date()?
+            })?,
+            commit.summary()?.unwrap_or(commit.message()?)
+          )
+          .dim()
+        )?;
+      }
     }
 
-    // head points to nothing, no commits in repo
+    // no commits yet
     None => {
-      let head = repo.find_reference("HEAD")?;
-      let symbolic_ref = head
-        .symbolic_target_bytes()
-        .expect("HEAD points to nothing. Is the .git/HEAD file corrupt or missing?")
-        .to_str_lossy();
+      let head = get_head(repo)?.context("HEAD reference does not exist!")?;
+      let branch_name = head
+        .symbolic_target()?
+        .context("Failed to get branch pointed to by HEAD")?;
 
+      write!(out, "On branch {}", style(branch_name).green())?;
       write!(
         out,
-        "On {} (no commits yet)",
-        style(symbolic_ref.trim_prefix_opt("refs/heads/")).green()
-      )?;
-
-      display_authorship(repo, &mut out, "\n  Committing as ")?;
-    }
-  };
-
-  // upstream and base ahead/behind if we're on a branch
-  if let Some(branch) = branch {
-    // we don't fetch, so we can use this ref multiple times
-    let branch_ref = branch.resolve(repo)?;
-
-    let mut rows: Vec<[String; 2]> = Vec::with_capacity(2);
-    // the label is either "Upstream" or "Base", these are printed with alignment so
-    // the branch names are lined up
-    let mut label_width = 0usize;
-
-    // upstream row
-    let upstream = branch.upstream(repo)?;
-    if let Some(upstream) = upstream {
-      let upstream_info = BranchInfo::from_branch(&upstream)?;
-      let upstream_tip = upstream.get().peel_to_commit()?.id();
-      let branch_tip = branch_ref.peel_to_commit()?.id();
-
-      let (a, b) = repo
-        .graph_ahead_behind(upstream_tip, branch_tip)
-        .context("Failed to get ahead/behind for upstream")?;
-
-      let row = [
-        style("Upstream").blue().to_string(),
-        format!(
-          "{}{} {}{}",
-          style("[").dim(),
-          style(upstream_info.name()),
-          display_plus_minus(a, b),
-          style("]").dim(),
-        ),
-      ];
-      label_width = measure_text_width(&row[0]);
-      rows.push(row);
-    }
-
-    // base row
-    let base = UserConfig::new(repo)?.branch_base(branch.name())?;
-    if let Some(base) = base {
-      let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
-      let branch_tip = branch_ref.peel_to_commit()?.id();
-
-      let (a, b) = repo
-        .graph_ahead_behind(base_tip, branch_tip)
-        .context("Failed to get ahead/behind for base")?;
-
-      let row = [
-        style("Base").magenta().to_string(),
-        format!(
-          "{}{} {}{}",
-          style("[").dim(),
-          style(base.name()),
-          display_plus_minus(a, b),
-          style("]").dim(),
-        ),
-      ];
-      label_width = label_width.max(measure_text_width(&row[0]));
-      rows.push(row);
-    }
-
-    // print with everything after the row label aligned
-    for row in rows {
-      write!(
-        out,
-        "\n  {} {}",
-        pad_str(&row[0], label_width, console::Alignment::Left, None),
-        &row[1]
+        "\n{}",
+        style!("{}No commits yet", if_nerdfont!(nerd_font, " ")).dim()
       )?;
     }
+  }
+
+  if user_config.show_authorship()? {
+    let sig = repo.signature()?;
+    write!(
+      out,
+      "\n{} {}",
+      style!("{}{}", if_nerdfont!(nerd_font, " "), sig.name()?).cyan(),
+      style(sig.email()?).dim()
+    )?;
   }
 
   Ok(out)
@@ -665,7 +713,7 @@ fn display_merge_header(repo: &Repository) -> Result<String> {
   let mut out = String::with_capacity(80);
   write!(
     out,
-    "{} {} with {}",
+    "{} {} into {}",
     style("Merging").yellow(),
     style(current).blue(),
     style(base).magenta()
@@ -745,11 +793,7 @@ fn display_bisect_header(repo: &Repository) -> Result<String> {
 /// Writes the prefix and authorship info to the buffer if the user's config
 /// allows it. The prefix immediately precedes the authorship info with no added
 /// whitespace.
-fn display_authorship<'buf>(
-  repo: &Repository,
-  buf: &'buf mut String,
-  prefix: &str,
-) -> Result<&'buf mut String> {
+fn display_authorship(repo: &Repository, buf: &mut String, prefix: &str) -> Result<()> {
   let config = UserConfig::new(repo)?;
   if config.show_authorship()? {
     write!(
@@ -760,7 +804,7 @@ fn display_authorship<'buf>(
     )?;
   }
 
-  Ok(buf)
+  Ok(())
 }
 
 /// Gets conflicted, staged, and unstaged changes, and builds a printable
@@ -768,7 +812,12 @@ fn display_authorship<'buf>(
 ///
 /// # Params
 /// - `untracked` - whether to include untracked files in the unstaged section
-pub fn display_file_statuses(repo: &Repository, untracked: bool) -> Result<String> {
+/// - `nerd_font` - whether to use nerd font icons or regular characters
+pub fn display_file_statuses(
+  repo: &Repository,
+  untracked: bool,
+  nerd_font: bool,
+) -> Result<String> {
   use std::fmt::Write;
   let mut out = String::new();
   let mut first_paragraph = true;
@@ -808,7 +857,7 @@ pub fn display_file_statuses(repo: &Repository, untracked: bool) -> Result<Strin
       out,
       "{} - {}",
       style("Staged").green(),
-      display_summary(&staged)
+      display_summary(&staged, nerd_font)
     )?;
   }
 
@@ -821,7 +870,7 @@ pub fn display_file_statuses(repo: &Repository, untracked: bool) -> Result<Strin
       out,
       "{} - {}",
       style("Unstaged").red(),
-      display_summary(&unstaged)
+      display_summary(&unstaged, nerd_font)
     )?;
   }
 

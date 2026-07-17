@@ -117,7 +117,7 @@ impl Args {
     if show_summary {
       let summary = DiffSummary::new(&diff)?;
       if summary.num_files != 0 {
-        writeln!(buf, "\n{}", display_summary(&summary))?;
+        writeln!(buf, "\n{}", display_summary(&summary, config.nerd_font()?))?;
       }
     }
 
