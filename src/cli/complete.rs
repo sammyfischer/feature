@@ -22,6 +22,7 @@ pub enum CompletionType {
   Branch,
   Remote,
   Rev,
+  Tag,
   Project,
 }
 
@@ -31,6 +32,7 @@ impl Args {
       CompletionType::Branch => self.find_matching_branches(&state.repo)?,
       CompletionType::Remote => self.find_matching_remotes(&state.repo)?,
       CompletionType::Rev => self.find_matching_revs(&state.repo)?,
+      CompletionType::Tag => self.find_matching_tags(&state.repo)?,
       CompletionType::Project => self.find_matching_projects(&state.config)?,
     };
     print_matches(reply);
@@ -48,6 +50,27 @@ impl Args {
       if name.starts_with(prefix.as_bytes()) {
         names.push(name.to_str_lossy_owned());
       }
+    }
+
+    Ok(names)
+  }
+
+  /// Find tags that match a given prefix
+  fn find_matching_tags(&self, repo: &Repository) -> Result<Vec<String>> {
+    let prefix = &self.value;
+    let mut names = Vec::new();
+
+    // using this glob pattern guarantees that they start with the specified prefix,
+    // no need to filter in the loop
+    let tags = repo.references_glob(&format!("refs/tags/{}*", prefix))?;
+    for tag in tags {
+      let tag = tag?;
+      if !tag.is_tag() {
+        continue;
+      }
+
+      let name = tag.shorthand()?;
+      names.push(name.to_string());
     }
 
     Ok(names)

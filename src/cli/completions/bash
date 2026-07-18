@@ -25,6 +25,33 @@ _feature_compgen_branches() {
   printf "%s" "$(feature "${args[@]}")"
 }
 
+# Generates completions for a tag name
+#
+# Params
+# $0 - (required) the prefix to match
+# $1 - (optional) the git dir
+# $2 - (optional) the work tree
+#
+# Returns
+# Prints a space-separated list of matching branches
+_feature_compgen_tags() {
+  local word="$1"
+  local git_dir="$2"
+  local work_tree="$3"
+
+  local -a args=()
+  if [[ -n "$git_dir" ]]; then
+    args+=("--git-dir" "$git_dir")
+  fi
+  if [[ -n "$work_tree" ]]; then
+    args+=("--work-tree" "$work_tree")
+  fi
+
+  args+=("complete" "--type" "tag" "$word")
+
+  printf "%s" "$(feature "${args[@]}")"
+}
+
 # Generates completions for a remote name
 #
 # Params
@@ -299,13 +326,7 @@ _feature() {
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
-          case "$cur" in
-            -*)
-              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-              ;;
-            *)
-              COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
-          esac
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
       esac
       ;;
 
@@ -316,7 +337,7 @@ _feature() {
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
       ;;
@@ -328,13 +349,7 @@ _feature() {
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
-          case "$cur" in
-            -*)
-              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-              ;;
-            *)
-              COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
-          esac
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
       esac
       ;;
 
@@ -345,14 +360,7 @@ _feature() {
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
-          case "$cur" in
-            "" | -*)
-              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-              ;;
-            *)
-              COMPREPLY=()
-              ;;
-          esac
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
           ;;
       esac
       ;;
@@ -382,14 +390,7 @@ _feature() {
     config_get)
       local opts="-h --help"
       local keys="default_remote protect branch.sep branch.template"
-      case "$cur" in
-        -*)
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur"))
-          ;;
-        *)
-          COMPREPLY=( $(compgen -W "$keys" -- "$cur"))
-          ;;
-      esac
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur")  $(compgen -W "$keys" -- "$cur") )
       ;;
 
     end)
@@ -402,14 +403,7 @@ _feature() {
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
-          case "$cur" in
-            "" | -*)
-              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-              ;;
-            *)
-              COMPREPLY=()
-              ;;
-          esac
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
       ;;
@@ -497,14 +491,7 @@ _feature() {
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
-          case "$cur" in
-            -*)
-              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-              ;;
-            *)
-              COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
-              ;;
-          esac
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
       ;;
@@ -522,14 +509,7 @@ _feature() {
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
-          case "$cur" in
-            -*)
-              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-              ;;
-            *)
-              COMPREPLY=( $(_feature_compgen_revisions "$cur" "$git_dir" "$work_tree") )
-              ;;
-          esac
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_revisions "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
       ;;
@@ -541,14 +521,7 @@ _feature() {
           COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
         *)
-          case "$cur" in
-            "" | -*)
-              COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-              ;;
-            *)
-              COMPREPLY=()
-              ;;
-          esac
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
           ;;
       esac
       ;;
@@ -560,38 +533,17 @@ _feature() {
 
     wip_drop | wip_show)
       local opts="-h --help"
-      case "$cur" in
-        -*)
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-          ;;
-        *)
-          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
-          ;;
-      esac
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
       ;;
 
     wip_list)
       local opts="-h --help -a --all"
-      case "$cur" in
-        -*)
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-          ;;
-        *)
-          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
-          ;;
-      esac
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
       ;;
 
     wip_pop)
       local opts="-h --help -k --keep"
-      case "$cur" in
-        -*)
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-          ;;
-        *)
-          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree"))
-          ;;
-      esac
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
       ;;
 
     wip_push)
@@ -650,33 +602,19 @@ _feature() {
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
         *)
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_tags "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
       ;;
 
     update)
       local opts="-h --help --dry-run -c --continue -a --abort"
-      case "$cur" in
-        -*)
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-          ;;
-        *)
-          COMPREPLY=( $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
-          ;;
-      esac
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
       ;;
 
     version_log)
       local opts="-h --help"
-      case "$cur" in
-        -*)
-          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-          ;;
-        *)
-          COMPREPLY=( $(_feature_compgen_revisions "$cur" "$git_dir" "$work_tree") )
-          ;;
-      esac
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_revisions "$cur" "$git_dir" "$work_tree") )
       ;;
   esac
 }
