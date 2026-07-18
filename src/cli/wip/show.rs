@@ -5,6 +5,7 @@ use crate::cli::display::diff::display_summary;
 use crate::cli::term::paginate;
 use crate::core::diff::DiffSummary;
 use crate::core::string::ToStrLossy;
+use crate::core::user_config::UserConfig;
 use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
 
 #[derive(clap::Args, Clone, Debug)]
@@ -43,7 +44,11 @@ impl ShowArgs {
 
     writeln!(out, "Wip {}", display_wip_spec(branch.name(), num))?;
 
-    writeln!(out, "\n{}\n", display_summary(&summary))?;
+    writeln!(
+      out,
+      "\n{}\n",
+      display_summary(&summary, UserConfig::new(repo)?.nerd_font()?)
+    )?;
 
     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
       writeln!(out, "{}", line.content().to_str_lossy()).is_ok()

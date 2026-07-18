@@ -11,7 +11,7 @@ use crate::cli::display::time::DisplayTimeOptions;
 use crate::core::NotFoundExt;
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
-use crate::core::user_config::CommitMessageLevel;
+use crate::core::user_config::{CommitMessageLevel, UserConfig};
 use crate::core::wip::get_wip_refname;
 
 #[derive(clap::Args, Clone, Debug)]
@@ -192,7 +192,10 @@ impl PushArgs {
     diff.find_similar(None)?;
 
     let summary = DiffSummary::new(&diff)?;
-    println!("\n{}", display_summary(&summary));
+    println!(
+      "\n{}",
+      display_summary(&summary, UserConfig::new(repo)?.nerd_font()?)
+    );
 
     Ok(())
   }

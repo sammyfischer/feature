@@ -153,7 +153,7 @@ impl Args {
       diff.find_similar(None)?;
 
       let summary = DiffSummary::new(&diff)?;
-      Some(display_summary(&summary))
+      Some(display_summary(&summary, user_config.nerd_font()?))
     } else {
       None
     };

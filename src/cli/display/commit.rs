@@ -2,10 +2,12 @@ use anyhow::{Context, Result};
 use console::style;
 use git2::Commit;
 
-use crate::cli::display::time::{DisplayTimeOptions, display_time, display_time_relative};
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::display::{display_hash, display_signature};
 use crate::core::string::ToStrLossy;
-use crate::core::user_config::CommitMessageLevel;
+use crate::core::trim_hash;
+use crate::core::user_config::{CommitMessageLevel, UserConfig};
+use crate::{if_nerdfont, style};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DisplayCommitOptions {
@@ -78,28 +80,31 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
 }
 
 /// A very concise format meant to be displayed on one line (although not
-/// guaranteed to be). Unlike, [display_commit], there are no configuration
-/// options.
+/// guaranteed to be).
 ///
 /// ```txt
-/// abcd123 (Author Name, 5 minutes ago) implemented change
+/// abcd123 Author Name, 5 minutes ago · implemented change
 /// ```
 ///
-/// The hash is yellow, the parenthesized author/time is dim white (so just
-/// gray) and the subject line is white.
-pub fn display_commit_compact(commit: &Commit) -> Result<String> {
+/// The hash is yellow, all the remaining text is gray.
+pub fn display_commit_compact(commit: &Commit, config: &UserConfig) -> Result<String> {
   Ok(format!(
-    "{} {} {}",
-    display_hash(commit.as_object())?,
-    style(&format!(
-      "({}, {})",
-      commit.author().name_bytes().to_str_lossy(),
-      display_time_relative(&commit.time())?
-    ))
-    .dim(),
-    commit
-      .summary_bytes()
-      .expect("Commit should have a summary")
-      .to_str_lossy()
+    "{} {}",
+    style!(
+      "{}{}",
+      if_nerdfont!(config.nerd_font()?, " "),
+      trim_hash(commit.as_object())?
+    )
+    .yellow(),
+    style!(
+      "{}, {} · {}",
+      commit.author().name()?,
+      display_time(&commit.time(), &DisplayTimeOptions {
+        relative: config.format_relative()?,
+        fmt: config.format_date()?
+      })?,
+      commit.summary()?.unwrap_or(commit.message()?)
+    )
+    .dim()
   ))
 }

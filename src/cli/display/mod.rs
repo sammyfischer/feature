@@ -12,10 +12,50 @@ pub mod diff;
 pub mod time;
 
 /// Creates a [StyledObject] with format args
+///
+/// # Params
+/// Format args
+///
+/// [StyledObject]: console::StyledObject
 #[macro_export]
 macro_rules! style {
   ($($arg:tt)*) => {
     console::style(&format!($($arg)*))
+  };
+}
+
+/// Creates styled text wrapped in dim white (gray) square brackets
+///
+/// # Params
+/// Format args
+#[macro_export]
+macro_rules! dim_brackets {
+  ($($arg:tt)*) => {
+    &format!("{}{}{}", console::style("[").dim(), $crate::style!($($arg)*), console::style("]").dim())
+  };
+}
+
+/// Creates an if expression that uses the given text if `cond` is true, else
+/// the empty string.
+///
+/// # First form
+/// `nerdfont!(cond: expr, text: string literal)`
+/// - `cond` - the condition of the if expression
+/// - `text` - the value to return if `cond` is true
+///
+/// # Second form
+/// `nerdfont!(cond: expr, yes: string literal, no: string literal)`
+/// - `cond` - the condition of the if expression
+/// - `yes` - the value to return if `cond` is true
+/// - `no` - the value to return if `cond` is false
+#[macro_export]
+macro_rules! if_nerdfont {
+  ($cond:expr, $text:literal) => {
+    if $cond { $text } else { "" }
+  };
+
+  ($cond:expr, $yes:literal, $no:literal) => {
+    if $cond { $yes } else { $no }
   };
 }
 
@@ -44,7 +84,7 @@ pub fn display_signature(signature: Option<&Signature>) -> String {
 pub fn display_plus_minus(plus: usize, minus: usize) -> String {
   format!(
     "{} {}",
-    style(format!("+{}", plus)).green(),
-    style(format!("-{}", minus)).red()
+    style!("+{}", plus).green(),
+    style!("-{}", minus).red()
   )
 }

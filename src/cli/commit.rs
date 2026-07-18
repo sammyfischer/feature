@@ -708,7 +708,9 @@ fn build_msg_template(initial: &[u8], to: Option<&str>, diff: &Diff) -> Result<V
   }
 
   let summary = DiffSummary::new(diff)?;
-  let summary = display_summary(&summary);
+
+  // no nerd font statuses, since this is being written to a file
+  let summary = display_summary(&summary, false);
 
   for line in summary.lines() {
     out.extend_from_slice(format!("\n# {}", strip_ansi_codes(line)).as_bytes());
@@ -783,6 +785,6 @@ fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &UserConfig)
   Ok(format!(
     "{}\n\n{}",
     commit_output,
-    display_summary(&summary)
+    display_summary(&summary, config.nerd_font()?)
   ))
 }

@@ -20,6 +20,14 @@ pub fn get_head_resolved<'rf>(repo: &'rf Repository) -> Result<Option<Reference<
   }
 }
 
+/// Gets HEAD without resolving. Most of the time, you should use
+/// [get_head_resolved].
+///
+/// [get_head_resolved]: crate::core::branch::get_head_resolved
+pub fn get_head<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {
+  repo.find_reference("HEAD").not_found_ok()
+}
+
 pub fn get_merge_head<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {
   repo.find_reference("MERGE_HEAD").not_found_ok()
 }
