@@ -5,13 +5,16 @@ use console::{measure_text_width, style, truncate_str};
 use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::cli::display::commit::display_commit_compact;
+use crate::cli::display::diff::display_summary_header;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
+use crate::core::diff::DiffSummary;
 use crate::core::string::ToStrLossyOwned;
 use crate::core::tag::{SemverTag, find_current_semver, get_semver_tags};
 use crate::core::user_config::UserConfig;
 use crate::core::{NotFoundExt, open_repo_from_dirs};
-use crate::{App, style};
+use crate::{App, if_nerdfont, style};
 
 const LONG_ABOUT: &str = r#"Lists semver tags, sorted by version (highest to lowest). Shows how many commits
 were added since the previous version. If the tag is annotated, it shows the tag
@@ -28,6 +31,10 @@ pub struct Args {
   /// Hides git submodules from output
   #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_modules: Option<bool>,
+
+  /// View detailed info about a particular tag
+  #[arg(value_name = "TAG")]
+  tag: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -80,8 +87,13 @@ impl Args {
       let repo_thead = scope.spawn(|| -> Result<_> {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
 
-        let table = self.build_table(&repo)?;
-        self.display_table(table)
+        match &self.tag {
+          Some(name) => self.display_single_tag(&repo, name),
+          None => {
+            let table = self.build_table(&repo)?;
+            self.display_table(table)
+          }
+        }
       });
 
       let proj_thread = scope.spawn(|| {
@@ -92,13 +104,17 @@ impl Args {
             .projects
             .par_iter()
             .map(|(name, project)| -> Result<_> {
-              let mut out = format!("\n{} {}", style("Project").bold(), style(name).cyan());
+              let mut out = format!("\n{} {}\n", style("Project").bold(), style(name).cyan());
               let repo = Repository::open(&project.path)?;
 
-              let table = self.build_table(&repo)?;
-              out.push('\n');
-              out.push_str(&self.display_table(table)?);
-              Ok(out)
+              match &self.tag {
+                Some(name) => self.display_single_tag(&repo, name),
+                None => {
+                  let table = self.build_table(&repo)?;
+                  out.push_str(&self.display_table(table)?);
+                  Ok(out)
+                }
+              }
             })
             .collect()
         }
@@ -113,13 +129,17 @@ impl Args {
             .map(|name| -> Result<_> {
               let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
               let module = repo.find_submodule(name)?;
-              let mod_repo = module.open()?;
+              let repo = module.open()?;
+              let mut out = format!("\n{} {}\n", style("Module").bold(), style(name).cyan());
 
-              let mut out = format!("\n{} {}", style("Module").bold(), style(name).cyan());
-              let table = self.build_table(&mod_repo)?;
-              out.push('\n');
-              out.push_str(&self.display_table(table)?);
-              Ok(out)
+              match &self.tag {
+                Some(name) => self.display_single_tag(&repo, name),
+                None => {
+                  let table = self.build_table(&repo)?;
+                  out.push_str(&self.display_table(table)?);
+                  Ok(out)
+                }
+              }
             })
             .collect()
         }
@@ -177,11 +197,8 @@ impl Args {
 
     if let Some(parent) = commit.parent(0).not_found_ok()?
       && let Some(prev) = find_current_semver(repo, &parent)?
-      && let Some(prev) = repo
-        .resolve_reference_from_short_name(&prev.name())
-        .not_found_ok()?
     {
-      let (distance, _) = repo.graph_ahead_behind(commit.id(), prev.peel_to_commit()?.id())?;
+      let (distance, _) = repo.graph_ahead_behind(commit.id(), prev.commit)?;
       row.since_prev = Some(distance.to_string());
     }
 
@@ -292,6 +309,90 @@ impl Args {
         style!("{}, {} · {}", row.author, row.time, row.msg).dim()
       )?;
     }
+
+    Ok(out)
+  }
+
+  fn display_single_tag(&self, repo: &Repository, name: &str) -> Result<String> {
+    use std::fmt::Write;
+    let mut out = String::new();
+
+    let config = UserConfig::new(repo)?;
+    let rf = repo.resolve_reference_from_short_name(name)?;
+
+    if !rf.is_tag() {
+      return Err(anyhow!(format!("{} is not a tag", name)));
+    }
+
+    write!(out, "{}", style(name).green())?;
+
+    let nerdfont = config.nerd_font()?;
+    let time_opts = DisplayTimeOptions {
+      relative: config.format_relative()?,
+      fmt: config.format_date()?,
+    };
+
+    match rf.peel_to_tag() {
+      // annotated tag
+      Ok(obj) => {
+        if let Some(sig) = obj.tagger() {
+          write!(
+            out,
+            "\n\n{}{}, {}",
+            style(if_nerdfont!(nerdfont, " ")).yellow(),
+            sig.name()?,
+            display_time(&sig.when(), &time_opts)?
+          )?;
+
+          if let Some(msg) = obj.message()? {
+            write!(
+              out,
+              "\n{}",
+              style!("{}{}", if_nerdfont!(nerdfont, " "), msg).dim()
+            )?
+          };
+        };
+      }
+
+      // lightweight tag
+      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => {}
+
+      Err(e) => return Err(anyhow!(e)),
+    }
+
+    let commit = rf.peel_to_commit()?;
+    write!(
+      out,
+      "\n\n{}",
+      display_commit_compact(&commit, &config, true)?
+    )?;
+
+    write!(
+      out,
+      "\n{}",
+      style!(
+        "{}{}",
+        if_nerdfont!(nerdfont, " "),
+        commit.summary()?.unwrap_or(commit.message()?)
+      )
+      .dim()
+    )?;
+
+    let old_tree = if let Some(parent) = commit.parent(0).not_found_ok()?
+      && let Some(prev) = find_current_semver(repo, &parent)?
+    {
+      write!(out, "\n\nSince {}", style(prev.name()).cyan())?;
+      Some(repo.find_commit(prev.commit)?.tree()?)
+    } else {
+      write!(out, "\n\nInitial release")?;
+      None
+    };
+
+    let mut diff = repo.diff_tree_to_tree(old_tree.as_ref(), Some(&commit.tree()?), None)?;
+    diff.find_similar(None)?;
+    let summary = DiffSummary::new(&diff)?;
+
+    write!(out, " - {}", display_summary_header(&summary))?;
 
     Ok(out)
   }
