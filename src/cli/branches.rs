@@ -5,6 +5,7 @@ use console::{measure_text_width, style, truncate_str};
 use git2::{Branch, BranchType, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::cli::display::commit::display_commit_compact;
 use crate::cli::display::display_plus_minus;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
@@ -223,20 +224,7 @@ impl Args {
     };
 
     let branch_commit = branch.get().peel_to_commit()?;
-
-    row.commit = style!(
-      "{}, {} · {}",
-      branch_commit.author().name()?,
-      display_time(&branch_commit.time(), &DisplayTimeOptions {
-        relative: user_config.format_relative()?,
-        fmt: user_config.format_date()?,
-      })?,
-      branch_commit
-        .summary()?
-        .expect("Commit should have a summary")
-    )
-    .dim()
-    .to_string();
+    row.commit = display_commit_compact(&branch_commit, user_config, false)?;
 
     if let Some(upstream) = branch.upstream().not_found_ok()? {
       let upstream_name = upstream.name_bytes()?.to_str_lossy();
@@ -326,14 +314,14 @@ impl Args {
 
       write!(out, "{}", &row.branch)?;
 
-      let nerd_font = user_config.nerd_font()?;
+      let nerdfont = user_config.nerdfont()?;
 
       if let Some(upstream) = &row.upstream {
         // include leading space
         write!(
           ab_buf,
           " {} {}",
-          style(if nerd_font { "" } else { "U" }).blue(),
+          style(if nerdfont { "" } else { "U" }).blue(),
           upstream
         )?;
       }
@@ -343,7 +331,7 @@ impl Args {
         write!(
           ab_buf,
           " {} {}",
-          style(if nerd_font { "" } else { "B" }).magenta(),
+          style(if nerdfont { "" } else { "B" }).magenta(),
           base
         )?;
       }
@@ -404,13 +392,13 @@ impl Args {
 
     let commit = branch.get().peel_to_commit()?;
 
-    let nerd_font = user_config.nerd_font()?;
+    let nerdfont = user_config.nerdfont()?;
     write!(
       out,
       "\n\n{}",
       style!(
         "{}{}",
-        if nerd_font { " " } else { "" },
+        if nerdfont { " " } else { "" },
         trim_hash(commit.as_object())?
       )
       .yellow()
@@ -431,7 +419,7 @@ impl Args {
       "\n{}",
       style!(
         "{}{}",
-        if nerd_font { " " } else { "" },
+        if nerdfont { " " } else { "" },
         commit.summary()?.expect("Commit should have a summary")
       )
       .dim()
@@ -460,7 +448,7 @@ impl Args {
       let ab = repo.graph_ahead_behind(upstream_tip, commit.id())?;
 
       let upstream_row = BranchRow {
-        label: style!("{}{}", if nerd_font { " " } else { "" }, "Upstream")
+        label: style!("{}{}", if nerdfont { " " } else { "" }, "Upstream")
           .blue()
           .to_string(),
         name: upstream
@@ -478,7 +466,7 @@ impl Args {
       let ab = repo.graph_ahead_behind(base_tip, commit.id())?;
 
       let base_row = BranchRow {
-        label: style!("{}{}", if nerd_font { " " } else { "" }, "Base")
+        label: style!("{}{}", if nerdfont { " " } else { "" }, "Base")
           .magenta()
           .to_string(),
         name: base.name().to_string(),

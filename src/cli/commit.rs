@@ -785,6 +785,6 @@ fn display_commit_details(commit: &Commit<'_>, diff: &Diff, config: &UserConfig)
   Ok(format!(
     "{}\n\n{}",
     commit_output,
-    display_summary(&summary, config.nerd_font()?)
+    display_summary(&summary, config.nerdfont()?)
   ))
 }

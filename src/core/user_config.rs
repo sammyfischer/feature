@@ -101,7 +101,7 @@ impl<'config> UserConfig<'config> {
   }
 
   /// `feature.nerdfont`, default `false`
-  pub fn nerd_font(&self) -> Result<bool> {
+  pub fn nerdfont(&self) -> Result<bool> {
     get_option!(&self.config, get_bool, "feature.nerdfont", false)
   }
 

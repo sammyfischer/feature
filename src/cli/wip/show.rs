@@ -47,7 +47,7 @@ impl ShowArgs {
     writeln!(
       out,
       "\n{}\n",
-      display_summary(&summary, UserConfig::new(repo)?.nerd_font()?)
+      display_summary(&summary, UserConfig::new(repo)?.nerdfont()?)
     )?;
 
     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {

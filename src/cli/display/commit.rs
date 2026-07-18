@@ -86,16 +86,32 @@ pub fn display_commit(commit: &Commit, options: &DisplayCommitOptions) -> Result
 /// abcd123 Author Name, 5 minutes ago · implemented change
 /// ```
 ///
-/// The hash is yellow, all the remaining text is gray.
-pub fn display_commit_compact(commit: &Commit, config: &UserConfig) -> Result<String> {
-  Ok(format!(
-    "{} {}",
-    style!(
-      "{}{}",
-      if_nerdfont!(config.nerd_font()?, " "),
-      trim_hash(commit.as_object())?
-    )
-    .yellow(),
+/// The hash is yellow, all the remaining text is gray. Respects the user's
+/// config for timestamp formatting and nerdfont.
+///
+/// # Params
+/// - `hash` - Whether to display the hash. When false, the nerdfont commit icon
+///   will also be hidden.
+pub fn display_commit_compact(commit: &Commit, config: &UserConfig, hash: bool) -> Result<String> {
+  use std::fmt::Write;
+  let mut out = String::with_capacity(80);
+
+  if hash {
+    write!(
+      out,
+      "{} ",
+      style!(
+        "{}{}",
+        if_nerdfont!(config.nerdfont()?, " "),
+        trim_hash(commit.as_object())?
+      )
+      .yellow()
+    )?;
+  }
+
+  write!(
+    out,
+    "{}",
     style!(
       "{}, {} · {}",
       commit.author().name()?,
@@ -106,5 +122,7 @@ pub fn display_commit_compact(commit: &Commit, config: &UserConfig) -> Result<St
       commit.summary()?.unwrap_or(commit.message()?)
     )
     .dim()
-  ))
+  )?;
+
+  Ok(out)
 }

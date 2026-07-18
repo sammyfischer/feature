@@ -1,21 +1,28 @@
 use std::thread;
 
 use anyhow::{Result, anyhow};
-use console::{style, truncate_str};
+use console::{measure_text_width, style, truncate_str};
 use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::cli::display::display_hash;
-use crate::cli::display::time::{DisplayTimeOptions, display_time, display_time_relative};
+use crate::cli::display::commit::display_commit_compact;
+use crate::cli::display::diff::display_summary_header;
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
-use crate::core::open_repo_from_dirs;
-use crate::core::string::{ToStrLossy, ToStrLossyOwned};
-use crate::core::tag::{SemverTag, get_semver_tags};
+use crate::core::diff::DiffSummary;
+use crate::core::string::ToStrLossyOwned;
+use crate::core::tag::{SemverTag, find_current_semver, get_semver_tags};
 use crate::core::user_config::UserConfig;
-use crate::{App, style};
+use crate::core::{NotFoundExt, open_repo_from_dirs};
+use crate::{App, if_nerdfont, style};
+
+const LONG_ABOUT: &str = r#"Lists semver tags, sorted by version (highest to lowest). Shows how many commits
+were added since the previous version. If the tag is annotated, it shows the tag
+author and message. If it's lightweight, it shows the author/message of the
+commit it points to."#;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Lists semver tags", disable_help_subcommand = true)]
+#[command(about = "Lists semver tags", long_about = LONG_ABOUT, disable_help_subcommand = true)]
 pub struct Args {
   /// Hides feature projects from output
   #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
@@ -24,13 +31,29 @@ pub struct Args {
   /// Hides git submodules from output
   #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_modules: Option<bool>,
+
+  /// View detailed info about a particular tag
+  #[arg(value_name = "TAG")]
+  tag: Option<String>,
 }
 
 #[derive(Debug, Default)]
 struct Row {
+  /// The name of the tag
   tag: String,
-  commit: String,
-  tagger: Option<String>,
+
+  /// The tagger for annotated tags, or the commit author for lightweight tags
+  author: String,
+
+  /// The time the tag obj was created (annotated), or the time the commit was
+  /// created (lightweight)
+  time: String,
+
+  /// The tag obj message (annotated), or the commit message (lightweight)
+  msg: String,
+
+  /// Number of commits since prev version (stringified)
+  since_prev: Option<String>,
 }
 
 impl Args {
@@ -64,8 +87,13 @@ impl Args {
       let repo_thead = scope.spawn(|| -> Result<_> {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
 
-        let table = self.build_table(&repo)?;
-        self.display_table(table)
+        match &self.tag {
+          Some(name) => self.display_single_tag(&repo, name),
+          None => {
+            let table = self.build_table(&repo)?;
+            self.display_table(table)
+          }
+        }
       });
 
       let proj_thread = scope.spawn(|| {
@@ -76,13 +104,17 @@ impl Args {
             .projects
             .par_iter()
             .map(|(name, project)| -> Result<_> {
-              let mut out = format!("\n{} {}", style("Project").bold(), style(name).cyan());
+              let mut out = format!("\n{} {}\n", style("Project").bold(), style(name).cyan());
               let repo = Repository::open(&project.path)?;
 
-              let table = self.build_table(&repo)?;
-              out.push('\n');
-              out.push_str(&self.display_table(table)?);
-              Ok(out)
+              match &self.tag {
+                Some(name) => self.display_single_tag(&repo, name),
+                None => {
+                  let table = self.build_table(&repo)?;
+                  out.push_str(&self.display_table(table)?);
+                  Ok(out)
+                }
+              }
             })
             .collect()
         }
@@ -97,13 +129,17 @@ impl Args {
             .map(|name| -> Result<_> {
               let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
               let module = repo.find_submodule(name)?;
-              let mod_repo = module.open()?;
+              let repo = module.open()?;
+              let mut out = format!("\n{} {}\n", style("Module").bold(), style(name).cyan());
 
-              let mut out = format!("\n{} {}", style("Module").bold(), style(name).cyan());
-              let table = self.build_table(&mod_repo)?;
-              out.push('\n');
-              out.push_str(&self.display_table(table)?);
-              Ok(out)
+              match &self.tag {
+                Some(name) => self.display_single_tag(&repo, name),
+                None => {
+                  let table = self.build_table(&repo)?;
+                  out.push_str(&self.display_table(table)?);
+                  Ok(out)
+                }
+              }
             })
             .collect()
         }
@@ -150,67 +186,54 @@ impl Args {
     Ok(())
   }
 
-  fn build_row(&self, repo: &Repository, tag: &SemverTag) -> Result<Row> {
+  fn build_row(&self, repo: &Repository, config: &UserConfig, tag: &SemverTag) -> Result<Row> {
     let mut row = Row::default();
 
     let name = tag.name();
     row.tag = style(&name).bold().to_string();
 
     let commit = repo.find_commit(tag.commit)?;
-
-    row.commit = format!(
-      "{} {}",
-      display_hash(commit.as_object())?,
-      style(&format!(
-        "{}, {} · {}",
-        commit.author().name_bytes().to_str_lossy(),
-        display_time(&commit.time(), &DisplayTimeOptions {
-          relative: true,
-          // fmt is irrelevant for relative times. `String::new` doesn't
-          // allocate so this is fine
-          fmt: String::new(),
-        })?,
-        commit
-          .summary_bytes()
-          .expect("Commit should have a summary")
-          .to_str_lossy()
-      ))
-      .dim(),
-    );
-
     let reference = repo.resolve_reference_from_short_name(&name)?;
 
+    if let Some(parent) = commit.parent(0).not_found_ok()?
+      && let Some(prev) = find_current_semver(repo, &parent)?
+    {
+      let (distance, _) = repo.graph_ahead_behind(commit.id(), prev.commit)?;
+      row.since_prev = Some(distance.to_string());
+    }
+
+    let time_opts = DisplayTimeOptions {
+      relative: config.format_relative()?,
+      fmt: config.format_date()?,
+    };
+
     match reference.peel_to_tag() {
+      // annotated tag
       Ok(obj) => {
-        row.tagger = match (obj.tagger(), obj.message_bytes()) {
-          (None, None) => None,
+        match obj.tagger() {
+          Some(sig) => {
+            row.author = sig.name()?.to_string();
+            row.time = display_time(&sig.when(), &time_opts)?;
+          }
+          None => {
+            row.author = commit.author().name()?.to_string();
+            row.time = display_time(&commit.time(), &time_opts)?;
+          }
+        };
 
-          (Some(sig), Some(msg)) => Some(
-            style!(
-              "{}, {} · {}",
-              sig.name_bytes().to_str_lossy(),
-              display_time_relative(&sig.when())?,
-              msg.to_str_lossy()
-            )
-            .dim()
-            .to_string(),
-          ),
-
-          (Some(sig), None) => Some(
-            style!(
-              "{}, {}",
-              sig.name_bytes().to_str_lossy(),
-              display_time_relative(&sig.when())?
-            )
-            .dim()
-            .to_string(),
-          ),
-
-          (None, Some(msg)) => Some(style(msg.to_str_lossy()).dim().to_string()),
+        row.msg = match obj.message()? {
+          Some(msg) => msg.to_string(),
+          None => commit.summary()?.unwrap_or(commit.message()?).to_string(),
         };
       }
 
-      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => {}
+      // lightweight tag
+      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => {
+        row.author = commit.author().name()?.to_string();
+        row.time = display_time(&commit.time(), &time_opts)?;
+        row.msg = commit.summary()?.unwrap_or(commit.message()?).to_string();
+      }
+
       Err(e) => return Err(anyhow!(e)),
     }
 
@@ -218,23 +241,51 @@ impl Args {
   }
 
   fn build_table(&self, repo: &Repository) -> Result<Vec<Row>> {
-    let mut table = Vec::new();
+    let repo_dir = repo.path();
+    let work_dir = repo.workdir();
 
     let mut tags = get_semver_tags(repo)?;
     tags.sort_by(|a, b| b.cmp(a));
 
-    for tag in &tags {
-      table.push(self.build_row(repo, tag)?);
-    }
+    // each tag walks the commit graph to find the previous tag, which can be slow
+    let table = tags
+      .par_iter()
+      .map(|tag| {
+        let repo = open_repo_from_dirs(repo_dir, work_dir)?;
+        let config = UserConfig::new(&repo)?;
+        self.build_row(&repo, &config, tag)
+      })
+      .collect::<Result<Vec<_>>>()?;
 
     Ok(table)
+  }
+
+  /// Width of the left column containing tag name and number of commits
+  fn calculate_column_width(&self, table: &Vec<Row>) -> usize {
+    let mut width = 0usize;
+
+    for row in table {
+      let mut w = measure_text_width(&row.tag);
+
+      if let Some(d) = &row.since_prev {
+        // add one for the space, and another for the +
+        w += measure_text_width(d) + 2;
+      }
+
+      width = width.max(w);
+    }
+
+    width
   }
 
   fn display_table(&self, table: Vec<Row>) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
 
+    let width = self.calculate_column_width(&table);
+
     let mut first = true;
+    let mut distance_buf = String::with_capacity(4);
     for row in table {
       if first {
         first = false;
@@ -242,11 +293,115 @@ impl Args {
         writeln!(out)?;
       }
 
-      write!(out, "{} {}", row.tag, row.commit)?;
-      if let Some(tagger) = row.tagger {
-        write!(out, "\n  {}", tagger)?;
+      write!(out, "{}", row.tag)?;
+
+      if let Some(d) = row.since_prev {
+        write!(distance_buf, " {}", style!("+{}", d).green())?;
       }
+
+      let padding = width - measure_text_width(&row.tag) - measure_text_width(&distance_buf);
+      write!(out, "{}{}", " ".repeat(padding), &distance_buf)?;
+      distance_buf.clear();
+
+      write!(
+        out,
+        " {}",
+        style!("{}, {} · {}", row.author, row.time, row.msg).dim()
+      )?;
     }
+
+    Ok(out)
+  }
+
+  fn display_single_tag(&self, repo: &Repository, name: &str) -> Result<String> {
+    use std::fmt::Write;
+    let mut out = String::new();
+
+    let config = UserConfig::new(repo)?;
+    let rf = repo.resolve_reference_from_short_name(name)?;
+
+    if !rf.is_tag() {
+      return Err(anyhow!(format!("{} is not a tag", name)));
+    }
+
+    write!(out, "{}", style(name).green())?;
+
+    let nerdfont = config.nerdfont()?;
+    let time_opts = DisplayTimeOptions {
+      relative: config.format_relative()?,
+      fmt: config.format_date()?,
+    };
+
+    match rf.peel_to_tag() {
+      // annotated tag
+      Ok(obj) => {
+        if let Some(sig) = obj.tagger() {
+          write!(
+            out,
+            "\n\n{}{}, {}",
+            style(if_nerdfont!(nerdfont, " ")).yellow(),
+            sig.name()?,
+            display_time(&sig.when(), &time_opts)?
+          )?;
+
+          if let Some(msg) = obj.message()? {
+            write!(
+              out,
+              "\n{}",
+              style!("{}{}", if_nerdfont!(nerdfont, " "), msg).dim()
+            )?
+          };
+        };
+      }
+
+      // lightweight tag
+      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => {}
+
+      Err(e) => return Err(anyhow!(e)),
+    }
+
+    let commit = rf.peel_to_commit()?;
+    write!(
+      out,
+      "\n\n{}",
+      display_commit_compact(&commit, &config, true)?
+    )?;
+
+    write!(
+      out,
+      "\n{}",
+      style!(
+        "{}{}",
+        if_nerdfont!(nerdfont, " "),
+        commit.summary()?.unwrap_or(commit.message()?)
+      )
+      .dim()
+    )?;
+
+    let old_tree = if let Some(parent) = commit.parent(0).not_found_ok()?
+      && let Some(prev) = find_current_semver(repo, &parent)?
+    {
+      write!(out, "\n\nSince {}", style(prev.name()).yellow())?;
+
+      let (ahead, _) = repo.graph_ahead_behind(commit.id(), prev.commit)?;
+      write!(
+        out,
+        " - {} {}, ",
+        style(ahead).cyan(),
+        if ahead == 1 { "commit" } else { "commits" }
+      )?;
+
+      Some(repo.find_commit(prev.commit)?.tree()?)
+    } else {
+      write!(out, "\n\nInitial release - ")?;
+      None
+    };
+
+    let mut diff = repo.diff_tree_to_tree(old_tree.as_ref(), Some(&commit.tree()?), None)?;
+    diff.find_similar(None)?;
+    let summary = DiffSummary::new(&diff)?;
+
+    write!(out, "{}", display_summary_header(&summary))?;
 
     Ok(out)
   }
