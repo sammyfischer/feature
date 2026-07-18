@@ -23,58 +23,58 @@ pub fn display_summary_header(summary: &DiffSummary) -> String {
   )
 }
 
-pub fn display_summary(summary: &DiffSummary, nerd_font: bool) -> String {
+pub fn display_summary(summary: &DiffSummary, nerdfont: bool) -> String {
   use std::fmt::Write;
   let mut out = String::new();
 
   write!(out, "{}", display_summary_header(summary)).unwrap();
   for file in &summary.files {
-    write!(out, "\n  {}", display_file_summary(file, nerd_font)).unwrap();
+    write!(out, "\n  {}", display_file_summary(file, nerdfont)).unwrap();
   }
 
   out
 }
 
-pub fn display_file_summary(file: &DiffFileSummary, nerd_font: bool) -> String {
+pub fn display_file_summary(file: &DiffFileSummary, nerdfont: bool) -> String {
   match file.status {
     Delta::Unmodified => format!("{} {}", style("=").dim(), file.name),
 
     Delta::Added => format!(
       "{} {} {}",
-      style(if_nerdfont!(nerd_font, "", "A")).green(),
+      style(if_nerdfont!(nerdfont, "", "A")).green(),
       file.name,
       display_plus_minus(file.insertions, file.deletions)
     ),
 
     Delta::Deleted => format!(
       "{} {} {}",
-      style(if_nerdfont!(nerd_font, "", "D")).red(),
+      style(if_nerdfont!(nerdfont, "", "D")).red(),
       file.name,
       display_plus_minus(file.insertions, file.deletions)
     ),
 
     Delta::Modified => format!(
       "{} {} {}",
-      style(if_nerdfont!(nerd_font, "", "M")).yellow(),
+      style(if_nerdfont!(nerdfont, "", "M")).yellow(),
       file.name,
       display_plus_minus(file.insertions, file.deletions)
     ),
 
     Delta::Untracked => format!(
       "{} {}",
-      style(if_nerdfont!(nerd_font, "󰘓", "U")).cyan(),
+      style(if_nerdfont!(nerdfont, "󰘓", "U")).cyan(),
       file.name
     ),
 
     Delta::Conflicted => format!(
       "{} {}",
-      style(if_nerdfont!(nerd_font, "󰩌", "X")).red(),
+      style(if_nerdfont!(nerdfont, "󰩌", "X")).red(),
       file.name
     ),
 
     Delta::Renamed => format!(
       "{} {} -> {} {}",
-      style(if_nerdfont!(nerd_font, "", "R")).magenta(),
+      style(if_nerdfont!(nerdfont, "", "R")).magenta(),
       file.similar_old,
       file.name,
       // renames may have changes depending on the rename threshold
@@ -83,7 +83,7 @@ pub fn display_file_summary(file: &DiffFileSummary, nerd_font: bool) -> String {
 
     Delta::Copied => format!(
       "{} {} -> {} {}",
-      style(if_nerdfont!(nerd_font, "", "C")).magenta(),
+      style(if_nerdfont!(nerdfont, "", "C")).magenta(),
       file.similar_old,
       file.name,
       display_plus_minus(file.insertions, file.deletions)

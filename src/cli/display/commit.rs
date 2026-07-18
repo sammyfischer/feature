@@ -102,7 +102,7 @@ pub fn display_commit_compact(commit: &Commit, config: &UserConfig, hash: bool) 
       "{} ",
       style!(
         "{}{}",
-        if_nerdfont!(config.nerd_font()?, " "),
+        if_nerdfont!(config.nerdfont()?, " "),
         trim_hash(commit.as_object())?
       )
       .yellow()

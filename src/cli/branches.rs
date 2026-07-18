@@ -314,14 +314,14 @@ impl Args {
 
       write!(out, "{}", &row.branch)?;
 
-      let nerd_font = user_config.nerd_font()?;
+      let nerdfont = user_config.nerdfont()?;
 
       if let Some(upstream) = &row.upstream {
         // include leading space
         write!(
           ab_buf,
           " {} {}",
-          style(if nerd_font { "" } else { "U" }).blue(),
+          style(if nerdfont { "" } else { "U" }).blue(),
           upstream
         )?;
       }
@@ -331,7 +331,7 @@ impl Args {
         write!(
           ab_buf,
           " {} {}",
-          style(if nerd_font { "" } else { "B" }).magenta(),
+          style(if nerdfont { "" } else { "B" }).magenta(),
           base
         )?;
       }
@@ -392,13 +392,13 @@ impl Args {
 
     let commit = branch.get().peel_to_commit()?;
 
-    let nerd_font = user_config.nerd_font()?;
+    let nerdfont = user_config.nerdfont()?;
     write!(
       out,
       "\n\n{}",
       style!(
         "{}{}",
-        if nerd_font { " " } else { "" },
+        if nerdfont { " " } else { "" },
         trim_hash(commit.as_object())?
       )
       .yellow()
@@ -419,7 +419,7 @@ impl Args {
       "\n{}",
       style!(
         "{}{}",
-        if nerd_font { " " } else { "" },
+        if nerdfont { " " } else { "" },
         commit.summary()?.expect("Commit should have a summary")
       )
       .dim()
@@ -448,7 +448,7 @@ impl Args {
       let ab = repo.graph_ahead_behind(upstream_tip, commit.id())?;
 
       let upstream_row = BranchRow {
-        label: style!("{}{}", if nerd_font { " " } else { "" }, "Upstream")
+        label: style!("{}{}", if nerdfont { " " } else { "" }, "Upstream")
           .blue()
           .to_string(),
         name: upstream
@@ -466,7 +466,7 @@ impl Args {
       let ab = repo.graph_ahead_behind(base_tip, commit.id())?;
 
       let base_row = BranchRow {
-        label: style!("{}{}", if nerd_font { " " } else { "" }, "Base")
+        label: style!("{}{}", if nerdfont { " " } else { "" }, "Base")
           .magenta()
           .to_string(),
         name: base.name().to_string(),

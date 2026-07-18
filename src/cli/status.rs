@@ -211,7 +211,7 @@ impl Args {
       write!(out, "\n\n{}", advice)?;
     }
 
-    let nerd_font = config.nerd_font()?;
+    let nerdfont = config.nerdfont()?;
 
     if is_pick_active(repo) {
       // cherry picks are weird bc they show no diff with head when you stage changes.
@@ -227,7 +227,7 @@ impl Args {
           out,
           "\n\n{} - {}",
           style("Resolved").green(),
-          display_summary(&summary, nerd_font)
+          display_summary(&summary, nerdfont)
         )?;
       }
 
@@ -241,12 +241,12 @@ impl Args {
       None => config.status_untracked()?,
     };
 
-    let statuses = display_file_statuses(repo, show_untracked, nerd_font)?;
+    let statuses = display_file_statuses(repo, show_untracked, nerdfont)?;
     if !statuses.is_empty() {
       write!(
         out,
         "\n\n{}",
-        display_file_statuses(repo, show_untracked, nerd_font)?
+        display_file_statuses(repo, show_untracked, nerdfont)?
       )?;
     }
     Ok(out)
@@ -444,7 +444,7 @@ impl Args {
 /// info if available. Unlike the others, this header takes up to 3 lines.
 fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<String> {
   let mut out = String::with_capacity(80);
-  let nerd_font = user_config.nerd_font()?;
+  let nerdfont = user_config.nerdfont()?;
 
   match get_head_resolved(repo)? {
     Some(head) => {
@@ -467,7 +467,7 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
 
           info.push(format!(
             "{} {}",
-            style(if_nerdfont!(nerd_font, "", "U")).blue(),
+            style(if_nerdfont!(nerdfont, "", "U")).blue(),
             display_plus_minus(a, b)
           ));
         }
@@ -478,14 +478,14 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
 
           info.push(format!(
             "{} {}",
-            style(if_nerdfont!(nerd_font, "", "B")).magenta(),
+            style(if_nerdfont!(nerdfont, "", "B")).magenta(),
             display_plus_minus(a, b)
           ));
         }
 
         if let Some(semver) = find_current_semver(repo, &commit)? {
           info.push(
-            style!("{}{}", if_nerdfont!(nerd_font, " "), semver.name())
+            style!("{}{}", if_nerdfont!(nerdfont, " "), semver.name())
               .yellow()
               .to_string(),
           );
@@ -533,7 +533,7 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
 
         if let Some(semver) = find_current_semver(repo, &commit)? {
           info.push(
-            style!("{}{}", if_nerdfont!(nerd_font, " "), semver.name())
+            style!("{}{}", if_nerdfont!(nerdfont, " "), semver.name())
               .yellow()
               .to_string(),
           );
@@ -619,7 +619,7 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
       write!(
         out,
         "\n{}",
-        style!("{}No commits yet", if_nerdfont!(nerd_font, " ")).dim()
+        style!("{}No commits yet", if_nerdfont!(nerdfont, " ")).dim()
       )?;
     }
   }
@@ -629,7 +629,7 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
     write!(
       out,
       "\n{} {}",
-      style!("{}{}", if_nerdfont!(nerd_font, " "), sig.name()?).cyan(),
+      style!("{}{}", if_nerdfont!(nerdfont, " "), sig.name()?).cyan(),
       style(sig.email()?).dim()
     )?;
   }
@@ -812,12 +812,8 @@ fn display_authorship(repo: &Repository, buf: &mut String, prefix: &str) -> Resu
 ///
 /// # Params
 /// - `untracked` - whether to include untracked files in the unstaged section
-/// - `nerd_font` - whether to use nerd font icons or regular characters
-pub fn display_file_statuses(
-  repo: &Repository,
-  untracked: bool,
-  nerd_font: bool,
-) -> Result<String> {
+/// - `nerdfont` - whether to use nerd font icons or regular characters
+pub fn display_file_statuses(repo: &Repository, untracked: bool, nerdfont: bool) -> Result<String> {
   use std::fmt::Write;
   let mut out = String::new();
   let mut first_paragraph = true;
@@ -857,7 +853,7 @@ pub fn display_file_statuses(
       out,
       "{} - {}",
       style("Staged").green(),
-      display_summary(&staged, nerd_font)
+      display_summary(&staged, nerdfont)
     )?;
   }
 
@@ -870,7 +866,7 @@ pub fn display_file_statuses(
       out,
       "{} - {}",
       style("Unstaged").red(),
-      display_summary(&unstaged, nerd_font)
+      display_summary(&unstaged, nerdfont)
     )?;
   }
 

@@ -326,7 +326,7 @@ impl Args {
 
     write!(out, "{}", style(name).green())?;
 
-    let nerdfont = config.nerd_font()?;
+    let nerdfont = config.nerdfont()?;
     let time_opts = DisplayTimeOptions {
       relative: config.format_relative()?,
       fmt: config.format_date()?,

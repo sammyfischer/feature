@@ -194,7 +194,7 @@ impl PushArgs {
     let summary = DiffSummary::new(&diff)?;
     println!(
       "\n{}",
-      display_summary(&summary, UserConfig::new(repo)?.nerd_font()?)
+      display_summary(&summary, UserConfig::new(repo)?.nerdfont()?)
     );
 
     Ok(())

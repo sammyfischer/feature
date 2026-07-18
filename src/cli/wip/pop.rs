@@ -91,14 +91,14 @@ impl PopArgs {
     }
 
     let config = UserConfig::new(repo)?;
-    let nerd_font = config.nerd_font()?;
+    let nerdfont = config.nerdfont()?;
     let show_untracked = config.status_untracked()?;
 
-    let statuses = display_file_statuses(repo, show_untracked, nerd_font)?;
+    let statuses = display_file_statuses(repo, show_untracked, nerdfont)?;
     if !statuses.is_empty() {
       println!(
         "\n{}",
-        display_file_statuses(repo, show_untracked, nerd_font)?
+        display_file_statuses(repo, show_untracked, nerdfont)?
       );
     }
 
