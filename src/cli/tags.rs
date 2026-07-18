@@ -381,10 +381,19 @@ impl Args {
     let old_tree = if let Some(parent) = commit.parent(0).not_found_ok()?
       && let Some(prev) = find_current_semver(repo, &parent)?
     {
-      write!(out, "\n\nSince {}", style(prev.name()).cyan())?;
+      write!(out, "\n\nSince {}", style(prev.name()).yellow())?;
+
+      let (ahead, _) = repo.graph_ahead_behind(commit.id(), prev.commit)?;
+      write!(
+        out,
+        " - {} {}, ",
+        style(ahead).cyan(),
+        if ahead == 1 { "commit" } else { "commits" }
+      )?;
+
       Some(repo.find_commit(prev.commit)?.tree()?)
     } else {
-      write!(out, "\n\nInitial release")?;
+      write!(out, "\n\nInitial release - ")?;
       None
     };
 
@@ -392,7 +401,7 @@ impl Args {
     diff.find_similar(None)?;
     let summary = DiffSummary::new(&diff)?;
 
-    write!(out, " - {}", display_summary_header(&summary))?;
+    write!(out, "{}", display_summary_header(&summary))?;
 
     Ok(out)
   }
