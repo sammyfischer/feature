@@ -296,7 +296,7 @@ impl Args {
       }
       out.push_str(&format!(
         " -> {}",
-        display_commit_compact(&commit, &config)?
+        display_commit_compact(&commit, &config, true)?
       ));
 
       if is_term() {
@@ -361,7 +361,7 @@ impl Args {
       }
       out.push_str(&format!(
         " -> {}",
-        display_commit_compact(&commit, &config)?
+        display_commit_compact(&commit, &config, true)?
       ));
 
       if is_term() {
@@ -499,7 +499,7 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
           )?;
         }
 
-        let commit_line = display_commit_compact(&commit, user_config)?;
+        let commit_line = display_commit_compact(&commit, user_config, true)?;
 
         if is_term() {
           write!(
@@ -547,7 +547,7 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
           )?;
         }
 
-        let commit_line = display_commit_compact(&commit, user_config)?;
+        let commit_line = display_commit_compact(&commit, user_config, true)?;
 
         if is_term() {
           write!(
@@ -571,7 +571,7 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
         // TODO: consider adding info if it's a semver tag, like commits since prev
 
         let commit = head.peel_to_commit()?;
-        let commit_line = display_commit_compact(&commit, user_config)?;
+        let commit_line = display_commit_compact(&commit, user_config, true)?;
 
         if is_term() {
           write!(

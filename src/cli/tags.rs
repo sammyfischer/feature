@@ -5,8 +5,8 @@ use console::{style, truncate_str};
 use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::cli::display::display_hash;
-use crate::cli::display::time::{DisplayTimeOptions, display_time, display_time_relative};
+use crate::cli::display::commit::display_commit_compact;
+use crate::cli::display::time::display_time_relative;
 use crate::cli::term::{get_term_width, is_term};
 use crate::core::open_repo_from_dirs;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
@@ -150,33 +150,14 @@ impl Args {
     Ok(())
   }
 
-  fn build_row(&self, repo: &Repository, tag: &SemverTag) -> Result<Row> {
+  fn build_row(&self, repo: &Repository, config: &UserConfig, tag: &SemverTag) -> Result<Row> {
     let mut row = Row::default();
 
     let name = tag.name();
     row.tag = style(&name).bold().to_string();
 
     let commit = repo.find_commit(tag.commit)?;
-
-    row.commit = format!(
-      "{} {}",
-      display_hash(commit.as_object())?,
-      style(&format!(
-        "{}, {} · {}",
-        commit.author().name_bytes().to_str_lossy(),
-        display_time(&commit.time(), &DisplayTimeOptions {
-          relative: true,
-          // fmt is irrelevant for relative times. `String::new` doesn't
-          // allocate so this is fine
-          fmt: String::new(),
-        })?,
-        commit
-          .summary_bytes()
-          .expect("Commit should have a summary")
-          .to_str_lossy()
-      ))
-      .dim(),
-    );
+    row.commit = display_commit_compact(&commit, config, false)?;
 
     let reference = repo.resolve_reference_from_short_name(&name)?;
 
@@ -219,12 +200,13 @@ impl Args {
 
   fn build_table(&self, repo: &Repository) -> Result<Vec<Row>> {
     let mut table = Vec::new();
+    let config = UserConfig::new(repo)?;
 
     let mut tags = get_semver_tags(repo)?;
     tags.sort_by(|a, b| b.cmp(a));
 
     for tag in &tags {
-      table.push(self.build_row(repo, tag)?);
+      table.push(self.build_row(repo, &config, tag)?);
     }
 
     Ok(table)

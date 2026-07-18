@@ -5,6 +5,7 @@ use console::{measure_text_width, style, truncate_str};
 use git2::{Branch, BranchType, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::cli::display::commit::display_commit_compact;
 use crate::cli::display::display_plus_minus;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
@@ -223,20 +224,7 @@ impl Args {
     };
 
     let branch_commit = branch.get().peel_to_commit()?;
-
-    row.commit = style!(
-      "{}, {} · {}",
-      branch_commit.author().name()?,
-      display_time(&branch_commit.time(), &DisplayTimeOptions {
-        relative: user_config.format_relative()?,
-        fmt: user_config.format_date()?,
-      })?,
-      branch_commit
-        .summary()?
-        .expect("Commit should have a summary")
-    )
-    .dim()
-    .to_string();
+    row.commit = display_commit_compact(&branch_commit, user_config, false)?;
 
     if let Some(upstream) = branch.upstream().not_found_ok()? {
       let upstream_name = upstream.name_bytes()?.to_str_lossy();
