@@ -1,21 +1,25 @@
 use std::thread;
 
 use anyhow::{Result, anyhow};
-use console::{style, truncate_str};
+use console::{measure_text_width, style, truncate_str};
 use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::cli::display::commit::display_commit_compact;
-use crate::cli::display::time::display_time_relative;
+use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
-use crate::core::open_repo_from_dirs;
-use crate::core::string::{ToStrLossy, ToStrLossyOwned};
-use crate::core::tag::{SemverTag, get_semver_tags};
+use crate::core::string::ToStrLossyOwned;
+use crate::core::tag::{SemverTag, find_current_semver, get_semver_tags};
 use crate::core::user_config::UserConfig;
+use crate::core::{NotFoundExt, open_repo_from_dirs};
 use crate::{App, style};
 
+const LONG_ABOUT: &str = r#"Lists semver tags, sorted by version (highest to lowest). Shows how many commits
+were added since the previous version. If the tag is annotated, it shows the tag
+author and message. If it's lightweight, it shows the author/message of the
+commit it points to."#;
+
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Lists semver tags", disable_help_subcommand = true)]
+#[command(about = "Lists semver tags", long_about = LONG_ABOUT, disable_help_subcommand = true)]
 pub struct Args {
   /// Hides feature projects from output
   #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
@@ -28,9 +32,21 @@ pub struct Args {
 
 #[derive(Debug, Default)]
 struct Row {
+  /// The name of the tag
   tag: String,
-  commit: String,
-  tagger: Option<String>,
+
+  /// The tagger for annotated tags, or the commit author for lightweight tags
+  author: String,
+
+  /// The time the tag obj was created (annotated), or the time the commit was
+  /// created (lightweight)
+  time: String,
+
+  /// The tag obj message (annotated), or the commit message (lightweight)
+  msg: String,
+
+  /// Number of commits since prev version (stringified)
+  since_prev: Option<String>,
 }
 
 impl Args {
@@ -157,41 +173,50 @@ impl Args {
     row.tag = style(&name).bold().to_string();
 
     let commit = repo.find_commit(tag.commit)?;
-    row.commit = display_commit_compact(&commit, config, false)?;
-
     let reference = repo.resolve_reference_from_short_name(&name)?;
 
+    if let Some(parent) = commit.parent(0).not_found_ok()?
+      && let Some(prev) = find_current_semver(repo, &parent)?
+      && let Some(prev) = repo
+        .resolve_reference_from_short_name(&prev.name())
+        .not_found_ok()?
+    {
+      let (distance, _) = repo.graph_ahead_behind(commit.id(), prev.peel_to_commit()?.id())?;
+      row.since_prev = Some(distance.to_string());
+    }
+
+    let time_opts = DisplayTimeOptions {
+      relative: config.format_relative()?,
+      fmt: config.format_date()?,
+    };
+
     match reference.peel_to_tag() {
+      // annotated tag
       Ok(obj) => {
-        row.tagger = match (obj.tagger(), obj.message_bytes()) {
-          (None, None) => None,
+        match obj.tagger() {
+          Some(sig) => {
+            row.author = sig.name()?.to_string();
+            row.time = display_time(&sig.when(), &time_opts)?;
+          }
+          None => {
+            row.author = commit.author().name()?.to_string();
+            row.time = display_time(&commit.time(), &time_opts)?;
+          }
+        };
 
-          (Some(sig), Some(msg)) => Some(
-            style!(
-              "{}, {} · {}",
-              sig.name_bytes().to_str_lossy(),
-              display_time_relative(&sig.when())?,
-              msg.to_str_lossy()
-            )
-            .dim()
-            .to_string(),
-          ),
-
-          (Some(sig), None) => Some(
-            style!(
-              "{}, {}",
-              sig.name_bytes().to_str_lossy(),
-              display_time_relative(&sig.when())?
-            )
-            .dim()
-            .to_string(),
-          ),
-
-          (None, Some(msg)) => Some(style(msg.to_str_lossy()).dim().to_string()),
+        row.msg = match obj.message()? {
+          Some(msg) => msg.to_string(),
+          None => commit.summary()?.unwrap_or(commit.message()?).to_string(),
         };
       }
 
-      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => {}
+      // lightweight tag
+      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => {
+        row.author = commit.author().name()?.to_string();
+        row.time = display_time(&commit.time(), &time_opts)?;
+        row.msg = commit.summary()?.unwrap_or(commit.message()?).to_string();
+      }
+
       Err(e) => return Err(anyhow!(e)),
     }
 
@@ -199,24 +224,51 @@ impl Args {
   }
 
   fn build_table(&self, repo: &Repository) -> Result<Vec<Row>> {
-    let mut table = Vec::new();
-    let config = UserConfig::new(repo)?;
+    let repo_dir = repo.path();
+    let work_dir = repo.workdir();
 
     let mut tags = get_semver_tags(repo)?;
     tags.sort_by(|a, b| b.cmp(a));
 
-    for tag in &tags {
-      table.push(self.build_row(repo, &config, tag)?);
-    }
+    // each tag walks the commit graph to find the previous tag, which can be slow
+    let table = tags
+      .par_iter()
+      .map(|tag| {
+        let repo = open_repo_from_dirs(repo_dir, work_dir)?;
+        let config = UserConfig::new(&repo)?;
+        self.build_row(&repo, &config, tag)
+      })
+      .collect::<Result<Vec<_>>>()?;
 
     Ok(table)
+  }
+
+  /// Width of the left column containing tag name and number of commits
+  fn calculate_column_width(&self, table: &Vec<Row>) -> usize {
+    let mut width = 0usize;
+
+    for row in table {
+      let mut w = measure_text_width(&row.tag);
+
+      if let Some(d) = &row.since_prev {
+        // add one for the space, and another for the +
+        w += measure_text_width(d) + 2;
+      }
+
+      width = width.max(w);
+    }
+
+    width
   }
 
   fn display_table(&self, table: Vec<Row>) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
 
+    let width = self.calculate_column_width(&table);
+
     let mut first = true;
+    let mut distance_buf = String::with_capacity(4);
     for row in table {
       if first {
         first = false;
@@ -224,10 +276,21 @@ impl Args {
         writeln!(out)?;
       }
 
-      write!(out, "{} {}", row.tag, row.commit)?;
-      if let Some(tagger) = row.tagger {
-        write!(out, "\n  {}", tagger)?;
+      write!(out, "{}", row.tag)?;
+
+      if let Some(d) = row.since_prev {
+        write!(distance_buf, " {}", style!("+{}", d).green())?;
       }
+
+      let padding = width - measure_text_width(&row.tag) - measure_text_width(&distance_buf);
+      write!(out, "{}{}", " ".repeat(padding), &distance_buf)?;
+      distance_buf.clear();
+
+      write!(
+        out,
+        " {}",
+        style!("{}, {} · {}", row.author, row.time, row.msg).dim()
+      )?;
     }
 
     Ok(out)
