@@ -3,8 +3,7 @@ use anyhow::{Context, Result};
 use crate::App;
 use crate::cli::display::diff::display_summary;
 use crate::cli::term::paginate;
-use crate::core::diff::DiffSummary;
-use crate::core::string::ToStrLossy;
+use crate::core::diff::{DiffSummary, get_formatted_diff};
 use crate::core::user_config::UserConfig;
 use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
 
@@ -39,23 +38,19 @@ impl ShowArgs {
 
     let summary = DiffSummary::new(&diff)?;
 
-    use std::fmt::Write;
-    let mut out = String::new();
+    let mut out: Vec<u8> = Vec::new();
 
-    writeln!(out, "Wip {}", display_wip_spec(branch.name(), num))?;
+    out.extend_from_slice(
+      format!(
+        "{}\n\n{}\n",
+        display_wip_spec(branch.name(), num),
+        display_summary(&summary, UserConfig::new(repo)?.nerdfont()?)
+      )
+      .as_bytes(),
+    );
+    out.extend_from_slice(&get_formatted_diff(&diff)?);
 
-    writeln!(
-      out,
-      "\n{}\n",
-      display_summary(&summary, UserConfig::new(repo)?.nerdfont()?)
-    )?;
-
-    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-      writeln!(out, "{}", line.content().to_str_lossy()).is_ok()
-    })?;
-
-    // TODO: use configured pager
-    paginate(out.as_bytes())?;
+    paginate(&out)?;
     Ok(())
   }
 }

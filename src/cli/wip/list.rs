@@ -4,9 +4,9 @@ use git2::{Reflog, Repository};
 
 use crate::App;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
-use crate::core::string::ToStrLossyOwned;
+use crate::core::string::{ToStrLossyOwned, TrimPrefix};
 use crate::core::user_config::UserConfig;
-use crate::core::wip::{display_wip_spec, get_wip_refname};
+use crate::core::wip::{WIP_NAMESPACE, display_wip_spec, get_wip_refname};
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(visible_alias = "ls", about = "Lists wips on branch")]
@@ -24,14 +24,19 @@ impl ListArgs {
     let repo = &state.repo;
 
     if self.all {
+      // every wip ref
       let refs = repo.references_glob(&get_wip_refname("*"))?;
+      let prefix = &format!("{}/", WIP_NAMESPACE);
 
-      for reference in refs {
-        let reference = reference?;
-        let name = reference.shorthand()?;
-        let reflog = repo.reflog(reference.name()?)?;
+      for rf in refs {
+        let rf = rf?;
+        let refname = rf.name()?;
+        let reflog = repo.reflog(refname)?;
 
-        println!("{}", self.display_wip_list(repo, name, &reflog)?);
+        println!(
+          "{}",
+          self.display_wip_list(repo, refname.trim_prefix_opt(prefix), &reflog)?
+        );
       }
     } else {
       let branch_name = match &self.branch {
