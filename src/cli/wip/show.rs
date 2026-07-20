@@ -25,14 +25,7 @@ impl ShowArgs {
       .get(index)
       .with_context(|| format!("Entry {} does not exist", index))?;
 
-    let commit = repo.find_commit(wip.commit())?;
-    let parent = commit
-      .parent(0)
-      .expect("Failed to get first parent of wip commit");
-
-    let mut diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&commit.tree()?), None)?;
-    diff.find_similar(None)?;
-
+    let diff = wip.changes(repo)?;
     let summary = DiffSummary::new(&diff)?;
 
     let mut out: Vec<u8> = Vec::new();

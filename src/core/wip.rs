@@ -5,6 +5,7 @@ use git2::build::CheckoutBuilder;
 use git2::{
   BranchType,
   Commit,
+  Diff,
   DiffOptions,
   Oid,
   Reference,
@@ -56,6 +57,19 @@ impl<'wip> Wip<'wip> {
   /// Id of the commit containing the changes
   pub fn commit(&self) -> Oid {
     self.entry.id_new()
+  }
+
+  /// Diff of the changes in the wip
+  pub fn changes<'diff>(&self, repo: &'diff Repository) -> Result<Diff<'diff>> {
+    let commit = repo.find_commit(self.commit())?;
+    let parent = commit
+      .parent(0)
+      .context("Wip commit should have a parent")?;
+
+    let mut diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&commit.tree()?), None)?;
+    diff.find_similar(None)?;
+
+    Ok(diff)
   }
 }
 
