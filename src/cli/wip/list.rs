@@ -1,12 +1,12 @@
 use anyhow::{Result, anyhow};
 use console::style;
-use git2::{Reflog, Repository};
 
 use crate::App;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
-use crate::core::string::{ToStrLossyOwned, TrimPrefix};
+use crate::cli::wip::display_wip;
+use crate::core::string::ToStrLossyOwned;
 use crate::core::user_config::UserConfig;
-use crate::core::wip::{WIP_NAMESPACE, display_wip_spec, get_wip_refname};
+use crate::core::wip::WipList;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(visible_alias = "ls", about = "Lists wips on branch")]
@@ -22,21 +22,16 @@ pub struct ListArgs {
 impl ListArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
+    let config = UserConfig::new(repo)?;
 
     if self.all {
       // every wip ref
-      let refs = repo.references_glob(&get_wip_refname("*"))?;
-      let prefix = &format!("{}/", WIP_NAMESPACE);
+      let refs = repo.references_glob(&format!("{}/*", WipList::NAMESPACE))?;
 
       for rf in refs {
         let rf = rf?;
-        let refname = rf.name()?;
-        let reflog = repo.reflog(refname)?;
-
-        println!(
-          "{}",
-          self.display_wip_list(repo, refname.trim_prefix_opt(prefix), &reflog)?
-        );
+        let list = WipList::from_reference(repo, &rf)?;
+        println!("{}", self.display_wip_list(&config, &list)?);
       }
     } else {
       let branch_name = match &self.branch {
@@ -49,42 +44,33 @@ impl ListArgs {
           head.shorthand_bytes().to_str_lossy_owned()
         }
       };
-      let reflog = repo.reflog(&get_wip_refname(&branch_name))?;
-      println!("{}", self.display_wip_list(repo, &branch_name, &reflog)?);
+
+      let list = WipList::from_branch(repo, branch_name)?;
+      println!("{}", self.display_wip_list(&config, &list)?);
     }
 
     Ok(())
   }
 
-  fn display_wip_list(
-    &self,
-    repo: &Repository,
-    branch_name: &str,
-    reflog: &Reflog,
-  ) -> Result<String> {
+  fn display_wip_list(&self, config: &UserConfig, list: &WipList) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
-    let config = UserConfig::new(repo)?;
 
     let mut first = true;
-    for (i, entry) in reflog.iter().enumerate() {
+    for wip in list.iter() {
       if first {
         first = false;
       } else {
         writeln!(out)?;
       }
 
-      let time = entry.committer().when();
-
-      let msg = match entry.message_bytes() {
-        Some(bytes) => bytes.to_str_lossy_owned(),
-        None => String::new(),
-      };
+      let time = wip.time();
+      let msg = wip.message()?;
 
       write!(
         out,
         "{} {} {}",
-        display_wip_spec(branch_name, i),
+        display_wip(&wip),
         style(display_time(&time, &DisplayTimeOptions {
           relative: config.format_relative()?,
           fmt: config.format_date()?,

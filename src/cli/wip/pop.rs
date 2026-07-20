@@ -5,9 +5,10 @@ use git2::{DiffOptions, IndexAddOption, Repository, Tree};
 
 use crate::App;
 use crate::cli::status::display_file_statuses;
+use crate::cli::wip::display_wipspec;
 use crate::core::string::ToStrLossy;
 use crate::core::user_config::UserConfig;
-use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
+use crate::core::wip::WipList;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Applies and drops a wip entry")]
@@ -25,26 +26,23 @@ impl PopArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
 
-    let (branch, num) = parse_wip_spec(repo, self.spec.as_deref())?;
-    let wip_refname = get_wip_refname(branch.name());
-    let mut reflog = repo.reflog(&wip_refname)?;
+    let (mut list, index) = WipList::parse_wipspec(repo, self.spec.as_deref())?;
 
-    let wip = {
-      let id = reflog
-        .get(num)
-        .context("There are no wip entries!")?
-        .id_new();
-      repo.find_commit(id)?
+    let commit = {
+      let wip = list
+        .get(index)
+        .with_context(|| format!("Entry {} does not exist", index))?;
+      repo.find_commit(wip.commit())?
     };
 
-    let parent = wip
+    let parent = commit
       .parent(0)
       .context("Failed to get first parent of wip commit")?;
 
     let workdir = self
       .get_workdir_tree(repo)
       .context("Failed to build tree from workdir")?;
-    let mut merge = repo.merge_trees(&parent.tree()?, &workdir, &wip.tree()?, None)?;
+    let mut merge = repo.merge_trees(&parent.tree()?, &workdir, &commit.tree()?, None)?;
 
     if merge.has_conflicts() {
       let mut checkout = CheckoutBuilder::new();
@@ -54,8 +52,8 @@ impl PopArgs {
       println!(
         "{} {} with conflicts: {}",
         style("Applied").yellow(),
-        display_wip_spec(branch.name(), num),
-        wip.message_bytes().to_str_lossy()
+        display_wipspec(list.branch(), index),
+        commit.message_bytes().to_str_lossy()
       );
       println!("{}", style("(wip entry was kept)").dim());
     } else {
@@ -70,23 +68,14 @@ impl PopArgs {
 
       if !self.keep {
         // remove wip entry if apply was successful
-        reflog
-          .remove(num, true)
-          .context("Failed to remove wip entry")?;
-        reflog.write()?;
-
-        // if that was the only entry, delete the entire reflog and ref
-        if reflog.is_empty() {
-          let mut wip_ref = repo.find_reference(&wip_refname)?;
-          wip_ref.delete()?; // automatically deletes reflog
-        }
+        list.remove(repo, index)?;
       }
 
       println!(
         "{} {}: {}",
         style("Popped").green(),
-        display_wip_spec(branch.name(), num),
-        wip.message_bytes().to_str_lossy()
+        display_wipspec(list.branch(), index),
+        commit.message_bytes().to_str_lossy()
       );
     }
 

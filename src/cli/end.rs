@@ -8,7 +8,7 @@ use crate::core::branch_info::BranchInfo;
 use crate::core::fetch::fetch_upstream_branch;
 use crate::core::string::ToStrLossy;
 use crate::core::user_config::UserConfig;
-use crate::core::wip::get_wip_refname;
+use crate::core::wip::WipList;
 use crate::core::{delete_config_section, trim_hash};
 use crate::{App, style};
 
@@ -138,14 +138,16 @@ impl Args {
     );
 
     // delete wip ref if there was one
-    let wip_refname = get_wip_refname(branch.name());
-    if let Ok(mut wip_ref) = state.repo.find_reference(&wip_refname) {
-      wip_ref.delete()?;
+    let mut wips = WipList::from_branch(&state.repo, branch.name().to_string())?;
+    if let Err(e) = wips.delete(&state.repo) {
+      println!("{} to clean up wips: {}", style("Failed").red(), e);
     }
 
     // delete branch's config
     let key = format!("branch.{}", branch.name());
-    delete_config_section(&key)?;
+    if let Err(e) = delete_config_section(&key) {
+      println!("{} to clean up branch config: {}", style("Failed").red(), e);
+    }
 
     Ok(())
   }
