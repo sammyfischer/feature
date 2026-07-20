@@ -3,9 +3,10 @@ use anyhow::{Context, Result};
 use crate::App;
 use crate::cli::display::diff::display_summary;
 use crate::cli::term::paginate;
+use crate::cli::wip::display_wipspec;
 use crate::core::diff::{DiffSummary, get_formatted_diff};
 use crate::core::user_config::UserConfig;
-use crate::core::wip::{display_wip_spec, get_wip_refname, parse_wip_spec};
+use crate::core::wip::WipList;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Display info about a wip")]
@@ -19,21 +20,17 @@ impl ShowArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
 
-    let (branch, num) = parse_wip_spec(repo, self.spec.as_deref())?;
-    let wip_refname = get_wip_refname(branch.name());
-    let reflog = repo.reflog(&wip_refname)?;
+    let (list, index) = WipList::parse_wipspec(repo, self.spec.as_deref())?;
+    let wip = list
+      .get(index)
+      .with_context(|| format!("Entry {} does not exist", index))?;
 
-    let commit_id = reflog
-      .get(num)
-      .with_context(|| format!("Entry {} does not exist", num))?
-      .id_new();
-
-    let wip = repo.find_commit(commit_id)?;
-    let parent = wip
+    let commit = repo.find_commit(wip.commit())?;
+    let parent = commit
       .parent(0)
       .expect("Failed to get first parent of wip commit");
 
-    let mut diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&wip.tree()?), None)?;
+    let mut diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&commit.tree()?), None)?;
     diff.find_similar(None)?;
 
     let summary = DiffSummary::new(&diff)?;
@@ -43,7 +40,7 @@ impl ShowArgs {
     out.extend_from_slice(
       format!(
         "{}\n\n{}\n",
-        display_wip_spec(branch.name(), num),
+        display_wipspec(list.branch(), index),
         display_summary(&summary, UserConfig::new(repo)?.nerdfont()?)
       )
       .as_bytes(),

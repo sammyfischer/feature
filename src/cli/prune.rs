@@ -21,7 +21,7 @@ use crate::core::fetch::fetch_all;
 use crate::core::project_config::{self, ProjectConfig};
 use crate::core::string::ToStrLossyOwned;
 use crate::core::user_config::UserConfig;
-use crate::core::wip::get_wip_refname;
+use crate::core::wip::WipList;
 use crate::core::{NotFoundExt, delete_config_section, open_repo_from_dirs};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
@@ -303,10 +303,8 @@ fn prune_branch(
     branch.delete()?;
 
     // delete wip ref if there was one
-    let wip_refname = get_wip_refname(info.name());
-    if let Ok(mut wip_ref) = repo.find_reference(&wip_refname) {
-      wip_ref.delete()?;
-    }
+    let mut wips = WipList::from_branch(repo, info.name().to_string())?;
+    let _ = wips.delete(repo);
 
     // git2 can't remove entire config sections, but git provides a command to do so
     let key = format!("branch.{}", &info.name());

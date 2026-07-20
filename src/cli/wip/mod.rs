@@ -1,4 +1,5 @@
 use anyhow::Result;
+use console::style;
 
 use crate::App;
 use crate::cli::wip::drop::DropArgs;
@@ -6,6 +7,7 @@ use crate::cli::wip::list::ListArgs;
 use crate::cli::wip::pop::PopArgs;
 use crate::cli::wip::push::PushArgs;
 use crate::cli::wip::show::ShowArgs;
+use crate::core::wip::Wip;
 
 mod drop;
 mod list;
@@ -39,4 +41,24 @@ impl Args {
       WipCommand::Show(args) => args.run(state),
     }
   }
+}
+
+/// Displays the wip's spec with colors
+pub fn display_wip(wip: &Wip) -> String {
+  format!(
+    "{}{}{}",
+    style(wip.branch()).cyan(),
+    style(":").dim(),
+    style(wip.index()).cyan()
+  )
+}
+
+/// Displays a wipspec with colors
+pub fn display_wipspec(branch: &str, index: usize) -> String {
+  format!(
+    "{}{}{}",
+    style(branch).cyan(),
+    style(":").dim(),
+    style(index).cyan()
+  )
 }

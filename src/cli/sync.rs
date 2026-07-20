@@ -23,7 +23,7 @@ use crate::core::project_config::{self, ProjectConfig};
 use crate::core::status::has_workdir_changes;
 use crate::core::string::ToStrLossyOwned;
 use crate::core::user_config::UserConfig;
-use crate::core::wip::{WIP_NAMESPACE, get_wip_refname};
+use crate::core::wip::WipList;
 use crate::{App, style};
 
 const LONG_ABOUT: &str = r"Updates all branches with their remotes (if they have one), then prunes merged
@@ -331,17 +331,14 @@ impl Args {
 
     // iterate through all wip refs. delete them if their backing branch was
     // deleted
-    let refs = repo.references_glob(&get_wip_refname("*"))?;
-    for r in refs {
-      let mut r = r?;
-      let branch_name = r
-        .name()?
-        .strip_prefix(&format!("{}/", WIP_NAMESPACE))
-        .expect("Invalid wip refname");
+    let refs = repo.references_glob(&format!("{}/*", WipList::NAMESPACE))?;
+    for rf in refs {
+      let rf = rf?;
+      let mut wips = WipList::from_reference(repo, &rf)?;
 
       // ignore Err
       if let Ok(branch) = repo
-        .find_reference(&format!("refs/heads/{}", branch_name))
+        .find_reference(&format!("refs/heads/{}", wips.branch()))
         .not_found_ok()
       {
         match branch {
@@ -349,7 +346,7 @@ impl Args {
           Some(_) => {}
 
           // branch was deleted, cleanup wip
-          None => r.delete()?,
+          None => wips.delete(repo)?,
         }
       }
     }
