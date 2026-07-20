@@ -38,6 +38,9 @@ Low priority
 
 ## Features
 
+- `ignore/exclude`
+  - really simple command to add things to `.gitignore` or `.git/info/exclude` from the command line
+  - an `unignore` command would probably be useful too, fetches completions directly from the file
 - `squash`
   - squashes all commits on a feature branch into one
 - auto merge/rebase
