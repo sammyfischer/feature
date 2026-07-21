@@ -285,8 +285,16 @@ fn prune_branch(
     // not necessarily an error, but the user should know that a non-protected
     // branch was skipped and may manually need to be deleted
     return Ok(UpdateAction::DeleteSkip {
-      name: info.name().to_owned(),
-      reason: "currently checked-out".to_owned(),
+      name: info.name().to_string(),
+      reason: "currently checked-out".to_string(),
+    });
+  }
+
+  let mut wips = WipList::from_branch(repo, info.name().to_string())?;
+  if !wips.is_empty() {
+    return Ok(UpdateAction::DeleteSkip {
+      name: info.name().to_string(),
+      reason: "has remaining wips".to_string(),
     });
   }
 
@@ -303,7 +311,6 @@ fn prune_branch(
     branch.delete()?;
 
     // delete wip ref if there was one
-    let mut wips = WipList::from_branch(repo, info.name().to_string())?;
     let _ = wips.delete(repo);
 
     // git2 can't remove entire config sections, but git provides a command to do so
@@ -312,7 +319,7 @@ fn prune_branch(
   }
 
   Ok(UpdateAction::Delete {
-    name: info.name().to_owned(),
+    name: info.name().to_string(),
     old: commit.as_object().short_id()?.to_str_lossy_owned(),
   })
 }

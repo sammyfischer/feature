@@ -73,7 +73,12 @@ impl<'wip> Wip<'wip> {
   }
 }
 
-/// A list of wips associated with a branch. Wraps a [Reflog].
+/// A list of wips associated with a branch.
+///
+/// Because this wraps a [Reflog], this struct is entirely in-memory and the
+/// associated wip ref may not exist. Its mutation functions (e.g. remove,
+/// delete, push) immediately write the reflog to disk. These functions handle
+/// creation and cleanup of those on-disk resources.
 pub struct WipList {
   /// The name of the wip's ref. This may not exist on disk.
   refname: String,
@@ -158,10 +163,15 @@ impl WipList {
     Ok((list, index))
   }
 
+  /// The branch of this wip list
+  pub fn branch(&self) -> &str {
+    &self.branch
+  }
+
   /// Gets an iterator over the list
   pub fn iter(&self) -> WipIter<'_> {
     WipIter {
-      range: (0..self.reflog.len()),
+      range: (0..self.len()),
       list: self,
     }
   }
@@ -170,6 +180,16 @@ impl WipList {
   pub fn get(&self, index: usize) -> Option<Wip<'_>> {
     let entry = self.reflog.get(index)?;
     Some(Wip::from_reflog_entry(entry, self.branch.clone(), index))
+  }
+
+  /// The number of wips
+  pub fn len(&self) -> usize {
+    self.reflog.len()
+  }
+
+  /// Whether the wip list is empty
+  pub fn is_empty(&self) -> bool {
+    self.reflog.is_empty()
   }
 
   /// Removes a wip from the list
@@ -184,11 +204,6 @@ impl WipList {
 
     self.reflog.write()?;
     Ok(())
-  }
-
-  /// The branch of this wip list
-  pub fn branch(&self) -> &str {
-    &self.branch
   }
 
   /// Delete this entire wip list. This is safe to call if the underlying wip
