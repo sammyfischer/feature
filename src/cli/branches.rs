@@ -5,19 +5,41 @@ use console::{measure_text_width, style, truncate_str};
 use git2::{Branch, BranchType, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::cli::display::commit::display_commit_compact;
 use crate::cli::display::display_plus_minus;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
+use crate::cli::wip::display_wip;
 use crate::core::branch::{get_current_branch_name, get_worktree_branch_names};
 use crate::core::branch_info::BranchInfo;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::user_config::UserConfig;
+use crate::core::wip::WipList;
 use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
-use crate::{App, style};
+use crate::{App, if_nerdfont, style};
+
+const LONG_ABOUT: &str = r#"Lists branches.
+
+By default, it will show all local branches. Specify a glob pattern to filter
+down the list.
+
+Legend:
+• Green branch name - currently checked out
+• Cyan branch name - checked out in a worktree
+• Yellow icon after name - wips exist on the branch
+• Magenta icon with counts - ahead/behind count for upstream branch
+• Blue icon with counts - ahead/behind count for base branch
+
+The actual icon displayed depends on the "feature.nerdfont" config option.
+
+If the list gets filtered down to a single branch, it will display high-detail
+info about that particular branch instead of using the default compact format."#;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Lists branches", disable_help_subcommand = true)]
+#[command(
+  about = "Lists branches",
+  long_about = LONG_ABOUT,
+  disable_help_subcommand = true
+)]
 pub struct Args {
   /// Hides feature projects from output
   #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
@@ -208,7 +230,7 @@ impl Args {
     let current = get_current_branch_name(repo)?;
     let wt_branches = get_worktree_branch_names(repo)?;
 
-    let trunc_name = truncate_str(&branch_name, 30, "\u{2026}");
+    let trunc_name = truncate_str(&branch_name, 20, "\u{2026}");
 
     row.branch = if current.is_some_and(|current| current == branch_name) {
       // highlight checked-out branch green
@@ -223,8 +245,29 @@ impl Args {
       style(&trunc_name).bold().to_string()
     };
 
+    // wip indicator
+    let wips = WipList::from_branch(repo, branch_name.to_string())?;
+    if !wips.is_empty() {
+      row.branch.push_str(
+        &style!(" {}", if_nerdfont!(user_config.nerdfont()?, "󱉚", "●"))
+          .yellow()
+          .to_string(),
+      );
+    }
+
     let branch_commit = branch.get().peel_to_commit()?;
-    row.commit = display_commit_compact(&branch_commit, user_config, false)?;
+    row.commit = format!(
+      "{}",
+      style!(
+        "{} · {}",
+        display_time(&branch_commit.time(), &DisplayTimeOptions {
+          relative: user_config.format_relative()?,
+          fmt: user_config.format_date()?
+        })?,
+        branch_commit.summary()?.unwrap_or(branch_commit.message()?)
+      )
+      .dim()
+    );
 
     if let Some(upstream) = branch.upstream().not_found_ok()? {
       let upstream_name = upstream.name_bytes()?.to_str_lossy();
@@ -241,8 +284,7 @@ impl Args {
       row.upstream = Some(display_plus_minus(a, b));
     }
 
-    let base = user_config.branch_base(&branch_name)?;
-    if let Some(base) = base {
+    if let Some(base) = user_config.branch_base(&branch_name)? {
       let (a, b) = repo
         .graph_ahead_behind(
           base.resolve(repo)?.peel_to_commit()?.id(),
@@ -353,7 +395,7 @@ impl Args {
   fn display_single_branch(
     &self,
     repo: &Repository,
-    user_config: &UserConfig,
+    config: &UserConfig,
     branch: &Branch,
   ) -> Result<String> {
     use std::fmt::Write;
@@ -392,7 +434,7 @@ impl Args {
 
     let commit = branch.get().peel_to_commit()?;
 
-    let nerdfont = user_config.nerdfont()?;
+    let nerdfont = config.nerdfont()?;
     write!(
       out,
       "\n\n{}",
@@ -409,8 +451,8 @@ impl Args {
       " {}, {}",
       commit.author().name()?,
       display_time(&commit.time(), &DisplayTimeOptions {
-        relative: user_config.format_relative()?,
-        fmt: user_config.format_date()?
+        relative: config.format_relative()?,
+        fmt: config.format_date()?
       })?
     )?;
 
@@ -461,7 +503,7 @@ impl Args {
       branch_rows.push(upstream_row);
     }
 
-    if let Some(base) = user_config.branch_base(info.name())? {
+    if let Some(base) = config.branch_base(info.name())? {
       let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
       let ab = repo.graph_ahead_behind(base_tip, commit.id())?;
 
@@ -502,6 +544,30 @@ impl Args {
 
       let (a, b) = row.ab;
       write!(out, "\n{} {} {}", label, name, display_plus_minus(a, b))?;
+    }
+
+    let wips = WipList::from_branch(repo, info.name().to_string())?;
+    if !wips.is_empty() {
+      write!(
+        out,
+        "\n\n{}{}",
+        style(if_nerdfont!(nerdfont, "󱉚 ")).cyan(),
+        style("Wips").cyan()
+      )?;
+
+      for wip in wips.iter() {
+        write!(
+          out,
+          "\n{} {} {}",
+          display_wip(&wip),
+          style(display_time(&wip.time(), &DisplayTimeOptions {
+            relative: config.format_relative()?,
+            fmt: config.format_date()?,
+          })?)
+          .magenta(),
+          truncate_str(wip.message(), 72, &style("\u{2026}").dim().to_string())
+        )?;
+      }
     }
 
     Ok(out)
