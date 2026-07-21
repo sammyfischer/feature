@@ -88,9 +88,9 @@ fn drops_specified_entry() {
     .stdout("wip c\n");
 }
 
-/// Feature should drop the wip specified by the wip ref
+/// Feature should drop the wip specified by the wip spec
 #[test]
-fn drop_from_wip_ref() {
+fn drop_from_wipspec() {
   let file_name = "file.txt";
   let repo = TestRepo::new();
   repo.init_commit();
@@ -118,4 +118,37 @@ fn drop_from_wip_ref() {
     .git(&["reflog", "--format=%s", "refs/feature/wips/main"])
     .success()
     .stdout("wip c\n");
+}
+
+/// Feature should drop the top wip when there are multiple wips
+#[test]
+fn drops_top_wip() {
+  let file_name = "file.txt";
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.write_file(file_name, "B\n");
+  repo.feature(&["wip", "push", "wip b"]).success();
+  repo.write_file(file_name, "C\n");
+  repo.feature(&["wip", "push", "wip c"]).success();
+
+  repo.feature(&["wip", "drop"]).success();
+
+  // changes not applied
+  assert_eq!(
+    fs::read_to_string(repo.path().join(file_name)).unwrap(),
+    "A",
+    "Wip contents should not be applied"
+  );
+
+  // points to wip b
+  repo
+    .git(&[
+      "show",
+      "--no-patch",
+      "--format=%s",
+      "refs/feature/wips/main",
+    ])
+    .success()
+    .stdout("wip b\n");
 }

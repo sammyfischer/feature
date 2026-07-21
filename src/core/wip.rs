@@ -7,6 +7,7 @@ use git2::{
   Commit,
   Diff,
   DiffOptions,
+  IndexAddOption,
   Oid,
   Reference,
   Reflog,
@@ -18,19 +19,41 @@ use git2::{
 use crate::core::NotFoundExt;
 use crate::core::string::TrimPrefix;
 
-/// An existing wip in the repo. Wraps a [ReflogEntry].
-pub struct Wip<'wip> {
-  entry: ReflogEntry<'wip>,
+/// An wip in the repo.
+///
+/// Unlike [ReflogEntry], this owns all its data and may outlive the reflog it
+/// belonged to. This can be thought of as a record of an entry, rather than an
+/// existing entry.
+pub struct Wip {
   branch: String,
   index: usize,
+
+  commit: Oid,
+  message: String,
+  time: Time,
 }
 
-impl<'wip> Wip<'wip> {
-  fn from_reflog_entry(entry: ReflogEntry<'wip>, branch: String, index: usize) -> Self {
+impl Wip {
+  fn from_reflog_entry(entry: ReflogEntry<'_>, branch: String, index: usize) -> Self {
+    let commit = entry.id_new();
+
+    // this will panic if the message isn't utf8. normally i'd propagate the
+    // error but that makes the iterator's `next` function not work, as it
+    // would need to return a result
+    let message = entry
+      .message()
+      .expect("Reflog message in not valid utf-8")
+      .unwrap_or_default()
+      .to_string();
+
+    let time = entry.committer().when();
+
     Self {
-      entry,
       branch,
       index,
+      commit,
+      message,
+      time,
     }
   }
 
@@ -44,24 +67,24 @@ impl<'wip> Wip<'wip> {
     self.index
   }
 
-  /// When the reflog was created
-  pub fn time(&self) -> Time {
-    self.entry.committer().when()
+  /// Id of the commit containing the changes
+  pub fn commit(&self) -> Oid {
+    self.commit
   }
 
   /// Reflog message
-  pub fn message(&self) -> Result<String> {
-    Ok(self.entry.message()?.unwrap_or_default().to_string())
+  pub fn message(&self) -> &str {
+    &self.message
   }
 
-  /// Id of the commit containing the changes
-  pub fn commit(&self) -> Oid {
-    self.entry.id_new()
+  /// When the reflog was created
+  pub fn time(&self) -> Time {
+    self.time
   }
 
   /// Diff of the changes in the wip
   pub fn changes<'diff>(&self, repo: &'diff Repository) -> Result<Diff<'diff>> {
-    let commit = repo.find_commit(self.commit())?;
+    let commit = repo.find_commit(self.commit)?;
     let parent = commit
       .parent(0)
       .context("Wip commit should have a parent")?;
@@ -177,7 +200,7 @@ impl WipList {
   }
 
   /// Gets a particular wip from the list
-  pub fn get(&self, index: usize) -> Option<Wip<'_>> {
+  pub fn get(&self, index: usize) -> Option<Wip> {
     let entry = self.reflog.get(index)?;
     Some(Wip::from_reflog_entry(entry, self.branch.clone(), index))
   }
@@ -193,17 +216,41 @@ impl WipList {
   }
 
   /// Removes a wip from the list
-  pub fn remove(&mut self, repo: &Repository, num: usize) -> Result<()> {
-    self.reflog.remove(num, true)?;
+  ///
+  /// # Returns
+  /// The removed wip
+  pub fn remove(&mut self, repo: &Repository, index: usize) -> Result<Wip> {
+    let wip = self
+      .get(index)
+      .with_context(|| format!("Entry {} does not exist", index))?;
+
+    self.reflog.remove(index, true)?;
 
     if self.reflog.is_empty() {
       let mut rf = repo.find_reference(&self.refname)?;
       rf.delete()?;
-      return Ok(());
+      return Ok(wip);
+    }
+
+    // the top entry was deleted. the wip ref pointed to that commit, so we need
+    // to set it to the previous one
+    if index == 0 {
+      // ref needs to be updated
+      let mut rf = repo.find_reference(&self.refname)?;
+      let top = self
+        .reflog
+        .get(0)
+        .expect("Top entry should exist if reflog is not empty");
+
+      // set to the current top entry
+      rf.set_target(top.id_new(), "drop")?;
+
+      // that creates a new reflog entry, remove it
+      self.reflog.remove(0, true)?;
     }
 
     self.reflog.write()?;
-    Ok(())
+    Ok(wip)
   }
 
   /// Delete this entire wip list. This is safe to call if the underlying wip
@@ -231,7 +278,67 @@ impl WipList {
     staged: bool,
     untracked: bool,
     keep: bool,
-  ) -> Result<Wip<'_>> {
+  ) -> Result<Wip> {
+    let head = repo.head()?;
+
+    let id = self.create_commit(repo, msg, staged, untracked)?;
+    let commit = repo.find_commit(id)?;
+    let wip = self.push_commit(repo, &commit, msg)?;
+
+    // remove changes from workdir
+    if !keep {
+      if staged {
+        // existing reference to head hasn't changed
+        let base_tree = head.peel_to_tree()?;
+
+        let mut opts = DiffOptions::new();
+        opts.include_untracked(untracked);
+        opts.recurse_untracked_dirs(untracked);
+        let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
+
+        // index built from head + unstaged changes
+        // `git stash --staged` can fail to apply here. it keeps the stash entry but
+        // fails to remove changes from workdir
+        let mut index = repo
+          .apply_to_tree(&base_tree, &diff, None)
+          .context("Wip was created, but changes cannot be removed from working directory")?;
+
+        // checkout to update workdir
+        let mut checkout = CheckoutBuilder::new();
+        checkout.force();
+        repo.checkout_index(Some(&mut index), Some(&mut checkout))?;
+
+        // update index to match head
+        let mut index = repo.index()?;
+        index.read_tree(&repo.head()?.peel_to_tree()?)?;
+        index.write()?;
+      } else {
+        // just reset to head
+        let mut checkout = CheckoutBuilder::new();
+        checkout.force();
+        repo.reset(
+          // existing reference to head hasn't changed
+          head.peel_to_commit()?.as_object(),
+          git2::ResetType::Hard,
+          Some(&mut checkout),
+        )?;
+      }
+    }
+
+    Ok(wip)
+  }
+
+  /// Creates a wip commit but doesn't modify the list
+  ///
+  /// # Returns
+  /// The id of the newly created commit
+  pub fn create_commit(
+    &self,
+    repo: &Repository,
+    msg: Option<&str>,
+    staged: bool,
+    untracked: bool,
+  ) -> Result<Oid> {
     let head = repo.head()?;
     let branch = repo.find_branch(&self.branch, BranchType::Local)?;
     let parent = branch.get().peel_to_commit()?;
@@ -285,11 +392,36 @@ impl WipList {
       &parents.iter().collect::<Vec<_>>(),
     )?;
 
+    Ok(id)
+  }
+
+  /// Pushes an existing wip commit to this list
+  pub fn push_commit(
+    &mut self,
+    repo: &Repository,
+    commit: &Commit,
+    msg: Option<&str>,
+  ) -> Result<Wip> {
+    let parent = commit.parent(0).context("Wip commit must have a parent")?;
+    let sig = repo.signature()?;
+
+    let msg = match msg {
+      Some(msg) => msg,
+      None => {
+        // use parent commit message
+        &format!("WIP: {}", match parent.summary()? {
+          Some(it) => it,
+          // TODO: truncate message
+          None => parent.message()?,
+        })
+      }
+    };
+
     // create/update ref/reflog
     match repo.find_reference(&self.refname).not_found_ok()? {
       // a wip ref exists for this branch, update it
       Some(mut rf) => {
-        rf.set_target(id, msg)?;
+        rf.set_target(commit.id(), msg)?;
 
         // re-read reflog from disk
         self.reflog = repo.reflog(&self.refname)?;
@@ -297,8 +429,8 @@ impl WipList {
 
       // no wip ref exists for this branch, create it
       None => {
-        repo.reference(&self.refname, id, false, msg)?;
-        self.reflog.append(id, &sig, Some(msg))?;
+        repo.reference(&self.refname, commit.id(), false, msg)?;
+        self.reflog.append(commit.id(), &sig, Some(msg))?;
         self.reflog.write()?;
       }
     };
@@ -312,47 +444,62 @@ impl WipList {
       0,
     );
 
-    // remove changes from workdir
-    if !keep {
-      if staged {
-        // existing reference to head hasn't changed
-        let base_tree = head.peel_to_tree()?;
-
-        let mut opts = DiffOptions::new();
-        opts.include_untracked(untracked);
-        opts.recurse_untracked_dirs(untracked);
-        let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-
-        // index built from head + unstaged changes
-        // `git stash --staged` can fail to apply here. it keeps the stash entry but
-        // fails to remove changes from workdir
-        let mut index = repo
-          .apply_to_tree(&base_tree, &diff, None)
-          .context("Wip was created, but changes cannot be removed from working directory")?;
-
-        // checkout to update workdir
-        let mut checkout = CheckoutBuilder::new();
-        checkout.force();
-        repo.checkout_index(Some(&mut index), Some(&mut checkout))?;
-
-        // update index to match head
-        let mut index = repo.index()?;
-        index.read_tree(&repo.head()?.peel_to_tree()?)?;
-        index.write()?;
-      } else {
-        // just reset to head
-        let mut checkout = CheckoutBuilder::new();
-        checkout.force();
-        repo.reset(
-          // existing reference to head hasn't changed
-          head.peel_to_commit()?.as_object(),
-          git2::ResetType::Hard,
-          Some(&mut checkout),
-        )?;
-      }
-    }
-
     Ok(wip)
+  }
+
+  /// Applies changes from a wip to the workdir.
+  ///
+  /// # Returns
+  /// Whether there are conflicts in the index as a result of the application.
+  pub fn apply(&self, repo: &Repository, index: usize) -> Result<bool> {
+    let wip = self
+      .get(index)
+      .with_context(|| format!("Entry {} does not exist", index))?;
+
+    let commit = repo.find_commit(wip.commit())?;
+
+    let parent = commit
+      .parent(0)
+      .context("Failed to get first parent of wip commit")?;
+
+    let workdir = {
+      let head_tree = repo.head()?.peel_to_tree()?;
+
+      let mut opts = DiffOptions::new();
+      opts.include_untracked(true);
+      opts.recurse_untracked_dirs(true);
+
+      // build index starting from head, then just adding all files in workdir (except
+      // ignored)
+      let mut index = repo.index()?;
+      index.read_tree(&head_tree)?;
+      index.add_all(["*"], IndexAddOption::DEFAULT, None)?;
+      let id = index.write_tree_to(repo)?;
+      repo.find_tree(id)?
+    };
+
+    let mut merge = repo.merge_trees(&parent.tree()?, &workdir, &commit.tree()?, None)?;
+
+    if merge.has_conflicts() {
+      // can't write a conflicted tree, checkout to the conflicted index
+      let mut checkout = CheckoutBuilder::new();
+      checkout.force();
+      repo.checkout_index(Some(&mut merge), Some(&mut checkout))?;
+
+      Ok(true)
+    } else {
+      // write the non-conflicted tree and checkout to it
+      let merged_tree = {
+        let id = merge.write_tree_to(repo)?;
+        repo.find_tree(id)?
+      };
+
+      let mut checkout = CheckoutBuilder::new();
+      checkout.force();
+      repo.checkout_tree(merged_tree.as_object(), Some(&mut checkout))?;
+
+      Ok(false)
+    }
   }
 }
 
@@ -362,7 +509,7 @@ pub struct WipIter<'list> {
 }
 
 impl<'list> Iterator for WipIter<'list> {
-  type Item = Wip<'list>;
+  type Item = Wip;
 
   fn next(&mut self) -> Option<Self::Item> {
     self.range.next().and_then(|i| self.list.get(i))

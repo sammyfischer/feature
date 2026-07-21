@@ -11,7 +11,7 @@ use crate::core::user_config::{CommitMessageLevel, UserConfig};
 use crate::core::wip::WipList;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Pushes a new wip to a branch")]
+#[command(visible_aliases = ["save", "add"], about = "Pushes a new wip to a branch")]
 pub struct PushArgs {
   /// Push only staged changes, instead of the entire workdir
   #[arg(short, long)]

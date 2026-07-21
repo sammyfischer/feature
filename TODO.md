@@ -35,6 +35,9 @@ Low priority
 - custom zsh completions, maybe fish too
 - show
   - option for different display methods for merge commits (currently only supports first-parent)
+- add git stash support to wip command
+  - i.e. allow wip command to operate on `refs/stash`
+  - allow `wip mv` to move between git stash and feature wips
 
 ## Features
 
