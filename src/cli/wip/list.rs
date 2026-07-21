@@ -65,7 +65,7 @@ impl ListArgs {
       }
 
       let time = wip.time();
-      let msg = wip.message()?;
+      let msg = wip.message();
 
       write!(
         out,

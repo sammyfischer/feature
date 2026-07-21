@@ -272,19 +272,19 @@ _feature() {
         cmd="version_log"
         ;;
 
-      feature,wip)
+      feature,wip | feature,stash)
         cmd="wip"
         ;;
-      wip,drop)
+      wip,drop | wip,rm)
         cmd="wip_drop"
         ;;
       wip,list | wip,ls)
         cmd="wip_list"
         ;;
-      wip,pop)
+      wip,pop | wip,apply)
         cmd="wip_pop"
         ;;
-      wip,push)
+      wip,push | wip,save | wip,add)
         cmd="wip_push"
         ;;
       wip,show)

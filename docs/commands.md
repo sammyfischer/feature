@@ -121,12 +121,12 @@ This is similar to `git branch -d` except:
 ## Wip
 
 ```bash
-feature wip push wip
+feature wip push some unfinished work
 feature wip pop 2
 feature wip ls
 ```
 
-Manage feature wips. Wips are like git stashes, except they're scoped to one particular branch. Think of it as work-in-progres changes that belong to a particular feature. This is in opposition to git stashes, which are just arbitary changes.
+Manages feature wips. Wips are like git stashes, except they're scoped to one particular branch. Think of it as an in-progress implementation of a particular feature. This is in opposition to git stashes, which are just arbitary changes.
 
 Wips are designed to be contained within a particular branch, but you can push/pop wips between branches if you need to using wipspec syntax.
 
@@ -142,9 +142,9 @@ It determines which form to use with the following precedence:
 2. If the first character of the wip-spec is numeric, then the entire wipspec is parsed as a number.
 3. The entire wipspec is parsed as a local branch name.
 
-If a branch name isn't specified, it defaults to the current branch. If a wip number isn't specified, it defaults to 0.
+If a branch name isn't specified, it defaults to the current branch. If a wip number isn't specified, it defaults to 0 (top of the stack).
 
-The commands `drop`, `pop`, and `show` take wipspecs as arguments. `push` only takes a branch name, since you can only push wipspecs to position 0 (top of the stack). `list` also only takes a branch name, since it just lists all wips on the branch.
+Commands like `pop` and `show` take wipspecs as arguments. Commands like `push` and `move` only take a branch name, since you can only push wipspecs to position 0. `list` also only takes a branch name, since it just lists all wips on the branch.
 
 Examples:
 
