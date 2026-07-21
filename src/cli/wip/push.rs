@@ -66,12 +66,13 @@ impl PushArgs {
       style(&branch).cyan()
     );
 
+    let config = UserConfig::new(repo)?;
     println!(
       "{}",
       display_commit(&commit, &DisplayCommitOptions {
         time: DisplayTimeOptions {
-          relative: false,
-          fmt: String::new(),
+          relative: false, // just created
+          fmt: config.format_date()?,
         },
         message: CommitMessageLevel::Full,
       },)?

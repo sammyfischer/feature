@@ -41,8 +41,9 @@ use crate::core::status::{
   is_pick_active,
 };
 use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
-use crate::core::tag::find_current_semver;
+use crate::core::tag::{SemverTag, find_current_semver, since_prev_semver};
 use crate::core::user_config::UserConfig;
+use crate::core::wip::WipList;
 use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
 use crate::{App, dim_brackets, if_nerdfont, opt_advice, style};
 
@@ -455,19 +456,22 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
 
         write!(out, "On branch {}", style(branch.name()).cyan())?;
 
-        // extra branch info is displayed as:
-        // [U +0 -0 | B +0 -0 | v1.0.0]
+        // small bites of info related to the branch
         //
-        // each piece needs to be stored in a vec and displayed with " | " separator
-        let mut info = Vec::new();
+        // displayed as:
+        // [up: +0 -0 | base: +0 -0 | ver: 1.0.0 +13 | wips: 2]
+        //
+        // or with nerdfont:
+        // [ +0 -0 |  +0 -0 |  1.0.0 +13 | 󱉚 2]
+        let mut extras = Vec::new();
 
         if let Some(upstream) = branch.upstream(repo)? {
           let upstream_tip = upstream.get().peel_to_commit()?.id();
           let (a, b) = repo.graph_ahead_behind(upstream_tip, commit.id())?;
 
-          info.push(format!(
+          extras.push(format!(
             "{} {}",
-            style(if_nerdfont!(nerdfont, "", "U")).blue(),
+            style(if_nerdfont!(nerdfont, "", "up:")).blue(),
             display_plus_minus(a, b)
           ));
         }
@@ -476,26 +480,42 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
           let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
           let (a, b) = repo.graph_ahead_behind(base_tip, commit.id())?;
 
-          info.push(format!(
+          extras.push(format!(
             "{} {}",
-            style(if_nerdfont!(nerdfont, "", "B")).magenta(),
+            style(if_nerdfont!(nerdfont, "", "base:")).magenta(),
             display_plus_minus(a, b)
           ));
         }
 
-        if let Some(semver) = find_current_semver(repo, &commit)? {
-          info.push(
-            style!("{}{}", if_nerdfont!(nerdfont, " "), semver.name())
-              .yellow()
+        if let Some(semver) = find_current_semver(repo, commit.id())? {
+          let (since, _) = repo.graph_ahead_behind(commit.id(), semver.commit)?;
+
+          extras.push(format!(
+            "{} {}",
+            style!(
+              "{} {}",
+              if_nerdfont!(nerdfont, "", "ver:"),
+              &semver.name()[1..]
+            )
+            .yellow(),
+            style!("+{}", since).green(),
+          ));
+        }
+
+        let wips = WipList::from_branch(repo, branch.name().to_string())?;
+        if !wips.is_empty() {
+          extras.push(
+            style!("{} {}", if_nerdfont!(nerdfont, "󱉚", "wips:"), wips.len())
+              .cyan()
               .to_string(),
           );
         }
 
-        if !info.is_empty() {
+        if !extras.is_empty() {
           write!(
             out,
             " {}",
-            dim_brackets!("{}", info.join(&style(" | ").dim().to_string()))
+            dim_brackets!("{}", extras.join(&style(" | ").dim().to_string()))
           )?;
         }
 
@@ -531,9 +551,9 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
           info.push(display_plus_minus(a, b));
         }
 
-        if let Some(semver) = find_current_semver(repo, &commit)? {
+        if let Some(semver) = find_current_semver(repo, commit.id())? {
           info.push(
-            style!("{}{}", if_nerdfont!(nerdfont, " "), semver.name())
+            style!("{} {}", if_nerdfont!(nerdfont, "", "ver:"), semver.name())
               .yellow()
               .to_string(),
           );
@@ -563,14 +583,25 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
           write!(out, "\n{}", &commit_line)?;
         }
       } else if head.is_tag() {
-        // tag
         let tag_name = head.shorthand()?;
+        let commit = head.peel_to_commit()?;
 
         write!(out, "On tag {}", style(tag_name).green())?;
 
-        // TODO: consider adding info if it's a semver tag, like commits since prev
+        if let Ok(semver) = SemverTag::parse(tag_name) {
+          let semver = SemverTag::from_tuple(semver, commit.id())?;
+          if let Some((prev, since)) = since_prev_semver(repo, &semver)? {
+            write!(
+              out,
+              " {}{} since {}{}",
+              style("(").dim(),
+              style!("+{}", since).green(),
+              style(prev.name()).yellow(),
+              style(")").dim(),
+            )?;
+          }
+        }
 
-        let commit = head.peel_to_commit()?;
         let commit_line = display_commit_compact(&commit, user_config, true)?;
 
         if is_term() {
