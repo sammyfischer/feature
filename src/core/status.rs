@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use console::style;
 use git2::{DiffOptions, Repository, Status, StatusOptions};
 
+use crate::core::branch::get_head_resolved;
 use crate::core::diff::DiffSummary;
 use crate::core::string::ToStrLossyOwned;
 
@@ -38,7 +39,12 @@ pub fn is_conflictable_active(repo: &Repository) -> bool {
 /// Builds a [DiffSummary] of currently staged changes (HEAD vs. index).
 /// Performs a similarity search on the diff. Filters out conflicted changes.
 pub fn get_staged_changes(repo: &Repository) -> Result<DiffSummary> {
-  let mut diff = repo.diff_tree_to_index(Some(&repo.head()?.peel_to_tree()?), None, None)?;
+  let old_tree = match get_head_resolved(repo)? {
+    Some(head) => Some(head.peel_to_tree()?),
+    None => None,
+  };
+
+  let mut diff = repo.diff_tree_to_index(old_tree.as_ref(), None, None)?;
   diff.find_similar(None)?;
 
   let summary = DiffSummary::new(&diff)?.non_conflicts();

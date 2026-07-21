@@ -40,7 +40,7 @@ use crate::core::status::{
   is_conflictable_active,
   is_pick_active,
 };
-use crate::core::string::{ToStrLossy, ToStrLossyOwned};
+use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::core::tag::find_current_semver;
 use crate::core::user_config::UserConfig;
 use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
@@ -613,7 +613,8 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
       let head = get_head(repo)?.context("HEAD reference does not exist!")?;
       let branch_name = head
         .symbolic_target()?
-        .context("Failed to get branch pointed to by HEAD")?;
+        .context("Failed to get branch pointed to by HEAD")?
+        .trim_prefix_opt("refs/heads/");
 
       write!(out, "On branch {}", style(branch_name).green())?;
       write!(

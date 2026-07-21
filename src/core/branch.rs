@@ -1,7 +1,16 @@
 //! Helper functions for branches and references
 
 use anyhow::{Context, Result, anyhow};
-use git2::{Branch, BranchType, ErrorCode, ObjectType, Reference, Repository, ResetType};
+use git2::{
+  Branch,
+  BranchType,
+  ErrorClass,
+  ErrorCode,
+  ObjectType,
+  Reference,
+  Repository,
+  ResetType,
+};
 
 use crate::core::branch_info::BranchInfo;
 use crate::core::commit::get_current_commit;
@@ -15,7 +24,7 @@ use crate::core::{NotFoundExt, trim_hash};
 pub fn get_head_resolved<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {
   match repo.head() {
     Ok(it) => Ok(Some(it)),
-    Err(e) if e.code() == ErrorCode::UnbornBranch => Ok(None),
+    Err(e) if e.class() == ErrorClass::Reference && e.code() == ErrorCode::UnbornBranch => Ok(None),
     Err(e) => Err(anyhow!(e).context("Failed to get reference to HEAD")),
   }
 }
