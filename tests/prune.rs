@@ -381,9 +381,10 @@ fn prunes_projects() {
   }
 }
 
-/// For each deleted branch, associated wips should also be deleted
+/// Branches with wips should not be deleted, since wips represent unfinished
+/// work that isn't saved anywhere else.
 #[test]
-fn deletes_branch_wips() {
+fn preserves_branches_with_wips() {
   let file_name = "file.txt";
   let (local, _remote) = TestRepo::new_with_remote();
   local.init_commit();
@@ -401,8 +402,13 @@ fn deletes_branch_wips() {
 
   local.feature(&["prune"]).success();
 
+  local
+    .git(&["branch", "--list", "--format=%(refname)", "topic"])
+    .success()
+    .stdout("refs/heads/topic\n");
+
   assert!(
-    !local.path().join(".git/refs/feature/wips/topic").exists(),
-    "Wip ref should be deleted"
+    local.path().join(".git/refs/feature/wips/topic").exists(),
+    "Wip ref should not be deleted"
   );
 }
