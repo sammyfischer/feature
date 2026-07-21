@@ -5,7 +5,6 @@ use console::{measure_text_width, style, truncate_str};
 use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::cli::display::commit::display_commit_compact;
 use crate::cli::display::diff::display_summary_header;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
@@ -13,7 +12,7 @@ use crate::core::diff::DiffSummary;
 use crate::core::string::ToStrLossyOwned;
 use crate::core::tag::{SemverTag, find_current_semver, get_semver_tags};
 use crate::core::user_config::UserConfig;
-use crate::core::{NotFoundExt, open_repo_from_dirs};
+use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
 use crate::{App, if_nerdfont, style};
 
 const LONG_ABOUT: &str = r#"Lists semver tags, sorted by version (highest to lowest). Shows how many commits
@@ -364,7 +363,22 @@ impl Args {
     write!(
       out,
       "\n\n{}",
-      display_commit_compact(&commit, &config, true)?
+      style!(
+        "{}{}",
+        if nerdfont { " " } else { "" },
+        trim_hash(commit.as_object())?
+      )
+      .yellow()
+    )?;
+
+    write!(
+      out,
+      " {}, {}",
+      commit.author().name()?,
+      display_time(&commit.time(), &DisplayTimeOptions {
+        relative: config.format_relative()?,
+        fmt: config.format_date()?
+      })?
     )?;
 
     write!(
