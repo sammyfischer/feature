@@ -13,6 +13,8 @@ High priority
   - accurate pager resolution: GIT_PAGER -> core.pager -> PAGER -> less -FR -> stdout
   - all paged output goes through this, instead of manually filtering diffs through delta
   - respect git's `pager.<command>` options (e.g. show)
+- sort branch list by most recent by default
+  - add option to change sorting
 - per-command config
   - add global feature options like `feature.relativeTime`, `feature.paging`
   - add override for each command like `feature.stash.relativeTime`, `feature.tags.paging`

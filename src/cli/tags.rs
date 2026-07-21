@@ -10,9 +10,9 @@ use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
 use crate::core::diff::DiffSummary;
 use crate::core::string::ToStrLossyOwned;
-use crate::core::tag::{SemverTag, find_current_semver, get_semver_tags};
+use crate::core::tag::{SemverTag, get_semver_tags, since_prev_semver};
 use crate::core::user_config::UserConfig;
-use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
+use crate::core::{open_repo_from_dirs, trim_hash};
 use crate::{App, if_nerdfont, style};
 
 const LONG_ABOUT: &str = r#"Lists semver tags, sorted by version (highest to lowest). Shows how many commits
@@ -194,11 +194,8 @@ impl Args {
     let commit = repo.find_commit(tag.commit)?;
     let reference = repo.resolve_reference_from_short_name(&name)?;
 
-    if let Some(parent) = commit.parent(0).not_found_ok()?
-      && let Some(prev) = find_current_semver(repo, &parent)?
-    {
-      let (distance, _) = repo.graph_ahead_behind(commit.id(), prev.commit)?;
-      row.since_prev = Some(distance.to_string());
+    if let Some((_, since)) = since_prev_semver(repo, tag)? {
+      row.since_prev = Some(since.to_string());
     }
 
     let time_opts = DisplayTimeOptions {
@@ -392,9 +389,8 @@ impl Args {
       .dim()
     )?;
 
-    let old_tree = if let Some(parent) = commit.parent(0).not_found_ok()?
-      && let Some(prev) = find_current_semver(repo, &parent)?
-    {
+    let tag = SemverTag::new(name, commit.id())?;
+    let old_tree = if let Some((prev, _)) = since_prev_semver(repo, &tag)? {
       write!(out, "\n\nSince {}", style(prev.name()).yellow())?;
 
       let (ahead, _) = repo.graph_ahead_behind(commit.id(), prev.commit)?;

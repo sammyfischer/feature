@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::fmt::Display;
 
 use anyhow::{Context, Result};
-use git2::{Commit, Oid, Repository};
+use git2::{Oid, Repository};
+
+use crate::core::NotFoundExt;
 
 /// A real tag on the repo of the format "v.*.*.*"
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -41,6 +43,17 @@ impl SemverTag {
   /// Name can be of the format "v*.*.*" or "*.*.*"
   pub fn new(name: &str, commit: Oid) -> Result<Self> {
     let (major, minor, patch) = Self::parse(name)?;
+    Ok(Self {
+      commit,
+      major,
+      minor,
+      patch,
+    })
+  }
+
+  /// Creates a semver tag from a tuple of major, minor, and patch versions
+  pub fn from_tuple(semver: (u32, u32, u32), commit: Oid) -> Result<Self> {
+    let (major, minor, patch) = semver;
     Ok(Self {
       commit,
       major,
@@ -105,9 +118,7 @@ pub fn get_semver_tags(repo: &Repository) -> Result<Vec<SemverTag>> {
 
 /// Find the current semver tag for the given commit. This walks up the commit
 /// history from the commit until it finds a tag or history ends.
-pub fn find_current_semver(repo: &Repository, commit: &Commit) -> Result<Option<SemverTag>> {
-  let upstream = commit.id();
-
+pub fn find_current_semver(repo: &Repository, commit: Oid) -> Result<Option<SemverTag>> {
   let tags = get_semver_tags(repo)?;
   let lookup_tag = tags
     .iter()
@@ -115,7 +126,7 @@ pub fn find_current_semver(repo: &Repository, commit: &Commit) -> Result<Option<
     .collect::<HashMap<Oid, &SemverTag>>();
 
   let mut walk = repo.revwalk()?;
-  walk.push(upstream)?;
+  walk.push(commit)?;
   walk.simplify_first_parent()?;
 
   let mut closest = None;
@@ -129,4 +140,25 @@ pub fn find_current_semver(repo: &Repository, commit: &Commit) -> Result<Option<
   }
 
   Ok(closest)
+}
+
+/// Get the name of the previous version and number of commits since
+pub fn since_prev_semver(
+  repo: &Repository,
+  current: &SemverTag,
+) -> Result<Option<(SemverTag, usize)>> {
+  let commit = repo.find_commit(current.commit)?;
+
+  // start from commit before the tag
+  let upstream = match commit.parent(0).not_found_ok()? {
+    Some(it) => it.id(),
+    None => return Ok(None),
+  };
+
+  let Some(prev) = find_current_semver(repo, upstream)? else {
+    return Ok(None);
+  };
+
+  let (since, _) = repo.graph_ahead_behind(current.commit, prev.commit)?;
+  Ok(Some((prev, since)))
 }
