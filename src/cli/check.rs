@@ -20,7 +20,7 @@ as the last argument.";
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct CheckArgs {
   /// The base to use for the branch
   #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]
   pub base: Option<String>,
@@ -30,7 +30,7 @@ pub struct Args {
   pub branch: Option<String>,
 }
 
-impl Args {
+impl CheckArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let branch = match &self.branch {
       Some(branch_name) => BranchInfo::from_name_dwim(&state.repo, branch_name)?

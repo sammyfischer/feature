@@ -40,7 +40,7 @@ with the "--from <BRANCH>" option."#;
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct StartArgs {
   /// Display the branch name, after joining args and performing template
   /// replacements
   #[arg(long)]
@@ -67,7 +67,7 @@ pub struct Args {
   pub words: Vec<String>,
 }
 
-impl Args {
+impl StartArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let base = match &self.from {
       Some(base_name) => BranchInfo::from_name_dwim(&state.repo, base_name)?

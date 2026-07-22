@@ -23,7 +23,7 @@ macro_rules! toml_stringify {
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Interact with feature config", disable_help_subcommand = true)]
-pub struct Args {
+pub struct ConfigArgs {
   /// Which config file to use
   #[arg(long, default_value = "local", conflicts_with = "global")]
   pub which: WhichConfig,
@@ -58,7 +58,7 @@ pub enum WhichConfig {
   Global,
 }
 
-impl Args {
+impl ConfigArgs {
   pub fn run(&self, config: &ProjectConfig) -> Result<()> {
     let which = if self.global {
       &WhichConfig::Global

@@ -23,9 +23,7 @@ Medium priority
 
 - `wip` command
   - create parent commits containing staged and unstaged changes, so that popping will restore correctly
-  - add options to show to view only staged/unstaged changes in a wip (i.e. diff against each a particular parent)
-- clearer naming
-  - every cli subcommand is a struct called `Args`, they should be renamed to contain the command name e.g. `StartArgs`
+  - add options to show to view only staged/unstaged changes in a wip (i.e. diff against a particular parent)
 - error types in core
   - should return a custom error type rather than strings
   - should probably not depend on anyhow, but should support it

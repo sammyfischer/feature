@@ -41,7 +41,7 @@ base contains the branch's commit history already).";
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct PruneArgs {
   /// Display output but don't delete any branches. Will still fetch all
   /// remotes.
   #[arg(long)]
@@ -56,7 +56,7 @@ pub struct Args {
   pub no_projects: Option<bool>,
 }
 
-impl Args {
+impl PruneArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     if self.dry_run {
       println!(

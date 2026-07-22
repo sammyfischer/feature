@@ -40,7 +40,7 @@ info about that particular branch instead of using the default compact format."#
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct BranchListArgs {
   /// Hides feature projects from output
   #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_projects: Option<bool>,
@@ -62,7 +62,7 @@ struct Row {
   commit: String,
 }
 
-impl Args {
+impl BranchListArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();

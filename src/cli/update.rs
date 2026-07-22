@@ -19,7 +19,7 @@ const NO_BASE_MSG: &str = r#"No base branch found. You can:
   about = "Updates this branch with its base",
   long_about = LONG_ABOUT,
   disable_help_subcommand = true)]
-pub struct Args {
+pub struct UpdateArgs {
   /// Output which base branch will be used, but don't perform the rebase
   #[arg(long)]
   dry_run: bool,
@@ -41,7 +41,7 @@ pub struct Args {
   base: Option<String>,
 }
 
-impl Args {
+impl UpdateArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     if self.r#continue {
       return await_child!(git!("rebase", "--continue").spawn()?, "Git");
