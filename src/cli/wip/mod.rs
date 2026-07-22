@@ -23,7 +23,7 @@ mod show;
   about = "Manage branch wips",
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct WipArgs {
   #[command(subcommand)]
   command: WipCommand,
 }
@@ -38,7 +38,7 @@ pub enum WipCommand {
   Show(ShowArgs),
 }
 
-impl Args {
+impl WipArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     match &self.command {
       WipCommand::Push(args) => args.run(state),

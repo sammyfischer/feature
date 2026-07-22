@@ -22,7 +22,7 @@ commit it points to."#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Lists semver tags", long_about = LONG_ABOUT, disable_help_subcommand = true)]
-pub struct Args {
+pub struct TagListArgs {
   /// Hides feature projects from output
   #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_projects: Option<bool>,
@@ -55,7 +55,7 @@ struct Row {
   since_prev: Option<String>,
 }
 
-impl Args {
+impl TagListArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();

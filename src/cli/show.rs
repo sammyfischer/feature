@@ -29,7 +29,7 @@ Use "-S" to force the summary to be hidden."#;
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct ShowArgs {
   /// Hide the diff summary
   #[arg(short = 'S', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_summary: Option<bool>,
@@ -57,7 +57,7 @@ pub struct Args {
   revision: Option<String>,
 }
 
-impl Args {
+impl ShowArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let config = UserConfig::new(&state.repo)?;
 

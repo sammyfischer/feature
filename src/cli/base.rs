@@ -25,7 +25,7 @@ with the --branch option.";
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct BaseArgs {
   /// The name of the base branch
   #[arg(value_name = "BRANCH", value_hint = ValueHint::Other)]
   base: String,
@@ -35,7 +35,7 @@ pub struct Args {
   branch: Option<String>,
 }
 
-impl Args {
+impl BaseArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let branch = match &self.branch {
       Some(branch_name) => BranchInfo::from_name_dwim(&state.repo, branch_name)?

@@ -53,7 +53,7 @@ use crate::{App, dim_brackets, if_nerdfont, opt_advice, style};
   about = "View current status (current branch, author info, changes)",
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct StatusArgs {
   /// Hides untracked files from output
   #[arg(short = 'U', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub no_untracked: Option<bool>,
@@ -67,7 +67,7 @@ pub struct Args {
   pub no_modules: Option<bool>,
 }
 
-impl Args {
+impl StatusArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();

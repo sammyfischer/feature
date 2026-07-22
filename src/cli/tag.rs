@@ -31,7 +31,7 @@ Specify a message with "-m" to annotate."#;
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct TagArgs {
   /// Where to put the tag
   #[arg(long, value_name = "REVISION", value_hint = ValueHint::Other)]
   at: Option<String>,
@@ -53,7 +53,7 @@ pub struct Args {
   version: String,
 }
 
-impl Args {
+impl TagArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
     let head = repo.head()?;

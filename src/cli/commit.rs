@@ -45,7 +45,7 @@ Do you want to commit anyway?"#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(about = "Commit staged changes", disable_help_subcommand = true)]
-pub struct Args {
+pub struct CommitArgs {
   /// Where to apply the commit
   #[arg(long, value_name = "BRANCH", value_hint = ValueHint::Other)]
   to: Option<String>,
@@ -89,7 +89,7 @@ enum CommitType {
   Amend(Oid),
 }
 
-impl Args {
+impl CommitArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let config = UserConfig::new(&state.repo)?;
 

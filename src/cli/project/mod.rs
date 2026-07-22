@@ -25,7 +25,7 @@ repos.";
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct ProjectArgs {
   #[command(subcommand)]
   command: ProjectCommand,
 }
@@ -38,7 +38,7 @@ pub enum ProjectCommand {
   Each(EachArgs),
 }
 
-impl Args {
+impl ProjectArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     match &self.command {
       ProjectCommand::Add(args) => args.run(state),

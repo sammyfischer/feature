@@ -28,7 +28,7 @@ branch, delete it normally with "git branch -d <BRANCH>"."#;
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct EndArgs {
   /// Also delete the remote reference
   #[arg(short, long, value_name = "DELETE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   pub remote: Option<bool>,
@@ -49,7 +49,7 @@ pub struct Args {
   pub branch: Option<String>,
 }
 
-impl Args {
+impl EndArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let config = UserConfig::new(&state.repo)?;
 

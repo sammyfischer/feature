@@ -45,7 +45,7 @@ Submodules get synced by checking-out to their tracked commit.";
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct SyncArgs {
   /// Display output but don't modify any branches. Will still fetch all
   /// remotes.
   #[arg(long)]
@@ -112,7 +112,7 @@ pub enum UpdateAction {
   },
 }
 
-impl Args {
+impl SyncArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     if self.dry_run {
       println!(

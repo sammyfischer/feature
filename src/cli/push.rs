@@ -48,7 +48,7 @@ const BASE_DIVERGED_MSG: &str = r"Branch has diverged from its base. You must:
   about = "Pushes a branch to remote, setting upstream automatically",
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct PushArgs {
   /// Force push
   #[arg(short, long)]
   force: bool,
@@ -66,7 +66,7 @@ pub struct Args {
   branch: Option<String>,
 }
 
-impl Args {
+impl PushArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let branch = match &self.branch {
       Some(branch_name) => BranchInfo::from_name_dwim(&state.repo, branch_name)?

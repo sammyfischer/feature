@@ -13,13 +13,13 @@ HEAD."#;
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct VersionLogArgs {
   /// The commit to start from
   #[arg(value_name = "REVISION")]
   rev: Option<String>,
 }
 
-impl Args {
+impl VersionLogArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
 

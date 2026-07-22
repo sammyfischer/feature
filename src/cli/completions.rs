@@ -18,11 +18,11 @@ echo 'eval "$(feature completions bash)"' >> ~/.bashrc"#;
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct Args {
+pub struct CompletionsArgs {
   pub shell: Shell,
 }
 
-impl Args {
+impl CompletionsArgs {
   pub fn run(&self) -> Result<()> {
     let mut cmd = crate::cli::Args::command();
     let name = cmd.get_name().to_string();

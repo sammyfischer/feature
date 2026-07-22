@@ -5,10 +5,30 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand, ValueHint};
 
 use crate::App;
+use crate::cli::base::BaseArgs;
+use crate::cli::branch_list::BranchListArgs;
+use crate::cli::check::CheckArgs;
+use crate::cli::commit::CommitArgs;
+use crate::cli::complete::CompleteArgs;
+use crate::cli::completions::CompletionsArgs;
+use crate::cli::config::ConfigArgs;
+use crate::cli::end::EndArgs;
+use crate::cli::project::ProjectArgs;
+use crate::cli::prune::PruneArgs;
+use crate::cli::push::PushArgs;
+use crate::cli::show::ShowArgs;
+use crate::cli::start::StartArgs;
+use crate::cli::status::StatusArgs;
+use crate::cli::sync::SyncArgs;
+use crate::cli::tag::TagArgs;
+use crate::cli::tag_list::TagListArgs;
+use crate::cli::update::UpdateArgs;
+use crate::cli::version_log::VersionLogArgs;
+use crate::cli::wip::WipArgs;
 
 mod advice;
 mod base;
-mod branches;
+mod branch_list;
 mod check;
 mod commit;
 mod complete;
@@ -24,7 +44,7 @@ mod start;
 pub mod status;
 mod sync;
 mod tag;
-mod tags;
+mod tag_list;
 mod term;
 mod update;
 mod version_log;
@@ -85,32 +105,32 @@ pub struct Args {
 #[derive(Debug, Subcommand)]
 pub enum Command {
   // ==== FEATURE BRANCH WORKFLOW / SINGLE BRANCH ACTIONS ====
-  Start(start::Args),
-  Commit(commit::Args),
-  Base(base::Args),
-  Update(update::Args),
-  Push(push::Args),
-  Check(check::Args),
-  End(end::Args),
-  Wip(wip::Args),
+  Start(StartArgs),
+  Commit(CommitArgs),
+  Base(BaseArgs),
+  Update(UpdateArgs),
+  Push(PushArgs),
+  Check(CheckArgs),
+  End(EndArgs),
+  Wip(WipArgs),
 
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
-  Sync(sync::Args),
-  Prune(prune::Args),
-  Tag(tag::Args),
-  Project(project::Args),
+  Sync(SyncArgs),
+  Prune(PruneArgs),
+  Tag(TagArgs),
+  Project(ProjectArgs),
 
   // ==== DISPLAY / INFO ====
-  Status(status::Args),
-  Branches(branches::Args),
-  Tags(tags::Args),
-  VersionLog(version_log::Args),
-  Show(show::Args),
+  Status(StatusArgs),
+  Branches(BranchListArgs),
+  Tags(TagListArgs),
+  VersionLog(VersionLogArgs),
+  Show(ShowArgs),
 
   // ==== META / FEATURE COMMANDS ====
-  Config(config::Args),
-  Completions(completions::Args),
-  Complete(complete::Args),
+  Config(ConfigArgs),
+  Completions(CompletionsArgs),
+  Complete(CompleteArgs),
 }
 
 pub fn run(state: App) -> anyhow::Result<()> {

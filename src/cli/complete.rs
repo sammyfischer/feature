@@ -8,7 +8,7 @@ use crate::core::string::ToStrLossyOwned;
 /// Dynamic shell completions
 #[derive(clap::Args, Clone, Debug)]
 #[command(hide = true, disable_help_flag = true, disable_help_subcommand = true)]
-pub struct Args {
+pub struct CompleteArgs {
   /// The type of value to complete
   #[arg(short = 't', long = "type")]
   pub comp_type: CompletionType,
@@ -26,7 +26,7 @@ pub enum CompletionType {
   Project,
 }
 
-impl Args {
+impl CompleteArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let reply = match self.comp_type {
       CompletionType::Branch => self.find_matching_branches(&state.repo)?,
