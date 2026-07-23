@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use clap::ArgGroup;
 use console::style;
 
 use crate::App;
@@ -11,7 +12,11 @@ use crate::core::user_config::{CommitMessageLevel, UserConfig};
 use crate::core::wip::WipList;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(visible_aliases = ["save", "add"], about = "Pushes a new wip to a branch")]
+#[command(
+  visible_aliases = ["save", "add"],
+  about = "Pushes a new wip to a branch",
+  group = ArgGroup::new("which").args(["staged", "untracked"])
+)]
 pub struct PushArgs {
   /// Push only staged changes, instead of the entire workdir
   #[arg(short, long)]
