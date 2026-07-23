@@ -364,14 +364,14 @@ impl WipList {
     } else {
       let base_tree = head.peel_to_tree()?;
 
-      let mut opts = DiffOptions::new();
-      opts.include_untracked(untracked);
-      opts.recurse_untracked_dirs(untracked);
-      let diff = repo.diff_tree_to_workdir(Some(&base_tree), Some(&mut opts))?;
+      let mut index = repo.index()?;
+      index.read_tree(&base_tree)?;
 
-      let mut index = repo
-        .apply_to_tree(&base_tree, &diff, None)
-        .context("Failed to build wip changes")?;
+      if untracked {
+        index.add_all(["*"], IndexAddOption::DEFAULT, None)?;
+      } else {
+        index.update_all(["*"], None)?;
+      }
 
       let tree_id = index.write_tree_to(repo)?;
       repo.find_tree(tree_id)?
