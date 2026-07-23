@@ -2,7 +2,7 @@
 
 Feature introduces a concept called "projects". These are similar to git submodules, except that their exact commit isn't tracked by the parent repo.
 
-Git submodules are a great way to depend on a git repository and ensure that it points to a particular commit, only updating it explicitly by checking out to a new commit in the submodule and committing that change in the parent.
+Git submodules are a great way to depend on a git repository and ensure that it points to a particular commit. Git requires you to update it explicitly by checking out to a new commit in the submodule, then committing that change in the parent.
 
 However, it's less useful when you have a single logical project split into several repos. You want those subprojects to remain up-to-date all the time, so having to commit in the parent repo any time new changes are introduced in a submodule is redundant.
 
@@ -35,11 +35,11 @@ Feature will add the `[projects]` section to your project config if it doesn't e
 
 The last argument is the name of the project, which is only used by feature to target specific projects in other commands. It must be unique across other projects in the repo.
 
-If you omit `--path`, feature will use a dir with the same name as the project as the path (directly in the repo root). It will create the dir if it doesn't exist.
+If you omit `--path`, feature will crete a dir with the same name as the project (directly in the repo root).
 
 If you omit `--repo`, feature will assume a repo already exists in the dir. If you include it, feature will clone the repo into the dir.
 
-### Rm
+### Remove
 
 ```bash
 feature project rm frontend
@@ -51,7 +51,7 @@ This will delete the entry in your project config and remove the path from `.git
 
 Feature won't delete the repo itself.
 
-### Ls
+### List
 
 ```bash
 feature project ls
@@ -64,6 +64,7 @@ List all projects.
 ```bash
 feature project each git config user.name "User Name"
 feature project each feature start new branch
+feature project each feature npm run format
 ```
 
 Run a command in each project.

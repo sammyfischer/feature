@@ -4,95 +4,68 @@
 
 Use the command `feature completions <shell>` to print completions for your shell. You can redirect this output into a file and install it for your particular shell, or evaluate the output directly in your shell config file.
 
-Examples in bash:
+In bash, the simplest way to get completions is to add this to your `.bashrc`:
 
 ```bash
-# run this once in the command line
-feature completions bash > ~/bash_completion.d/feature
-
-# or add this to your bashrc
 eval "$(feature completions bash)"
 ```
 
-## Terminology
-
-Here are some terms that will may used in this document
-
-**Static completions** - Shell completions that are known at compile time. This includes flags, subcommands, and enum values.
-
-**Dynamic completions** - Shell completions that cannot be known at compile time. Some examples are git branches and remote names.
-
-**Positional arg, positional** - A command line argument that is interpreted based on order.
-
-**Flag** - A command line argument that is interpreted based on its name, and may appear in different orders relative to other arguments.
-
-## Supported Shells
-
-All major shells currently support static completions (via auto-generated scripts by `clap_complete`). Bash is the only shell that supports dynamic completions (via a fully handwritten script), but dynamic completions in zsh are planned. Other shells may or may not receive dynamic completion support in the future.
-
-## Exhaustiveness
-
-When invoking completions, there are 2 cases where the completions aren't necessarily exhaustive:
-
-1. the argument is positional *and* its completions are dynamic
-2. the argument is positional and its values are arbitrary
-
-To understand the first case, take this example, where the '#' represents the cursors current position:
+If you have a directory where you typically store completions, e.g. (`~/bash_completion.d`), then you can send the output to a file in that directory:
 
 ```bash
-feature show #
+feature completions bash > ~/bash_completion.d/feature
 ```
 
-The true list of possible values is every flag supported by `show` plus every revspec in the repository (excluding hashes and permutations like `HEAD^1`).
-
-In order to reduce the number of values, invoking completions here will only show revspecs. If you want to see possible flags, type a '-' first.
+If you use the `bash-completion` utility, run this:
 
 ```bash
-feature show -#
+feature completions bash > ~/.local/share/bash-completion/completions/feature.bash
 ```
 
-This will filer the list to flags only. The case where a revspec starts with a '-' is not supported and must be typed manually.
-
-To understand the second case, take this example:
+To enable completions with a bash alias, create another file in the same directory called `<alias>.bash` with these contents:
 
 ```bash
-feature commit #
+source ~/.local/share/bash-completion/completions/feature.bash
+complete -F _feature -o nosort -o bashdefault -o default <alias>
 ```
 
-The full list of possible values are flags and arbitrary words that make up the commit message. Of course that makes an infinite set of values, so when completing for arbitary words the completion script will always return an empty list.
+# Supported Shells
 
-For this case, a list of options will be shown if the current word is empty (like in the example) or if it starts with a '-'. Otherwise, no completions will be shown.
+Most major shells currently support static completions (via auto-generated scripts by `clap_complete`). Bash is the only shell that supports dynamic completions (via a fully handwritten script), but dynamic completions in zsh are planned. Other shells may or may not receive dynamic completion support in the future.
 
-Any commands that *only* have static completions will show the exhaustive list.
+*Static completions* refer to completions that are constant, and independent of any context. These include names of options, subcommands, and enum values.
 
-## Correctness of Completions
+*Dynamic completions* refer to completions that depend on context. In the case of feature, this is any completion that comes from the git repository, e.g. branch names.
 
-Completions being provided doesn't imply that they are semantically valid in that position. Some shortcuts are made in the completion script to reduce its complexity.
+# Notes
 
-One example is when completing for commands that take arbitrary words, like `commit` and `start`. If you type something like:
+Completions are designed to be reasonably intuitive, and are implemented on a best-effort basis.
+For example, when completing wipspecs, the completions provided will always be branch names.
+These are semantically valid, but no attempt is made to complete wip indices.
+
+There are other cases where simplifications like this may be made, but they should still be intuitive, as long as you familiarize yourself with the commands using the help menus.
+
+## Completing Nested Commands
+
+The command `feature project each ...` takes an entire command as an argument, much like `sudo`. To get completions on the provided command, you need the `bash-completion` utility.
+
+For example, if you press tab at the end of this command:
 
 ```bash
-feature start -- branch name #
+feature project each git switch m
 ```
 
-And your cursor is at the '#', invoking completions will show you the list of options that `start` takes. This is of course not representative of how the arg will be used. It will be taken literally and included in the branch name, since it appears after a "--" or after the first positional (in this case it's both, but in general only one of those conditions needs to be true).
+It will autocomplete branch names as `git switch` would normally.
 
-The completion script only checks for a few things:
+The one caveat is that these completions will be based on the *current* repository.
+If your current repo has a branch named "main", it may complete that in the command, without regard for whether the projects have a branch with that name.
 
-- the subcommand (e.g. `start`, `config get`)
-- the previous word
-- the current word
+It will also complete filenames relative to the current directory, but resolve them relative to the directory they are run in (i.e. each project dir).
 
-Every decision is based on these values.
+There's no reasonable or consistent way to resolve this, so just be aware that completions here may be misleading.
 
-To make sure commands do what you expect, you should:
-
-- put all flags before positionals for a particular command
-- understand how positionals will be interpreted for a particular command
-- know whether a flag you're using takes a value
-
-In other words, check the help outputs.
-
-# Known Bugs
+## Equals Sign Syntax
 
 When completing for a file or dir name, completions may not work properly if the name starts with an '='. I don't currently plan on fixing this since it's rare and would make the completion script significantly more complicated.
+
+This is because the '=' sign is considered a word separator in bash, and the script makes decisions based on whether the previous or current word is an '='.
