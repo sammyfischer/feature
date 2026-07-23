@@ -371,10 +371,10 @@ _feature() {
       ;;
 
     config)
-      local opts="-h --help --which -g create get schema"
+      local opts="-h --help --which -g --global create get schema"
       case "$prev" in
         --which)
-          COMPREPLY=( $(compgen -W "project local user global" -- "$cur") )
+          COMPREPLY=( $(compgen -W "local global" -- "$cur") )
           ;;
         *)
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
