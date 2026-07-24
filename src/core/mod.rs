@@ -14,6 +14,7 @@ pub mod branch_info;
 pub mod commit;
 pub mod diff;
 pub mod fetch;
+pub mod project;
 pub mod project_config;
 pub mod push;
 pub mod status;

@@ -21,7 +21,7 @@ fn setup_multiproject() -> (TestRepo, TestRepo, TestRepo) {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       frontend.path().to_str().unwrap(),
       "frontend",
     ])
@@ -31,7 +31,7 @@ fn setup_multiproject() -> (TestRepo, TestRepo, TestRepo) {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       backend.path().to_str().unwrap(),
       "backend",
     ])
@@ -98,7 +98,7 @@ fn respects_filter() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       database.path().to_str().unwrap(),
       "database",
     ])

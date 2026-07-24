@@ -7,19 +7,19 @@ use crate::common::TestRepo;
 
 mod common;
 
-/// Should add project when --repo is specified
+/// Should add project when --url is specified
 #[test]
-fn adds_with_uri() {
+fn adds_with_url() {
   let repo = TestRepo::new();
-  let module = TestRepo::new();
-  module.init_commit();
+  let project_remote = TestRepo::new();
+  project_remote.init_commit();
 
   repo
     .feature(&[
       "project",
       "add",
-      "--repo",
-      module.path().to_str().unwrap(),
+      "--url",
+      project_remote.path().to_str().unwrap(),
       "frontend",
     ])
     .success();
@@ -33,20 +33,37 @@ fn adds_with_uri() {
     .stdout("A");
 
   // check entry in feature.toml
-  let config = fs::read_to_string(repo.path().join("feature.toml")).unwrap();
   assert_eq!(
-    config,
+    fs::read_to_string(repo.path().join("feature.toml")).unwrap(),
     format!(
       r#"[projects]
 frontend = {{ url = "{}", path = "frontend" }}
 "#,
-      module.path().to_str().unwrap()
-    )
+      project_remote.path().to_str().unwrap()
+    ),
+    "Parent config should be modified"
+  );
+
+  // check metadata file in git dir
+  let metadata_file = repo.path().join("frontend/.git/feature-project");
+  assert!(
+    metadata_file.exists(),
+    "Project metadata file \"{}\"should exist",
+    metadata_file.to_str().unwrap()
+  );
+
+  assert_eq!(
+    fs::read_to_string(metadata_file).unwrap(),
+    format!("{}/", repo.path().to_str().unwrap()),
+    "Project metadata should contain parent path"
   );
 
   // check entry in gitignore
-  let ignore = fs::read_to_string(repo.path().join(".gitignore")).unwrap();
-  assert_eq!(ignore, "frontend\n");
+  assert_eq!(
+    fs::read_to_string(repo.path().join(".gitignore")).unwrap(),
+    "frontend\n",
+    "Parent gitignore should be modified"
+  );
 }
 
 /// Should add already-existing project with --path is specified
@@ -90,7 +107,7 @@ frontend = {{ url = "{}", path = "frontend" }}
   assert_eq!(ignore, "frontend\n");
 }
 
-/// Should add project when --repo and --path are specified
+/// Should add project when --url and --path are specified
 #[test]
 fn adds_with_uri_and_path() {
   let repo = TestRepo::new();
@@ -101,7 +118,7 @@ fn adds_with_uri_and_path() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       module.path().to_str().unwrap(),
       "--path",
       "modules/frontend",
@@ -149,7 +166,7 @@ fn writes_newline_to_gitignore() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       module.path().to_str().unwrap(),
       "frontend",
     ])
@@ -172,7 +189,7 @@ fn adds_multiple_projects() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       frontend.path().to_str().unwrap(),
       "frontend",
     ])
@@ -182,7 +199,7 @@ fn adds_multiple_projects() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       backend.path().to_str().unwrap(),
       "backend",
     ])
@@ -233,7 +250,7 @@ fn doesnt_add_to_gitignore_multiple_times() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       frontend.path().to_str().unwrap(),
       "frontend",
     ])

@@ -1,11 +1,10 @@
 use std::fmt::Display;
-use std::io::ErrorKind;
+use std::path::Path;
+use std::thread;
 use std::time::Duration;
-use std::{fs, thread};
 
 use anyhow::Result;
 use console::style;
-use git2::build::RepoBuilder;
 use git2::{Branch, BranchType, FetchOptions, RemoteCallbacks, Repository, SubmoduleUpdateOptions};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -18,8 +17,8 @@ use crate::core::branch::{get_current_branch_name, hard_reset};
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
 use crate::core::fetch::{fetch_all, get_credentials_cb};
-use crate::core::project_config::projects::ProjectEntry;
-use crate::core::project_config::{self, ProjectConfig};
+use crate::core::project::Project;
+use crate::core::project_config::ProjectConfig;
 use crate::core::status::has_workdir_changes;
 use crate::core::string::ToStrLossyOwned;
 use crate::core::user_config::UserConfig;
@@ -200,38 +199,37 @@ impl SyncArgs {
       // SYNC ALL PROJECTS
       let proj_thread = scope.spawn(|| {
         if skip_projects {
-          Vec::new()
-        } else {
-          proj_progresses
-            .par_iter()
-            .map(|(name, progress)| {
-              let project = &proj_config.projects[name];
-              self.sync_or_clone_project(project, progress)
-            })
-            .collect()
+          return Vec::new();
         }
+
+        proj_progresses
+          .par_iter()
+          .map(|(name, progress)| {
+            self.sync_or_clone_project(proj_config, work_dir.unwrap_or(&repo_dir), name, progress)
+          })
+          .collect()
       });
 
       // SYNC ALL MODULES
       let mod_thread = scope.spawn(|| {
         if skip_modules {
-          Vec::new()
-        } else {
-          mod_progresses
-            .par_iter()
-            .map(|(name, progress)| -> Result<SyncAction> {
-              let repo = match &work_dir {
-                Some(work_dir) => {
-                  let repo = Repository::open_bare(&repo_dir)?;
-                  repo.set_workdir(work_dir, false)?;
-                  repo
-                }
-                None => Repository::open(&repo_dir)?,
-              };
-              self.update_module(&repo, name, progress)
-            })
-            .collect()
+          return Vec::new();
         }
+
+        mod_progresses
+          .par_iter()
+          .map(|(name, progress)| -> Result<SyncAction> {
+            let repo = match &work_dir {
+              Some(work_dir) => {
+                let repo = Repository::open_bare(&repo_dir)?;
+                repo.set_workdir(work_dir, false)?;
+                repo
+              }
+              None => Repository::open(&repo_dir)?,
+            };
+            self.update_module(&repo, name, progress)
+          })
+          .collect()
       });
 
       // collect and display
@@ -357,45 +355,28 @@ impl SyncArgs {
 
   fn sync_or_clone_project(
     &self,
-    project: &ProjectEntry,
+    parent_config: &ProjectConfig,
+    parent_root: &Path,
+    name: &str,
     progress: &ProgressBar,
   ) -> Result<SyncAction> {
-    match Repository::open(&project.path).repo_not_found_ok()? {
-      Some(repo) => {
-        // make sure it's set as a project
-        {
-          let mut git_config = repo.config()?;
-          git_config.set_bool("feature.project", true)?;
-          // drop mutable reference
-        }
+    let project = Project::open(name, parent_config)?;
 
-        let proj_config = project_config::load_with_path(&project.path)?;
-        let user_config = UserConfig::new(&repo)?;
+    match project {
+      Some(project) => {
+        project.ensure_metadata(parent_root)?;
 
-        self.sync_repo(&repo, &user_config, &proj_config, progress)
+        let proj_config = project.load_project_config()?;
+        let user_config = project.load_user_config()?;
+
+        self.sync_repo(project.repo(), &user_config, &proj_config, progress)
       }
 
       None => {
         progress.set_message("Cloning project");
         progress.enable_steady_tick(Duration::from_millis(100));
 
-        // make sure path exists
-        match fs::create_dir_all(&project.path) {
-          Ok(_) => (),
-          Err(e) if e.kind() == ErrorKind::AlreadyExists => (),
-          Err(e) => return Err(e.into()),
-        }
-
-        let mut builder = RepoBuilder::new();
-        let mut fetch_opts = FetchOptions::new();
-        let mut remote_cbs = RemoteCallbacks::new();
-        remote_cbs.credentials(get_credentials_cb());
-        fetch_opts.remote_callbacks(remote_cbs);
-        builder.fetch_options(fetch_opts);
-
-        let repo = builder.clone(&project.url, &project.path)?;
-        let mut config = repo.config()?;
-        config.set_bool("feature.project", true)?;
+        Project::open_and_init(name, parent_config, parent_root)?;
 
         progress.finish_with_message("Cloned project");
         Ok(SyncAction::ProjectInit)

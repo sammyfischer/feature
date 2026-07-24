@@ -1,5 +1,7 @@
 //! Manage the user's config. User config is stored in git config.
 
+use std::path::PathBuf;
+
 use anyhow::{Context, Result, anyhow};
 use clap::ValueEnum;
 use git2::{Config, ErrorClass, ErrorCode, Repository};
@@ -85,9 +87,9 @@ impl<'config> UserConfig<'config> {
       .transpose()
   }
 
-  /// `feature.project`, default `false`
-  pub fn project(&self) -> Result<bool> {
-    get_option!(&self.config, get_bool, "feature.project", false)
+  /// `feature.config`
+  pub fn config(&self) -> Result<Option<PathBuf>> {
+    get_option!(&self.config, get_str, "feature.config").map(|ok| ok.map(PathBuf::from))
   }
 
   /// `feature.user`

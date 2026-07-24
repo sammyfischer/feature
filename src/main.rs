@@ -7,7 +7,6 @@ use git2::{ErrorClass, ErrorCode, Repository};
 use crate::cli::status::status_guide;
 use crate::cli::{Args, Command};
 use crate::core::project_config::{ProjectConfig, load_config, load_with_path, local};
-use crate::core::user_config::UserConfig;
 
 mod cli;
 mod core;
@@ -50,48 +49,10 @@ impl App {
 
     let (config, config_path) = match args.config {
       // always use command-specified file
-      Some(path) => (load_with_path(&path)?, path),
+      Some(path) => (load_with_path(&path, &repo)?, path),
 
-      None => {
-        let user_config = UserConfig::new(&repo)?;
-
-        // if this repo is a project
-        if user_config.project()? {
-          let mut cursor = Some(
-            repo
-              .workdir()
-              .unwrap_or_else(|| repo.path())
-              .canonicalize()?,
-          );
-
-          let file = 'file: {
-            // search up for local config file
-            while let Some(dir) = cursor {
-              // if we found another git dir, assume it's the parent repo
-              if dir.join(".git").exists() {
-                let file = dir.join("feature.toml");
-
-                // if local config exists in parent
-                if file.exists() {
-                  break 'file Some(file);
-                }
-              }
-
-              cursor = dir.parent().map(|path| path.to_owned());
-            }
-
-            // found nothing
-            None
-          };
-
-          match file {
-            Some(file) => (load_with_path(&file)?, file.to_owned()),
-            None => (load_config()?, local::path()),
-          }
-        } else {
-          (load_config()?, local::path())
-        }
-      }
+      // use default file path
+      None => (load_config(&repo)?, local::path()),
     };
 
     Ok(Some(Self {

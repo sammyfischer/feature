@@ -2,17 +2,21 @@
 //! config struct. Includes modules to work with specific config levels.
 
 use std::fmt::Display;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
+use git2::Repository;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::core::project::Project;
 use crate::core::project_config::branch::BranchConfig;
 use crate::core::project_config::projects::ProjectsConfig;
 use crate::core::project_config::tag::TagConfig;
+use crate::core::user_config::UserConfig;
 
 pub mod branch;
 pub mod projects;
@@ -72,13 +76,20 @@ impl Display for PageWhen {
 }
 
 /// Loads a layered config, searching the default locations for each.
-pub fn load_config() -> Result<ProjectConfig> {
-  load_with_path(&local::path())
+pub fn load_config(repo: &Repository) -> Result<ProjectConfig> {
+  // check persistent config
+  let config = UserConfig::new(repo)?;
+
+  // default to standard location
+  let path = config.config()?.unwrap_or_else(&local::path);
+  load_with_path(&path, repo)
 }
 
 /// Loads a layered config, using the given path as the project-level config
-/// file. The global config file cannot be changed.
-pub fn load_with_path(project: &Path) -> Result<ProjectConfig> {
+/// file. If the repo has a parent project, that file will be layered and
+/// resolved from the parent repo's git config. The global config file cannot be
+/// changed.
+pub fn load_with_path(project_config: &Path, repo: &Repository) -> Result<ProjectConfig> {
   // load defaults
   let mut figment = Figment::new().merge(Serialized::defaults(ProjectConfig::default()));
 
@@ -88,9 +99,24 @@ pub fn load_with_path(project: &Path) -> Result<ProjectConfig> {
     figment = figment.merge(Toml::file(&path));
   }
 
+  // override with parent config
+  {
+    let metadata_file = repo.path().join(Project::METADATA_FILE);
+    if metadata_file.exists() {
+      // resolve actual path
+      let parent_root = PathBuf::from(fs::read_to_string(metadata_file)?);
+      let parent = Repository::open(&parent_root)?;
+      let parent_config = UserConfig::new(&parent)?
+        .config()?
+        .unwrap_or_else(|| parent_root.join(local::FILE));
+
+      figment = figment.merge(Toml::file(&parent_config));
+    }
+  }
+
   // override with local config
   {
-    let path = project;
+    let path = project_config;
     if path.exists() {
       figment = figment.merge(Toml::file(path));
     }
@@ -110,6 +136,7 @@ fn get_schema_url() -> String {
   )
 }
 
+/// Functions to work the the local project config file
 pub mod local {
   use std::fs::File;
   use std::io::Write;
@@ -119,8 +146,11 @@ pub mod local {
 
   use crate::core::project_config::{ProjectConfig, get_schema_url};
 
+  /// The name of the local config file
+  pub const FILE: &str = "feature.toml";
+
   pub fn path() -> PathBuf {
-    PathBuf::from("feature.toml")
+    PathBuf::from(self::FILE)
   }
 
   /// Saves an entire default config to the project directory
@@ -142,6 +172,7 @@ pub mod local {
   }
 }
 
+/// Functions to work the the global project config file
 pub mod global {
   use std::fs::{self, File};
   use std::io::{ErrorKind, Write};

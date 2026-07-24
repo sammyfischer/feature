@@ -18,7 +18,8 @@ use crate::cli::sync::{
 use crate::core::branch::{get_current_branch_name, is_merged};
 use crate::core::branch_info::BranchInfo;
 use crate::core::fetch::fetch_all;
-use crate::core::project_config::{self, ProjectConfig};
+use crate::core::project::Project;
+use crate::core::project_config::ProjectConfig;
 use crate::core::string::ToStrLossyOwned;
 use crate::core::user_config::UserConfig;
 use crate::core::wip::WipList;
@@ -128,13 +129,12 @@ impl PruneArgs {
           proj_progresses
             .par_iter()
             .map(|(name, progress)| {
-              let project = &proj_config.projects[name];
-              let repo = Repository::open(&project.path)?;
+              let project = Project::open_existing(name, proj_config)?;
 
-              let user_config = UserConfig::new(&repo)?;
-              let proj_config = project_config::load_with_path(&project.path)?;
+              let proj_config = project.load_project_config()?;
+              let user_config = project.load_user_config()?;
 
-              self.prune_repo(&repo, &user_config, &proj_config, progress)
+              self.prune_repo(project.repo(), &user_config, &proj_config, progress)
             })
             .collect()
         }
