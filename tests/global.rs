@@ -94,7 +94,7 @@ fn setup_feature_project() -> (TestRepo, TestRepo) {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       project_remote.path().to_str().unwrap(),
       "--path",
       // test searching up multiple dirs
@@ -111,11 +111,11 @@ fn setup_feature_project() -> (TestRepo, TestRepo) {
 /// If the current repo is a feature project, it should try searching for a
 /// parent config
 #[test]
-fn project_searches_upward() {
-  let (repo, _project) = setup_feature_project();
-  let home = repo.path().parent().unwrap();
+fn project_layers_parent_config() {
+  let (parent, _project) = setup_feature_project();
+  let home = parent.path().parent().unwrap();
 
-  repo.write_file(
+  parent.write_file(
     "feature.toml",
     r#"[branch]
 sep = "-"
@@ -124,7 +124,7 @@ template = "%(user)/%s"
   );
 
   Command::new("git")
-    .current_dir(repo.path().join("packages/types"))
+    .current_dir(parent.path().join("packages/types"))
     .env("HOME", home)
     .args(["config", "feature.user", "testuser"])
     .assert()
@@ -132,7 +132,7 @@ template = "%(user)/%s"
 
   // package should use the parent project's template
   cargo_bin_cmd!()
-    .current_dir(repo.path().join("packages/types"))
+    .current_dir(parent.path().join("packages/types"))
     .env("HOME", home)
     .args(["start", "new", "branch"])
     .assert()
@@ -141,54 +141,12 @@ template = "%(user)/%s"
 
   // double check that the branch exists
   Command::new("git")
-    .current_dir(repo.path().join("packages/types"))
+    .current_dir(parent.path().join("packages/types"))
     .env("HOME", home)
     .args(["branch"])
     .assert()
     .success()
     .stdout("  main\n* testuser/new-branch\n");
-}
-
-/// The upward search should stop at a git repo that contains no project config
-#[test]
-fn project_upward_search_stops() {
-  let (repo, _project) = setup_feature_project();
-  let home = repo.path().parent().unwrap();
-
-  // config file outside parent repo. search shouldn't reach this
-  fs::write(
-    home.join("feature.toml"),
-    r#"[branch]
-sep = "-"
-template = "%(user)/%s"
-"#,
-  )
-  .unwrap();
-
-  Command::new("git")
-    .current_dir(repo.path().join("packages/types"))
-    .env("HOME", home)
-    .args(["config", "feature.user", "testuser"])
-    .assert()
-    .success();
-
-  // package should not use the parent project's template
-  cargo_bin_cmd!()
-    .current_dir(repo.path().join("packages/types"))
-    .env("HOME", home)
-    .args(["start", "new", "branch"])
-    .assert()
-    .success()
-    .stdout("Created new-branch (from main)\n");
-
-  // double check that the branch exists
-  Command::new("git")
-    .current_dir(repo.path().join("packages/types"))
-    .env("HOME", home)
-    .args(["branch"])
-    .assert()
-    .success()
-    .stdout("  main\n* new-branch\n");
 }
 
 /// Feature should not search upward if a project contains its own config

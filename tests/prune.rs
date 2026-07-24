@@ -322,7 +322,7 @@ fn prunes_projects() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       frontend.path().to_str().unwrap(),
       "frontend",
     ])
@@ -332,7 +332,7 @@ fn prunes_projects() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       backend.path().to_str().unwrap(),
       "backend",
     ])

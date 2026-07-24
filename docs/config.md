@@ -59,11 +59,11 @@ Below is a full example of git config values that feature uses.
 # ========================================
 
 [feature]
-    # This should not be edited manually. Feature uses this to determine if the
-    # current repo is a project. If it is, it searches up the directory tree to
-    # find a project-level config file. This allows projects to inherit the
-    # parent's config.
-    project = false
+    # The path to the project-level config file. This option is referenced when
+    # projects try to layer their config with the parent project. There's
+    # currently no way to do this in the command line, so it's recommended to
+    # set this instead of every specifying the "--config" option.
+    config = feature.toml
 
     # The name to use if branch template contains "%(user)". If not specified,
     # and the template contains "%(user)", creating a branch will error.

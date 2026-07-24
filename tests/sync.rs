@@ -212,7 +212,7 @@ fn syncs_projects() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       frontend.path().to_str().unwrap(),
       "frontend",
     ])
@@ -222,7 +222,7 @@ fn syncs_projects() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       backend.path().to_str().unwrap(),
       "backend",
     ])
@@ -288,13 +288,12 @@ backend = {{ url = "{}", path = "backend" }}
       .assert()
       .stdout("A");
 
-    // feature.project should be set
-    Command::new("git")
-      .current_dir(repo.path().join(project))
-      .env("HOME", home)
-      .args(["config", "feature.project"])
-      .assert()
-      .stdout("true\n");
+    // metadata should be set
+    let metadata_file = repo.path().join(project).join(".git/feature-project");
+    assert_eq!(
+      fs::read_to_string(metadata_file).unwrap(),
+      format!("{}/", repo.path().to_str().unwrap())
+    );
   }
 }
 

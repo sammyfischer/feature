@@ -18,7 +18,7 @@ fn removes_metadata() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       module.path().to_str().unwrap(),
       "frontend",
     ])
@@ -39,11 +39,18 @@ fn removes_metadata() {
     .args(["log", "--pretty=format:%s", "main"])
     .assert()
     .stdout("A");
+
+  // but shouldn't contain the metadata file
+  assert!(
+    !repo.path().join("frontend/.git/feature-project").exists(),
+    "Project metadata file should be deleted"
+  );
 }
 
-// Feature should only remove the project metadata, and preserve everything else
+// Feature should not remove anything other than metadata from the config or
+// gitignore.
 #[test]
-fn preserves_other_metadata() {
+fn preserves_other_data() {
   // setup subproject
   let repo = TestRepo::new();
   let module = TestRepo::new();
@@ -56,7 +63,7 @@ fn preserves_other_metadata() {
     .feature(&[
       "project",
       "add",
-      "--repo",
+      "--url",
       module.path().to_str().unwrap(),
       "frontend",
     ])
