@@ -20,9 +20,9 @@ use crate::cli::show::ShowArgs;
 use crate::cli::start::StartArgs;
 use crate::cli::status::StatusArgs;
 use crate::cli::sync::SyncArgs;
-use crate::cli::tag::TagArgs;
-use crate::cli::tag_list::TagListArgs;
 use crate::cli::update::UpdateArgs;
+use crate::cli::version::VersionArgs;
+use crate::cli::version_list::VersionListArgs;
 use crate::cli::version_log::VersionLogArgs;
 use crate::cli::wip::WipArgs;
 
@@ -43,10 +43,10 @@ mod show;
 mod start;
 pub mod status;
 mod sync;
-mod tag;
-mod tag_list;
 mod term;
 mod update;
+mod version;
+mod version_list;
 mod version_log;
 mod wip;
 
@@ -117,13 +117,13 @@ pub enum Command {
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(SyncArgs),
   Prune(PruneArgs),
-  Tag(TagArgs),
+  Version(VersionArgs),
   Project(ProjectArgs),
 
   // ==== DISPLAY / INFO ====
   Status(StatusArgs),
   Branches(BranchListArgs),
-  Tags(TagListArgs),
+  Versions(VersionListArgs),
   VersionLog(VersionLogArgs),
   Show(ShowArgs),
 
@@ -146,12 +146,12 @@ pub fn run(state: App) -> anyhow::Result<()> {
 
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),
-    Command::Tag(args) => args.run(&state),
+    Command::Version(args) => args.run(&state),
     Command::Project(args) => args.run(&state),
 
     Command::Status(args) => args.run(&state),
     Command::Branches(args) => args.run(&state),
-    Command::Tags(args) => args.run(&state),
+    Command::Versions(args) => args.run(&state),
     Command::VersionLog(args) => args.run(&state),
     Command::Show(args) => args.run(&state),
 

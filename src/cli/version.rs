@@ -9,8 +9,8 @@ use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::display::{display_hash, display_signature};
 use crate::cli::push::{configure_and_push, display_push_status};
 use crate::core::NotFoundExt;
+use crate::core::semver::SemverTag;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
-use crate::core::tag::SemverTag;
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
 const LONG_ABOUT: &str = r#"Creates and pushes a semver tag.
@@ -27,11 +27,12 @@ Specify a message with "-m" to annotate."#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
+  visible_alias = "ver",
   about = "Create and push a semver tag",
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
-pub struct TagArgs {
+pub struct VersionArgs {
   /// Where to put the tag
   #[arg(long, value_name = "REVISION", value_hint = ValueHint::Other)]
   at: Option<String>,
@@ -53,7 +54,7 @@ pub struct TagArgs {
   version: String,
 }
 
-impl TagArgs {
+impl VersionArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo = &state.repo;
     let head = repo.head()?;
@@ -112,7 +113,7 @@ impl TagArgs {
         })?
       );
     } else {
-      if state.config.tag.require_annotated {
+      if state.config.version.require_annotated {
         return Err(anyhow!(NOT_ANNOTATED_MSG));
       }
 

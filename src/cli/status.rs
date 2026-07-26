@@ -33,6 +33,7 @@ use crate::core::branch_info::BranchInfo;
 use crate::core::commit::find_branch_at_commit;
 use crate::core::diff::DiffSummary;
 use crate::core::project_config::projects::ProjectEntry;
+use crate::core::semver::{SemverTag, find_current_semver, since_prev_semver};
 use crate::core::status::{
   get_conflicts,
   get_staged_changes,
@@ -41,16 +42,22 @@ use crate::core::status::{
   is_pick_active,
 };
 use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
-use crate::core::tag::{SemverTag, find_current_semver, since_prev_semver};
 use crate::core::user_config::UserConfig;
 use crate::core::wip::WipList;
 use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
 use crate::{App, dim_brackets, if_nerdfont, opt_advice, style};
 
+const LONG_ABOUT: &str = r#"View repo status.
+
+Shows useful info about where you're currently checked out, what changes are in
+the workdir, what state the repo is in (e.g. merge conflict), and your current
+authorship info (who you're committing as)."#;
+
 #[derive(clap::Args, Clone, Debug)]
 #[command(
   visible_alias = "st",
-  about = "View current status (current branch, author info, changes)",
+  about = "View repo status",
+  long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
 pub struct StatusArgs {

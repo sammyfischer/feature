@@ -9,8 +9,8 @@ use crate::cli::display::diff::display_summary_header;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
 use crate::core::diff::DiffSummary;
+use crate::core::semver::{SemverTag, get_semver_tags, since_prev_semver};
 use crate::core::string::ToStrLossyOwned;
-use crate::core::tag::{SemverTag, get_semver_tags, since_prev_semver};
 use crate::core::user_config::UserConfig;
 use crate::core::{open_repo_from_dirs, trim_hash};
 use crate::{App, if_nerdfont, style};
@@ -21,8 +21,13 @@ author and message. If it's lightweight, it shows the author/message of the
 commit it points to."#;
 
 #[derive(clap::Args, Clone, Debug)]
-#[command(about = "Lists semver tags", long_about = LONG_ABOUT, disable_help_subcommand = true)]
-pub struct TagListArgs {
+#[command(
+  visible_alias = "vers",
+  about = "Lists semver tags",
+  long_about = LONG_ABOUT,
+  disable_help_subcommand = true
+)]
+pub struct VersionListArgs {
   /// Hides feature projects from output
   #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_projects: Option<bool>,
@@ -31,9 +36,9 @@ pub struct TagListArgs {
   #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_modules: Option<bool>,
 
-  /// View detailed info about a particular tag
-  #[arg(value_name = "TAG")]
-  tag: Option<String>,
+  /// View detailed info about a particular semver tag
+  #[arg(value_name = "NAME")]
+  version: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -55,7 +60,7 @@ struct Row {
   since_prev: Option<String>,
 }
 
-impl TagListArgs {
+impl VersionListArgs {
   pub fn run(&self, state: &App) -> Result<()> {
     let repo_dir = state.repo.path().to_owned();
     let work_dir = state.repo.workdir().to_owned();
@@ -86,7 +91,7 @@ impl TagListArgs {
       let repo_thead = scope.spawn(|| -> Result<_> {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
 
-        match &self.tag {
+        match &self.version {
           Some(name) => self.display_single_tag(&repo, name),
           None => {
             let table = self.build_table(&repo)?;
@@ -106,7 +111,7 @@ impl TagListArgs {
               let mut out = format!("\n{} {}\n", style("Project").bold(), style(name).cyan());
               let repo = Repository::open(&project.path)?;
 
-              match &self.tag {
+              match &self.version {
                 Some(name) => self.display_single_tag(&repo, name),
                 None => {
                   let table = self.build_table(&repo)?;
@@ -131,7 +136,7 @@ impl TagListArgs {
               let repo = module.open()?;
               let mut out = format!("\n{} {}\n", style("Module").bold(), style(name).cyan());
 
-              match &self.tag {
+              match &self.version {
                 Some(name) => self.display_single_tag(&repo, name),
                 None => {
                   let table = self.build_table(&repo)?;

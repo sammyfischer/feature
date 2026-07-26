@@ -10,7 +10,7 @@ fn creates_and_pushes_tag() {
   local.git(&["push", "-u", "origin", "main"]).success();
 
   // create and push tag
-  local.feature(&["tag", "1.0.0"]).success();
+  local.feature(&["ver", "1.0.0"]).success();
 
   // tag points to the correct commit
   remote
@@ -30,7 +30,7 @@ fn uses_correct_target() {
   local.git(&["push", "-u", "origin", "main"]).success();
 
   // create and push tag at A, not B
-  local.feature(&["tag", "--at", "HEAD^1", "1.0.0"]).success();
+  local.feature(&["ver", "--at", "HEAD^1", "1.0.0"]).success();
 
   // tag points to the correct commit
   remote
@@ -48,7 +48,7 @@ fn accepts_leading_v() {
   local.git(&["push", "-u", "origin", "main"]).success();
 
   // create and push tag
-  local.feature(&["tag", "v1.0.0"]).success();
+  local.feature(&["ver", "v1.0.0"]).success();
 
   // tag points to the correct commit
   remote
@@ -67,7 +67,7 @@ fn creates_annotated_tag() {
 
   // create and push tag
   local
-    .feature(&["tag", "-m", "Release v1.0.0", "1.0.0"])
+    .feature(&["ver", "-m", "Release v1.0.0", "1.0.0"])
     .success();
 
   // tag is an annotated tag. if it was a lightweight tag, it would print the
@@ -84,7 +84,7 @@ fn requires_annotated_tag() {
   let (local, remote) = TestRepo::new_with_remote();
   local.write_file(
     "feature.toml",
-    r#"[tag]
+    r#"[version]
 require_annotated = true
 "#,
   );
@@ -93,7 +93,7 @@ require_annotated = true
   local.git(&["push", "-u", "origin", "main"]).success();
 
   // create lightweight tag
-  local.feature(&["tag", "1.0.0"]).failure();
+  local.feature(&["ver", "1.0.0"]).failure();
 
   // local doesn't have tag
   local
