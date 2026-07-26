@@ -15,108 +15,15 @@
 //! There is one special case: `%%`. This is a short replacement that always
 //! evaluates to a `%` in the output string. Consequently, `%` cannot be used as
 //! a user-defined short variable.
-//!
-//! # Error handling
-//!
-//! The behavior of the replacer when it encounters an unrecognized variable can
-//! be customized to:
-//! 1. Fail immediately
-//! 2. Continue building the string, but collect errors (containing the invalid
-//!    variable name and position in the resulting string)
-//! 3. Treat the invalid variable as literal characters and push them to the
-//!    outupt string
 
 use std::collections::HashMap;
 
 use anyhow::{Context, Result, anyhow};
+use replace::Replace;
+pub use var::{LongVar, ShortVar};
 
-struct EagerReplacement(String);
-
-struct LazyReplacement<'values> {
-  value: Option<String>,
-  getter: Box<dyn Fn() -> Result<String> + 'values>,
-}
-
-trait Replace<'values> {
-  fn replace(&mut self) -> Result<&str>;
-}
-
-impl<'values> Replace<'values> for EagerReplacement {
-  fn replace(&mut self) -> Result<&str> {
-    Ok(&self.0)
-  }
-}
-
-impl<'values> Replace<'values> for LazyReplacement<'values> {
-  fn replace(&mut self) -> Result<&str> {
-    Ok(match self.value {
-      Some(ref it) => it,
-      None => {
-        self.value = Some((self.getter)()?);
-        self.value.as_ref().unwrap()
-      }
-    })
-  }
-}
-
-/// A short variable replacement
-pub struct ShortVar<'values> {
-  name: char,
-  value: Box<dyn Replace<'values> + 'values>,
-}
-
-#[allow(unused)]
-impl<'values> ShortVar<'values> {
-  /// Create a new eagerly-evaluated variable
-  pub fn eager(name: char, replacement: &str) -> Self {
-    Self {
-      name,
-      value: Box::new(EagerReplacement(replacement.to_string())),
-    }
-  }
-
-  /// Create a new lazily-evaluated variable. The value is computed on first
-  /// replacement, and cached for subsequent replacements. The return value of
-  /// `replacement` must outlive the [Templater].
-  pub fn lazy(name: char, replacement: impl Fn() -> Result<String> + 'values) -> Self {
-    Self {
-      name,
-      value: Box::new(LazyReplacement::<'values> {
-        value: None,
-        getter: Box::new(replacement),
-      }),
-    }
-  }
-}
-
-pub struct LongVar<'values> {
-  name: String,
-  value: Box<dyn Replace<'values> + 'values>,
-}
-
-#[allow(unused)]
-impl<'values> LongVar<'values> {
-  /// Create a new eagerly-evaluated variable
-  pub fn eager(name: &str, replacement: &str) -> Self {
-    Self {
-      name: name.to_string(),
-      value: Box::new(EagerReplacement(replacement.to_string())),
-    }
-  }
-
-  /// Create a new lazily-evaluated variable. The value is computed on first
-  /// replacement, and cached for subsequent replacements. The return value of
-  /// `replacement` must outlive the [Templater].
-  pub fn lazy(name: &str, replacement: impl Fn() -> Result<String> + 'values) -> Self {
-    Self {
-      name: name.to_string(),
-      value: Box::new(LazyReplacement::<'values> {
-        value: None,
-        getter: Box::new(replacement),
-      }),
-    }
-  }
-}
+mod replace;
+mod var;
 
 /// State machine states
 #[derive(Copy, Clone, PartialEq)]
