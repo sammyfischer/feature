@@ -53,6 +53,17 @@ These are similar to `git commit` except that:
 
 ![Commit terminal output](../screenshots/commit.png)
 
+## Base
+
+```bash
+feature base main
+feature base main --branch feature-branch
+```
+
+Sets the base branch of `branch`. If no `branch` is specified, uses the current branch.
+
+The base branch is metadata used solely by feature. It only accepts short local branch names, e.g. `main`. It doesn't accept `origin/main` or `refs/heads/main`, for example. It will automatically determine if the branch has an upstream, and use that if available.
+
 ## Update
 
 ```bash
@@ -222,14 +233,14 @@ fi
 
 on each `(branch, base)` pair. Note that this script does not cover branch iteration, or determining which base belongs to which branch.
 
-## Tag
+## Version
 
 ```bash
-feature tag --at main 1.0.0
-feature tag 1.1.2 -m 'release v1.1.2'
+feature ver --at main 1.0.0
+feature ver 1.1.2 -m 'release v1.1.2'
 ```
 
-Creates a tag at the specified commit (default HEAD) and pushes it to the default remote.
+Creates a semver tag at the specified commit (default HEAD) and pushes it to the default remote.
 
 It's similar to `git tag`, except:
 
@@ -277,10 +288,11 @@ This is similar to `git branch` except:
 - it shows a compact list-view when multiple branches are matched, but shows a high-detail view when a single branch is matched
 - it's more colorful
 
-## Tags
+## Versions
 
 ```bash
-feature tags
+feature vers
+feature vers v1.1.0
 ```
 
 Lists all *semver* tags, sorted by version.
@@ -288,7 +300,21 @@ Lists all *semver* tags, sorted by version.
 This is similar to `git tag`, except:
 
 - it only shows semver tags
-- it shows commit info
+- it shows more detailed info about each tag
+- it displays a high-detail view when a single tag is shown
+
+## Version Log
+
+```bash
+feature verlog
+feature verlog main
+```
+
+Displays a git log of commits since the last semver tag reachable from the current or specified commit.
+
+This is similar to `git log`, except:
+
+- it automatically determines the range of commits to show
 
 ## Show
 
@@ -298,7 +324,7 @@ feature show main --no-summary
 feature show 9fe6b04 --message=subject
 ```
 
-View details of a particular commit. You can disable different parts of the output with the command line options and config file options, e.g. hiding the patch diff. You can customize the timestamp formatting in the `[format]` section of the config file.
+View details of a particular commit. You can disable different parts of the output with the command line options and config file options, e.g. hiding the patch diff. You can customize the timestamp formatting with `feature.format.date` in git config.
 
 By default, shows HEAD. You can pass in anything that can be resolved to a commit, e.g. branch names, tag names, and `HEAD^1`.
 
@@ -318,13 +344,11 @@ feature config …
 
 Subcommands related to feature config files. Use `feature config --help` to see the its subcommands. View details of each subcommand with `feature config <subcommand> --help`.
 
-## Base
+## Completions
 
 ```bash
-feature base main
-feature base main --branch feature-branch
+feature completions bash
+feature completions zsh
 ```
 
-Sets the base branch of `branch`. If no `branch` is specified, uses the current branch.
-
-The base branch is metadata used solely by feature. It only accepts short local branch names, e.g. `main`. It doesn't accept `origin/main` or `refs/heads/main`, for example. It will automatically determine if the branch has an upstream, and use that if available.
+Prints an entire completion script in the given shell language. This can be used to install completions for the feature command. More info can be found on the [completions page](./completions.md) of the docs.

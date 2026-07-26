@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::core::tag::find_current_semver;
+use crate::core::semver::find_current_semver;
 use crate::{App, git};
 
 const LONG_ABOUT: &str = r#"Displays a git log since last version reachable by a commit. By default, uses

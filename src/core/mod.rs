@@ -17,9 +17,9 @@ pub mod fetch;
 pub mod project;
 pub mod project_config;
 pub mod push;
+pub mod semver;
 pub mod status;
 pub mod string;
-pub mod tag;
 pub mod user_config;
 pub mod wip;
 
