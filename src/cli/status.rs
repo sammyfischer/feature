@@ -4,7 +4,7 @@ use std::{fs, thread};
 
 use anyhow::{Context, Result};
 use console::{style, truncate_str};
-use git2::{Commit, DiffOptions, Oid, Repository, RepositoryState};
+use git2::{Oid, Repository, RepositoryState};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::advice::{
@@ -16,7 +16,7 @@ use crate::cli::advice::{
   STATUS_ADVICE,
 };
 use crate::cli::display::commit::display_commit_compact;
-use crate::cli::display::diff::{display_summary, display_summary_header};
+use crate::cli::display::diff::display_summary;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::display::{display_hash, display_plus_minus, display_signature};
 use crate::cli::term::{get_term_width, is_term};
@@ -38,6 +38,7 @@ use crate::core::status::{
   get_conflicts,
   get_staged_changes,
   get_unstaged_changes,
+  has_workdir_changes,
   is_conflictable_active,
   is_pick_active,
 };
@@ -274,60 +275,69 @@ impl StatusArgs {
     let (name, project) = project;
     let config = UserConfig::new(repo)?;
 
-    out.push_str(&style(name).cyan().to_string());
+    write!(out, "{}", style(name).cyan())?;
 
     let proj_repo = match Repository::open(&project.path).repo_not_found_ok()? {
       Some(it) => it,
       None => {
-        out.push_str(" not initialized");
+        write!(out, " {}", style("not initialized").dim())?;
         return Ok(out);
       }
     };
 
+    let untracked = UserConfig::new(&proj_repo)?.status_untracked()?;
+    if has_workdir_changes(&proj_repo, untracked)? {
+      write!(out, " {}", style("●").yellow())?;
+    }
+
     if let Some(head) = get_head_resolved(&proj_repo)? {
       let commit = head.peel_to_commit()?;
 
-      if head.is_branch() || head.is_remote() {
+      if head.is_branch() {
         let branch_info = BranchInfo::from_reference(&head)?;
-        out.push_str(&format!(" on {}", style(branch_info.name()).green()));
+        write!(out, " on {}", style(branch_info.name()).green())?;
 
         if let Some(upstream) = branch_info.upstream(&proj_repo)? {
           let upstream_tip = upstream.get().peel_to_commit()?.id();
           let (ahead, behind) = proj_repo.graph_ahead_behind(commit.id(), upstream_tip)?;
 
-          out.push(' ');
-          out.push_str(dim_brackets!("{}", display_plus_minus(ahead, behind)));
+          write!(
+            out,
+            " {}",
+            dim_brackets!("{}", display_plus_minus(ahead, behind))
+          )?;
         }
-      } else if head.is_tag() {
-        let name = head.shorthand_bytes().to_str_lossy();
-        out.push_str(&format!(" on {}", style(name).green()));
       }
-      out.push_str(&format!(
-        " -> {}",
-        display_commit_compact(&commit, &config, true)?
-      ));
+
+      write!(
+        out,
+        " {} · {}",
+        display_time(&commit.time(), &DisplayTimeOptions::try_from(&config)?)?,
+        commit.summary()?.unwrap_or(commit.message()?)
+      )?;
 
       if is_term() {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
       if config.show_authorship()? {
-        out.push_str(&self.display_different_signature(repo, &proj_repo)?);
+        write!(
+          out,
+          "{}",
+          self.display_different_signature(repo, &proj_repo)?
+        )?;
       }
-      out.push_str(&self.display_subrepo_changes(&proj_repo, &commit)?);
     };
 
     Ok(out)
   }
 
-  /// Builds output for a particular submodule
-  ///
-  /// # Params
-  /// - `repo` - The *parent* repo, not the submodule repo
-  /// - `module` - The submodule, usually obtained from [Repository::submodules]
+  /// Builds output for a particular submodule. `repo` is the parent repo, not
+  /// the submodule.
   fn display_module(&self, repo: &Repository, mod_name: &str) -> Result<String> {
     let mut out = String::new();
-    out.push_str(&style(mod_name).cyan().to_string());
+
+    write!(out, "{}", style(mod_name).cyan())?;
 
     let config = UserConfig::new(repo)?;
     let module = repo.find_submodule(mod_name)?;
@@ -335,10 +345,15 @@ impl StatusArgs {
     let mod_repo = match module.open().repo_not_found_ok()? {
       Some(it) => it,
       None => {
-        out.push_str(" not initialized");
+        write!(out, " {}", style("not initialized").dim())?;
         return Ok(out);
       }
     };
+
+    let untracked = UserConfig::new(&mod_repo)?.status_untracked()?;
+    if has_workdir_changes(&mod_repo, untracked)? {
+      write!(out, " {}", style("●").yellow())?;
+    }
 
     // committed state of submodule (commit parent expects module to be on)
     let head_id = module.head_id();
@@ -348,14 +363,17 @@ impl StatusArgs {
     match (index_id, head_id) {
       (Some(index_id), Some(head_id)) => {
         let (ahead, behind) = mod_repo.graph_ahead_behind(index_id, head_id)?;
-        out.push(' ');
-        out.push_str(dim_brackets!("{}", display_plus_minus(ahead, behind)));
+        write!(
+          out,
+          " {}",
+          dim_brackets!("{}", display_plus_minus(ahead, behind))
+        )?;
       }
 
       (Some(_), None) => {
-        out.push(' ');
-        out.push_str(dim_brackets!("{}", style("untracked").red()));
+        write!(out, " {}", style("untracked").red())?;
       }
+
       _ => (),
     }
 
@@ -363,23 +381,29 @@ impl StatusArgs {
     if let Some(head) = get_head_resolved(&mod_repo)? {
       let commit = head.peel_to_commit()?;
 
-      if head.is_branch() || head.is_remote() || head.is_tag() {
+      if head.is_branch() {
         let name = head.shorthand_bytes().to_str_lossy();
-        out.push_str(&format!(" on {}", style(name).green()));
+        write!(out, " on {}", style(&name).green())?;
       }
-      out.push_str(&format!(
-        " -> {}",
-        display_commit_compact(&commit, &config, true)?
-      ));
+
+      write!(
+        out,
+        " {} · {}",
+        display_time(&commit.time(), &DisplayTimeOptions::try_from(&config)?)?,
+        commit.summary()?.unwrap_or(commit.message()?)
+      )?;
 
       if is_term() {
         out = truncate_str(&out, get_term_width(), "\u{2026}").to_string();
       }
 
       if config.show_authorship()? {
-        out.push_str(&self.display_different_signature(repo, &mod_repo)?);
+        write!(
+          out,
+          "{}",
+          self.display_different_signature(repo, &mod_repo)?
+        )?;
       }
-      out.push_str(&self.display_subrepo_changes(&mod_repo, &commit)?);
     };
 
     Ok(out)
@@ -399,48 +423,11 @@ impl StatusArgs {
       {
         // name and email are the same, don't display signature
       } else {
-        out.push_str(&format!("\n  {}", display_signature(Some(&child_sig))));
+        write!(out, "\n  {}", display_signature(Some(&child_sig)))?;
       }
     } else {
       // default text for when no name/email is found
-      out.push_str(&format!("\n  {}", display_signature(None)));
-    }
-
-    Ok(out)
-  }
-
-  /// Displays appendable staged and unstaged changes tabbed on a new line
-  fn display_subrepo_changes(&self, repo: &Repository, head: &Commit) -> Result<String> {
-    let mut out = String::new();
-
-    let tree = head.tree()?;
-    let mut staged = repo.diff_tree_to_index(Some(&tree), None, None)?;
-    staged.find_similar(None)?;
-    let staged = DiffSummary::new(&staged)?;
-
-    let mut opts = DiffOptions::new();
-    let include = match self.no_untracked {
-      Some(it) => !it,
-      None => UserConfig::new(repo)?.status_untracked()?,
-    };
-    opts.include_untracked(include);
-    let mut unstaged = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    unstaged.find_similar(None)?;
-    let unstaged = DiffSummary::new(&unstaged)?;
-
-    if staged.num_files > 0 {
-      out.push_str(&format!(
-        "\n  {} - {}",
-        style("Staged").green(),
-        display_summary_header(&staged)
-      ));
-    }
-    if unstaged.num_files > 0 {
-      out.push_str(&format!(
-        "\n  {} - {}",
-        style("Unstaged").red(),
-        display_summary_header(&unstaged)
-      ));
+      write!(out, "\n  {}", display_signature(None))?;
     }
 
     Ok(out)
@@ -635,10 +622,7 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
           style!(
             "{}, {} · {}",
             commit.author().name()?,
-            display_time(&commit.time(), &DisplayTimeOptions {
-              relative: user_config.format_relative()?,
-              fmt: user_config.format_date()?
-            })?,
+            display_time(&commit.time(), &DisplayTimeOptions::try_from(user_config)?)?,
             commit.summary()?.unwrap_or(commit.message()?)
           )
           .dim()

@@ -2,6 +2,8 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{FixedOffset, TimeZone};
 use git2::Time;
 
+use crate::core::user_config::UserConfig;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DisplayTimeOptions {
   /// False for absolute, true for relative
@@ -15,6 +17,17 @@ impl Default for DisplayTimeOptions {
       relative: Default::default(),
       fmt: "%b %d, %Y at %I:%M %p".to_string(),
     }
+  }
+}
+
+impl<'config> TryFrom<&UserConfig<'config>> for DisplayTimeOptions {
+  type Error = anyhow::Error;
+
+  fn try_from(value: &UserConfig<'config>) -> core::result::Result<Self, Self::Error> {
+    Ok(Self {
+      relative: value.format_relative()?,
+      fmt: value.format_date()?,
+    })
   }
 }
 

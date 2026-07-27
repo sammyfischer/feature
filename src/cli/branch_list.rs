@@ -245,14 +245,12 @@ impl BranchListArgs {
       style(&trunc_name).bold().to_string()
     };
 
-    // wip indicator
+    // wip indicator. uses the same icon as dirty workdir indicator in status,
+    // since wips are meant to be thought of as uncommitted changes that exist
+    // on a branch
     let wips = WipList::from_branch(repo, branch_name.to_string())?;
     if !wips.is_empty() {
-      row.branch.push_str(
-        &style!(" {}", if_nerdfont!(user_config.nerdfont()?, "󱉚", "●"))
-          .yellow()
-          .to_string(),
-      );
+      row.branch.push_str(&format!(" {}", style("●").yellow()));
     }
 
     let branch_commit = branch.get().peel_to_commit()?;
@@ -260,10 +258,10 @@ impl BranchListArgs {
       "{}",
       style!(
         "{} · {}",
-        display_time(&branch_commit.time(), &DisplayTimeOptions {
-          relative: user_config.format_relative()?,
-          fmt: user_config.format_date()?
-        })?,
+        display_time(
+          &branch_commit.time(),
+          &DisplayTimeOptions::try_from(user_config)?
+        )?,
         branch_commit.summary()?.unwrap_or(branch_commit.message()?)
       )
       .dim()
@@ -450,10 +448,7 @@ impl BranchListArgs {
       out,
       " {}, {}",
       commit.author().name()?,
-      display_time(&commit.time(), &DisplayTimeOptions {
-        relative: config.format_relative()?,
-        fmt: config.format_date()?
-      })?
+      display_time(&commit.time(), &DisplayTimeOptions::try_from(config)?)?
     )?;
 
     write!(
@@ -560,10 +555,10 @@ impl BranchListArgs {
           out,
           "\n{} {} {}",
           display_wip(&wip),
-          style(display_time(&wip.time(), &DisplayTimeOptions {
-            relative: config.format_relative()?,
-            fmt: config.format_date()?,
-          })?)
+          style(display_time(
+            &wip.time(),
+            &DisplayTimeOptions::try_from(config)?
+          )?)
           .magenta(),
           truncate_str(wip.message(), 72, &style("\u{2026}").dim().to_string())
         )?;

@@ -203,10 +203,7 @@ impl VersionListArgs {
       row.since_prev = Some(since.to_string());
     }
 
-    let time_opts = DisplayTimeOptions {
-      relative: config.format_relative()?,
-      fmt: config.format_date()?,
-    };
+    let time_opts = DisplayTimeOptions::try_from(config)?;
 
     match reference.peel_to_tag() {
       // annotated tag
@@ -328,10 +325,7 @@ impl VersionListArgs {
     write!(out, "{}", style(name).green())?;
 
     let nerdfont = config.nerdfont()?;
-    let time_opts = DisplayTimeOptions {
-      relative: config.format_relative()?,
-      fmt: config.format_date()?,
-    };
+    let time_opts = DisplayTimeOptions::try_from(&config)?;
 
     match rf.peel_to_tag() {
       // annotated tag
@@ -377,10 +371,7 @@ impl VersionListArgs {
       out,
       " {}, {}",
       commit.author().name()?,
-      display_time(&commit.time(), &DisplayTimeOptions {
-        relative: config.format_relative()?,
-        fmt: config.format_date()?
-      })?
+      display_time(&commit.time(), &DisplayTimeOptions::try_from(&config)?)?
     )?;
 
     write!(

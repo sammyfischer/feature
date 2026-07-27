@@ -176,13 +176,14 @@ pub fn get_conflicts(repo: &Repository) -> Result<Vec<Conflict>> {
 }
 
 /// Whether there are any staged or unstaged changes
-pub fn has_workdir_changes(repo: &Repository) -> Result<bool> {
+pub fn has_workdir_changes(repo: &Repository, untracked: bool) -> Result<bool> {
   let mut opts = StatusOptions::new();
-  opts.include_untracked(false);
+  opts.include_untracked(untracked);
+
   let statuses = repo.statuses(Some(&mut opts))?;
   let mut has_changes = false;
 
-  let flags = Status::INDEX_NEW
+  let mut flags = Status::INDEX_NEW
     | Status::INDEX_MODIFIED
     | Status::INDEX_DELETED
     | Status::INDEX_RENAMED
@@ -191,6 +192,10 @@ pub fn has_workdir_changes(repo: &Repository) -> Result<bool> {
     | Status::WT_DELETED
     | Status::WT_RENAMED
     | Status::WT_TYPECHANGE;
+
+  if untracked {
+    flags |= Status::WT_NEW;
+  }
 
   for entry in statuses.iter() {
     let st = entry.status();

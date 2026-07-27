@@ -71,11 +71,7 @@ impl ListArgs {
         out,
         "{} {} {}",
         display_wip(&wip),
-        style(display_time(&time, &DisplayTimeOptions {
-          relative: config.format_relative()?,
-          fmt: config.format_date()?,
-        })?)
-        .magenta(),
+        style(display_time(&time, &DisplayTimeOptions::try_from(config)?)?).magenta(),
         msg
       )?;
     }
