@@ -31,7 +31,7 @@ macro_rules! style {
 #[macro_export]
 macro_rules! dim_brackets {
   ($($arg:tt)*) => {
-    &format!("{}{}{}", console::style("[").dim(), $crate::style!($($arg)*), console::style("]").dim())
+    format!("{}{}{}", console::style("[").dim(), $crate::style!($($arg)*), console::style("]").dim())
   };
 }
 
