@@ -477,10 +477,12 @@ impl SyncArgs {
 
     if is_current {
       // check for local changes
-      if has_workdir_changes(repo)? {
+      // TODO: check if untracked files would cause conflict
+      // for now just use safest possible check, which is to include untracked files
+      if has_workdir_changes(repo, true)? {
         return Ok(UpdateAction::UpdateSkip {
-          name: branch_info.name().to_owned(),
-          reason: "local changes".to_owned(),
+          name: branch_info.name().to_string(),
+          reason: "local changes".to_string(),
         });
       }
     }
@@ -497,7 +499,7 @@ impl SyncArgs {
 
     if !can_ff {
       return Ok(UpdateAction::UpdateSkip {
-        name: branch_info.name().to_owned(),
+        name: branch_info.name().to_string(),
         reason: "not fast-forwardable".to_string(),
       });
     }

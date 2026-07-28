@@ -115,10 +115,7 @@ pub fn display_commit_compact(commit: &Commit, config: &UserConfig, hash: bool) 
     style!(
       "{}, {} · {}",
       commit.author().name()?,
-      display_time(&commit.time(), &DisplayTimeOptions {
-        relative: config.format_relative()?,
-        fmt: config.format_date()?
-      })?,
+      display_time(&commit.time(), &DisplayTimeOptions::try_from(config)?)?,
       commit.summary()?.unwrap_or(commit.message()?)
     )
     .dim()

@@ -65,9 +65,7 @@ impl PushStatus {
 ///
 /// # Params
 /// - `status` - the [PushStatus] structure to hold the results of the push
-pub fn get_push_callbacks<'cbs, 'repo: 'cbs>(
-  status: &'cbs mut PushStatus,
-) -> Result<RemoteCallbacks<'cbs>> {
+pub fn get_push_callbacks<'cbs>(status: &'cbs mut PushStatus) -> Result<RemoteCallbacks<'cbs>> {
   let mut cbs = RemoteCallbacks::new();
   cbs.credentials(get_credentials_cb());
 
