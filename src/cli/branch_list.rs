@@ -1,8 +1,9 @@
+use std::cmp::Reverse;
 use std::thread;
 
 use anyhow::{Context, Result};
 use console::{measure_text_width, style, truncate_str};
-use git2::{Branch, BranchType, Repository};
+use git2::{Branch, BranchType, Repository, Time};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::display::display_plus_minus;
@@ -187,27 +188,38 @@ impl BranchListArgs {
     user_config: &UserConfig,
     glob: Option<&str>,
   ) -> Result<String> {
-    let branches: Vec<Branch> = if let Some(glob) = glob {
-      repo
+    let mut branches: Vec<(Branch, Time)> = if let Some(glob) = glob {
+      let refs = repo
         .references_glob(&format!("refs/heads/{}", glob))?
-        .flatten()
-        .filter_map(|rf| {
-          // with the above glob pattern this should always be true, but it's safe to
-          // double check
-          if rf.is_branch() {
-            Some(Branch::wrap(rf))
-          } else {
-            None
-          }
-        })
-        .collect()
+        .flatten();
+
+      let mut branches = Vec::new();
+      for rf in refs {
+        let commit = rf.peel_to_commit()?;
+        branches.push((Branch::wrap(rf), commit.time()));
+      }
+
+      branches
     } else {
-      repo
+      let branch_iter = repo
         .branches(Some(BranchType::Local))?
         .flatten()
-        .map(|(branch, _)| branch)
-        .collect()
+        .map(|(branch, _)| branch);
+
+      let mut branches = Vec::new();
+      for branch in branch_iter {
+        let commit = branch.get().peel_to_commit()?;
+        branches.push((branch, commit.time()));
+      }
+
+      branches
     };
+
+    // sort by most recent commit
+    // TODO: could include wip commit timestamps, since wips count as a form of
+    // activity on the branch
+    branches.sort_by_key(|it| Reverse(it.1));
+    let branches: Vec<Branch> = branches.into_iter().map(|(branch, _)| branch).collect();
 
     if branches.len() == 1 {
       self.display_single_branch(repo, user_config, &branches[0])

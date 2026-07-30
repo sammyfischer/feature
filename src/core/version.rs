@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fmt::Display;
 
@@ -23,7 +24,6 @@ impl VersionTag {
     self.commit
   }
 
-  /// Name can be of the format "v*.*.*" or "*.*.*"
   pub fn new(name: &str, commit: Oid) -> Self {
     Self {
       name: name.to_string(),
@@ -48,13 +48,16 @@ pub fn get_version_tags(
   let mut versions = Vec::new();
   for name in &names {
     let name = name?.context("Tag names must be utf-8")?;
-    let tag = repo.resolve_reference_from_short_name(name)?;
-    let commit = tag.peel_to_commit()?.id();
+    let rf = repo.resolve_reference_from_short_name(name)?;
+    let commit = rf.peel_to_commit()?;
 
-    versions.push(VersionTag::new(name, commit));
+    // save tag with the commit time for sorting
+    versions.push((VersionTag::new(name, commit.id()), commit.time()));
   }
 
-  Ok(versions)
+  // sort by time (recent first), and unwrap the VersionTag (discarding the time)
+  versions.sort_by_key(|it| Reverse(it.1));
+  Ok(versions.into_iter().map(|(version, _)| version).collect())
 }
 
 /// Find the current version tag for the given commit. This walks up the commit
