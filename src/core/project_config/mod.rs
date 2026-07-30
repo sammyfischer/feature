@@ -15,11 +15,13 @@ use serde::{Deserialize, Serialize};
 use crate::core::project::Project;
 use crate::core::project_config::branch::BranchConfig;
 use crate::core::project_config::projects::ProjectsConfig;
+use crate::core::project_config::provider::WithoutKey;
 use crate::core::project_config::version::VersionConfig;
 use crate::core::user_config::UserConfig;
 
 pub mod branch;
 pub mod projects;
+mod provider;
 pub mod version;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -110,7 +112,8 @@ pub fn load_with_path(project_config: &Path, repo: &Repository) -> Result<Projec
         .config()?
         .unwrap_or_else(|| parent_root.join(local::FILE));
 
-      figment = figment.merge(Toml::file(&parent_config));
+      // subprojects should not inherit the parent's `[projects]` config
+      figment = figment.merge(WithoutKey::new("projects", Toml::file(&parent_config)));
     }
   }
 
