@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::core::semver::find_current_semver;
+use crate::core::version::find_current_version;
 use crate::{App, git};
 
 const LONG_ABOUT: &str = r#"Displays a git log since last version reachable by a commit. By default, uses
@@ -26,10 +26,10 @@ impl VersionLogArgs {
     let rev = self.rev.as_deref().unwrap_or("HEAD");
     let commit = repo.revparse_single(rev)?.peel_to_commit()?;
 
-    let semver = find_current_semver(repo, commit.id())?
+    let version = find_current_version(repo, &state.config, commit.id())?
       .with_context(|| format!("Failed to find a version reachable from {}", rev))?;
 
-    let status = git!("log", format!("{}..", semver.name())).status()?;
+    let status = git!("log", format!("{}..", version.name())).status()?;
 
     if status.success() {
       Ok(())

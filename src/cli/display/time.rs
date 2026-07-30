@@ -68,9 +68,9 @@ pub fn display_time_relative(time: &Time) -> Result<String> {
   const MONTH: i64 = DAY * 30;
   const YEAR: i64 = DAY * 365;
 
-  // this should roughly match git log's relative time format
+  // this is loosely based on git log's relative time format
   Ok(match secs {
-    s if s < 2 => "1 second ago".to_string(),
+    s if s < 5 => "just now".to_string(),
     s if s < 60 => format!("{} seconds ago", s),
 
     s if s < 120 => "1 minute ago".to_string(),
@@ -82,13 +82,13 @@ pub fn display_time_relative(time: &Time) -> Result<String> {
     s if s < DAY * 2 => "yesterday".to_string(),
     s if s < WEEK => format!("{} days ago", s / DAY),
 
-    s if s < WEEK * 2 => "1 week ago".to_string(),
+    s if s < WEEK * 2 => "last week".to_string(),
     s if s < MONTH => format!("{} weeks ago", s / WEEK),
 
-    s if s < MONTH * 2 => "1 month ago".to_string(),
+    s if s < MONTH * 2 => "last month".to_string(),
     s if s < YEAR => format!("{} months ago", s / MONTH),
 
-    s if s < YEAR * 2 => "1 year ago".to_string(),
+    s if s < YEAR * 2 => "last year".to_string(),
     s => format!("{} years ago", s / YEAR),
   })
 }

@@ -10,7 +10,7 @@ fn creates_and_pushes_tag() {
   local.git(&["push", "-u", "origin", "main"]).success();
 
   // create and push tag
-  local.feature(&["ver", "1.0.0"]).success();
+  local.feature(&["ver", "v1.0.0"]).success();
 
   // tag points to the correct commit
   remote
@@ -30,25 +30,9 @@ fn uses_correct_target() {
   local.git(&["push", "-u", "origin", "main"]).success();
 
   // create and push tag at A, not B
-  local.feature(&["ver", "--at", "HEAD^1", "1.0.0"]).success();
-
-  // tag points to the correct commit
-  remote
-    .git(&["show", "--no-patch", "--format=%s", "v1.0.0"])
-    .success()
-    .stdout("A\n");
-}
-
-/// Should accept a leading 'v' in the semver string
-#[test]
-fn accepts_leading_v() {
-  let (local, remote) = TestRepo::new_with_remote();
-
-  local.init_commit();
-  local.git(&["push", "-u", "origin", "main"]).success();
-
-  // create and push tag
-  local.feature(&["ver", "v1.0.0"]).success();
+  local
+    .feature(&["ver", "--at", "HEAD^1", "v1.0.0"])
+    .success();
 
   // tag points to the correct commit
   remote
@@ -67,7 +51,7 @@ fn creates_annotated_tag() {
 
   // create and push tag
   local
-    .feature(&["ver", "-m", "Release v1.0.0", "1.0.0"])
+    .feature(&["ver", "-m", "Release v1.0.0", "v1.0.0"])
     .success();
 
   // tag is an annotated tag. if it was a lightweight tag, it would print the
@@ -93,7 +77,7 @@ require_annotated = true
   local.git(&["push", "-u", "origin", "main"]).success();
 
   // create lightweight tag
-  local.feature(&["ver", "1.0.0"]).failure();
+  local.feature(&["ver", "v1.0.0"]).failure();
 
   // local doesn't have tag
   local

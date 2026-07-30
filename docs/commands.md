@@ -240,11 +240,13 @@ feature ver --at main 1.0.0
 feature ver 1.1.2 -m 'release v1.1.2'
 ```
 
-Creates a semver tag at the specified commit (default HEAD) and pushes it to the default remote.
+Creates a version tag at the specified commit (default HEAD) and pushes it to the default remote.
 
 It's similar to `git tag`, except:
 
-- it expects a semver string
+- it expects a version string
+  - by default, it must match the glob pattern "v*.*.*"
+  - this can be configured via `version.pattern` in the project config file
 - it can push automatically
 
 ## Project
@@ -295,11 +297,11 @@ feature vers
 feature vers v1.1.0
 ```
 
-Lists all *semver* tags, sorted by version.
+Lists all version tags, sorted by version.
 
 This is similar to `git tag`, except:
 
-- it only shows semver tags
+- it only shows version tags that match the configured pattern
 - it shows more detailed info about each tag
 - it displays a high-detail view when a single tag is shown
 
@@ -310,7 +312,13 @@ feature verlog
 feature verlog main
 ```
 
-Displays a git log of commits since the last semver tag reachable from the current or specified commit.
+Displays a git log of commits since the last version tag reachable from the current or specified commit.
+
+The last version is defined as the first version tag (matching the configured pattern) reached when traversing up the commit graph.
+
+The last version is *not* determined by sorting version tags by their major/minor/patch numbers, then picking the previous. This is because a custom pattern can be used, in which case the numbers can't be reliably parsed.
+
+It's also inherently required that the last version is reachable from the current, and sorting tags and blindly selecting the previous one doesn't guarantee that.
 
 This is similar to `git log`, except:
 

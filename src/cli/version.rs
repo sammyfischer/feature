@@ -9,15 +9,13 @@ use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::display::{display_hash, display_signature};
 use crate::cli::push::{configure_and_push, display_push_status};
 use crate::core::NotFoundExt;
-use crate::core::semver::SemverTag;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
 
-const LONG_ABOUT: &str = r#"Creates and pushes a semver tag.
+const LONG_ABOUT: &str = r#"Creates and pushes a version tag.
 
-The version string specified may contain a
-leading v, but must have 3 numbers separated by a dot. For example, "v1.0.0"
-and "1.0.0" are accepted and equivalent.
+The version string must match the pattern specified in "version.pattern" in the
+project config (this defaults to "v*.*.*").
 
 When no "--message" is specified, this creates a lightweight tag. With a
 message, this creates an annotated tag."#;
@@ -28,7 +26,7 @@ Specify a message with "-m" to annotate."#;
 #[derive(clap::Args, Clone, Debug)]
 #[command(
   visible_alias = "ver",
-  about = "Create and push a semver tag",
+  about = "Create and push a version tag",
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
@@ -50,8 +48,8 @@ pub struct VersionArgs {
   #[arg(short, long)]
   message: Option<String>,
 
-  /// The semver. The leading 'v' is optional
-  version: String,
+  /// The tag name
+  name: String,
 }
 
 impl VersionArgs {
@@ -79,25 +77,18 @@ impl VersionArgs {
       }
     };
 
-    let mut v = &self.version[..];
-    if v.starts_with('v') {
-      v = &v[1..];
-    }
-
-    let (major, minor, patch) = SemverTag::parse(v)?;
-    let name = format!("v{}.{}.{}", major, minor, patch);
-    let refname = format!("refs/tags/{}", name);
+    let refname = format!("refs/tags/{}", &self.name);
 
     if let Some(msg) = &self.message {
       // annotated tag
       let sig = repo.signature()?;
-      let tag_id = repo.tag(&name, &target, &sig, msg, false)?;
+      let tag_id = repo.tag(&self.name, &target, &sig, msg, false)?;
       let tag = repo.find_tag(tag_id)?;
 
       println!(
         "{} tag {} at {}",
         style("Created").green(),
-        style(&name).cyan(),
+        style(&self.name).cyan(),
         &target_name
       );
 
@@ -118,11 +109,11 @@ impl VersionArgs {
       }
 
       // lightweight tag
-      repo.tag_lightweight(&name, &target, false)?;
+      repo.tag_lightweight(&self.name, &target, false)?;
       println!(
         "{} tag {} at {}",
         style("Created").green(),
-        style(&name).cyan(),
+        style(&self.name).cyan(),
         &target_name
       );
     }
@@ -138,7 +129,7 @@ impl VersionArgs {
         println!(
           "{} tag {} to {}",
           style("Pushed").green(),
-          style(&name).cyan(),
+          style(&self.name).cyan(),
           style(remote_name).blue()
         );
       };

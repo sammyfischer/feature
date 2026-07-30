@@ -34,7 +34,7 @@ pub struct ProjectConfig {
   /// Branch name options
   pub branch: BranchConfig,
 
-  /// Semver tag options
+  /// Version tag options
   pub version: VersionConfig,
 
   /// List of subprojects
@@ -136,6 +136,16 @@ fn get_schema_url() -> String {
   )
 }
 
+fn example_config() -> Result<String> {
+  let mut config = ProjectConfig::default();
+
+  // branch.template's default is None, but this is an example config so it
+  // should have some value
+  config.branch.template = Some("%s".to_string());
+
+  Ok(toml::to_string_pretty(&config)?)
+}
+
 /// Functions to work the the local project config file
 pub mod local {
   use std::fs::File;
@@ -144,7 +154,7 @@ pub mod local {
 
   use anyhow::Result;
 
-  use crate::core::project_config::{ProjectConfig, get_schema_url};
+  use crate::core::project_config::{example_config, get_schema_url};
 
   /// The name of the local config file
   pub const FILE: &str = "feature.toml";
@@ -156,13 +166,7 @@ pub mod local {
   /// Saves an entire default config to the project directory
   pub fn save_default() -> Result<()> {
     let path = self::path();
-    let mut config = ProjectConfig::default();
-
-    // branch.template's default is None, but this is an example config so it
-    // should have some value
-    config.branch.template = Some("%s".to_string());
-
-    let toml_raw = toml::to_string_pretty(&config)?;
+    let toml_raw = example_config()?;
 
     let mut file = File::create(&path)?;
     file.write_all(format!("\"$schema\" = \"{}\"\n\n", get_schema_url()).as_bytes())?;
@@ -180,7 +184,7 @@ pub mod global {
 
   use anyhow::{Result, anyhow};
 
-  use crate::core::project_config::{ProjectConfig, get_schema_url};
+  use crate::core::project_config::{example_config, get_schema_url};
 
   /// Returns the config file located in the platform's standard config
   /// directory
@@ -218,8 +222,7 @@ pub mod global {
   /// Saves an entire default config to the user's config directory
   pub fn save_default() -> Result<()> {
     let path = self::ensure_path()?;
-    let config = ProjectConfig::default();
-    let toml_raw = toml::to_string_pretty(&config)?;
+    let toml_raw = example_config()?;
 
     let mut file = File::create(&path)?;
     file.write_all(format!("\"$schema\" = \"{}\"\n\n", get_schema_url()).as_bytes())?;
