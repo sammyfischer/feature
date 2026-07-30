@@ -389,8 +389,7 @@ _feature() {
 
     config_get)
       local opts="-h --help"
-      local keys="default_remote protect branch.sep branch.template"
-      COMPREPLY=( $(compgen -W "$opts" -- "$cur")  $(compgen -W "$keys" -- "$cur") )
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
       ;;
 
     end)
