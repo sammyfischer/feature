@@ -9,21 +9,26 @@ use crate::cli::display::diff::display_summary_header;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
 use crate::core::diff::DiffSummary;
-use crate::core::semver::{SemverTag, get_semver_tags, since_prev_semver};
+use crate::core::project_config::ProjectConfig;
 use crate::core::string::ToStrLossyOwned;
 use crate::core::user_config::UserConfig;
+use crate::core::version::{VersionTag, get_version_tags, since_prev_version};
 use crate::core::{open_repo_from_dirs, trim_hash};
 use crate::{App, if_nerdfont, style};
 
-const LONG_ABOUT: &str = r#"Lists semver tags, sorted by version (highest to lowest). Shows how many commits
-were added since the previous version. If the tag is annotated, it shows the tag
-author and message. If it's lightweight, it shows the author/message of the
-commit it points to."#;
+const LONG_ABOUT: &str = r#"Lists version tags. Shows how many commits were added since the previous
+version.
+
+If the tag is annotated, the name is shown in cyan and the author/timestamp/
+message come from the tag object.
+
+If it's lightweight, the name will be white and the author/timestamp/message
+come from the commit it points to."#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
   visible_alias = "vers",
-  about = "Lists semver tags",
+  about = "Lists version tags",
   long_about = LONG_ABOUT,
   disable_help_subcommand = true
 )]
@@ -36,7 +41,7 @@ pub struct VersionListArgs {
   #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_modules: Option<bool>,
 
-  /// View detailed info about a particular semver tag
+  /// View detailed info about a particular version tag
   #[arg(value_name = "NAME")]
   version: Option<String>,
 }
@@ -92,9 +97,9 @@ impl VersionListArgs {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
 
         match &self.version {
-          Some(name) => self.display_single_tag(&repo, name),
+          Some(name) => self.display_single_tag(&repo, proj_config, name),
           None => {
-            let table = self.build_table(&repo)?;
+            let table = self.build_table(&repo, proj_config)?;
             self.display_table(table)
           }
         }
@@ -112,9 +117,9 @@ impl VersionListArgs {
               let repo = Repository::open(&project.path)?;
 
               match &self.version {
-                Some(name) => self.display_single_tag(&repo, name),
+                Some(name) => self.display_single_tag(&repo, proj_config, name),
                 None => {
-                  let table = self.build_table(&repo)?;
+                  let table = self.build_table(&repo, proj_config)?;
                   out.push_str(&self.display_table(table)?);
                   Ok(out)
                 }
@@ -137,9 +142,9 @@ impl VersionListArgs {
               let mut out = format!("\n{} {}\n", style("Module").bold(), style(name).cyan());
 
               match &self.version {
-                Some(name) => self.display_single_tag(&repo, name),
+                Some(name) => self.display_single_tag(&repo, proj_config, name),
                 None => {
-                  let table = self.build_table(&repo)?;
+                  let table = self.build_table(&repo, proj_config)?;
                   out.push_str(&self.display_table(table)?);
                   Ok(out)
                 }
@@ -190,24 +195,44 @@ impl VersionListArgs {
     Ok(())
   }
 
-  fn build_row(&self, repo: &Repository, config: &UserConfig, tag: &SemverTag) -> Result<Row> {
+  fn build_row(
+    &self,
+    repo: &Repository,
+    proj_config: &ProjectConfig,
+    user_config: &UserConfig,
+    tag: &VersionTag,
+  ) -> Result<Row> {
     let mut row = Row::default();
 
     let name = tag.name();
-    row.tag = style(&name).bold().to_string();
+    let rf = repo.resolve_reference_from_short_name(name)?;
+    let tag_obj = match rf.peel_to_tag() {
+      // annotated tag
+      Ok(obj) => Some(obj),
 
-    let commit = repo.find_commit(tag.commit)?;
-    let reference = repo.resolve_reference_from_short_name(&name)?;
+      // lightweight tag
+      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => None,
 
-    if let Some((_, since)) = since_prev_semver(repo, tag)? {
+      Err(e) => return Err(anyhow!(e)),
+    };
+
+    row.tag = if tag_obj.is_some() {
+      style(&name).bold().cyan()
+    } else {
+      style(&name).bold()
+    }
+    .to_string();
+
+    let commit = repo.find_commit(tag.commit())?;
+
+    if let Some((_, since)) = since_prev_version(repo, proj_config, tag)? {
       row.since_prev = Some(since.to_string());
     }
 
-    let time_opts = DisplayTimeOptions::try_from(config)?;
+    let time_opts = DisplayTimeOptions::try_from(user_config)?;
 
-    match reference.peel_to_tag() {
-      // annotated tag
-      Ok(obj) => {
+    match tag_obj {
+      Some(obj) => {
         match obj.tagger() {
           Some(sig) => {
             row.author = sig.name()?.to_string();
@@ -225,33 +250,29 @@ impl VersionListArgs {
         };
       }
 
-      // lightweight tag
-      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => {
+      None => {
         row.author = commit.author().name()?.to_string();
         row.time = display_time(&commit.time(), &time_opts)?;
         row.msg = commit.summary()?.unwrap_or(commit.message()?).to_string();
       }
-
-      Err(e) => return Err(anyhow!(e)),
     }
 
     Ok(row)
   }
 
-  fn build_table(&self, repo: &Repository) -> Result<Vec<Row>> {
+  fn build_table(&self, repo: &Repository, proj_config: &ProjectConfig) -> Result<Vec<Row>> {
     let repo_dir = repo.path();
     let work_dir = repo.workdir();
 
-    let mut tags = get_semver_tags(repo)?;
-    tags.sort_by(|a, b| b.cmp(a));
+    let tags = get_version_tags(repo, proj_config)?;
 
     // each tag walks the commit graph to find the previous tag, which can be slow
     let table = tags
       .par_iter()
       .map(|tag| {
         let repo = open_repo_from_dirs(repo_dir, work_dir)?;
-        let config = UserConfig::new(&repo)?;
-        self.build_row(&repo, &config, tag)
+        let user_config = UserConfig::new(&repo)?;
+        self.build_row(&repo, proj_config, &user_config, tag)
       })
       .collect::<Result<Vec<_>>>()?;
 
@@ -311,7 +332,12 @@ impl VersionListArgs {
     Ok(out)
   }
 
-  fn display_single_tag(&self, repo: &Repository, name: &str) -> Result<String> {
+  fn display_single_tag(
+    &self,
+    repo: &Repository,
+    proj_config: &ProjectConfig,
+    name: &str,
+  ) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
 
@@ -385,11 +411,11 @@ impl VersionListArgs {
       .dim()
     )?;
 
-    let tag = SemverTag::new(name, commit.id())?;
-    let old_tree = if let Some((prev, _)) = since_prev_semver(repo, &tag)? {
+    let tag = VersionTag::new(name, commit.id());
+    let old_tree = if let Some((prev, _)) = since_prev_version(repo, proj_config, &tag)? {
       write!(out, "\n\nSince {}", style(prev.name()).yellow())?;
 
-      let (ahead, _) = repo.graph_ahead_behind(commit.id(), prev.commit)?;
+      let (ahead, _) = repo.graph_ahead_behind(commit.id(), prev.commit())?;
       write!(
         out,
         " - {} {}, ",
@@ -397,7 +423,7 @@ impl VersionListArgs {
         if ahead == 1 { "commit" } else { "commits" }
       )?;
 
-      Some(repo.find_commit(prev.commit)?.tree()?)
+      Some(repo.find_commit(prev.commit())?.tree()?)
     } else {
       write!(out, "\n\nInitial release - ")?;
       None

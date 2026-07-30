@@ -32,8 +32,8 @@ use crate::core::branch::{
 use crate::core::branch_info::BranchInfo;
 use crate::core::commit::find_branch_at_commit;
 use crate::core::diff::DiffSummary;
+use crate::core::project_config::ProjectConfig;
 use crate::core::project_config::projects::ProjectEntry;
-use crate::core::semver::{SemverTag, find_current_semver, since_prev_semver};
 use crate::core::status::{
   get_conflicts,
   get_staged_changes,
@@ -44,6 +44,7 @@ use crate::core::status::{
 };
 use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
 use crate::core::user_config::UserConfig;
+use crate::core::version::{VersionTag, find_current_version, is_version_tag, since_prev_version};
 use crate::core::wip::WipList;
 use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
 use crate::{App, dim_brackets, if_nerdfont, opt_advice, style};
@@ -105,7 +106,7 @@ impl StatusArgs {
     thread::scope(|scope| -> Result<_> {
       let repo_thread = scope.spawn(|| {
         let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
-        self.display_main_repo(&repo)
+        self.display_main_repo(&repo, proj_config)
       });
 
       let proj_thread = scope.spawn(|| {
@@ -168,48 +169,48 @@ impl StatusArgs {
   }
 
   /// Displays main repo status
-  fn display_main_repo(&self, repo: &Repository) -> Result<String> {
+  fn display_main_repo(&self, repo: &Repository, proj_config: &ProjectConfig) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
-    let config = UserConfig::new(repo)?;
+    let user_config = UserConfig::new(repo)?;
 
     let (header, advice) = match repo.state() {
       // TODO: custom header/advice for git am
       RepositoryState::ApplyMailbox | RepositoryState::Clean => (
-        display_normal_header(repo, &config)?,
-        opt_advice!(config.advice_status()?, STATUS_ADVICE),
+        display_normal_header(repo, proj_config, &user_config)?,
+        opt_advice!(user_config.advice_status()?, STATUS_ADVICE),
       ),
 
       RepositoryState::Merge => (
         display_merge_header(repo)?,
-        opt_advice!(config.advice_conflict()?, MERGE_CONFLICT_ADVICE),
+        opt_advice!(user_config.advice_conflict()?, MERGE_CONFLICT_ADVICE),
       ),
 
       RepositoryState::Revert | RepositoryState::RevertSequence => (
         display_revert_header(repo)?,
-        opt_advice!(config.advice_conflict()?, REVERT_CONFLICT_ADVICE),
+        opt_advice!(user_config.advice_conflict()?, REVERT_CONFLICT_ADVICE),
       ),
 
       RepositoryState::CherryPick | RepositoryState::CherryPickSequence => (
         display_pick_header(repo)?,
-        opt_advice!(config.advice_conflict()?, PICK_CONFLICT_ADVICE),
+        opt_advice!(user_config.advice_conflict()?, PICK_CONFLICT_ADVICE),
       ),
 
       RepositoryState::Bisect => (
         display_bisect_header(repo)?,
-        opt_advice!(config.advice_status()?, BISECT_ADVICE),
+        opt_advice!(user_config.advice_status()?, BISECT_ADVICE),
       ),
 
       RepositoryState::Rebase
       | RepositoryState::RebaseInteractive
       | RepositoryState::RebaseMerge => (
         display_rebase_header(repo, &repo.path().join("rebase-merge"))?,
-        opt_advice!(config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
+        opt_advice!(user_config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
       ),
 
       RepositoryState::ApplyMailboxOrRebase => (
         display_rebase_header(repo, &repo.path().join("rebase-apply"))?,
-        opt_advice!(config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
+        opt_advice!(user_config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
       ),
     };
 
@@ -220,7 +221,7 @@ impl StatusArgs {
       write!(out, "\n\n{}", advice)?;
     }
 
-    let nerdfont = config.nerdfont()?;
+    let nerdfont = user_config.nerdfont()?;
 
     if is_pick_active(repo) {
       // cherry picks are weird bc they show no diff with head when you stage changes.
@@ -247,7 +248,7 @@ impl StatusArgs {
 
     let show_untracked = match self.no_untracked {
       Some(hide) => !hide,
-      None => config.status_untracked()?,
+      None => user_config.status_untracked()?,
     };
 
     let statuses = display_file_statuses(repo, show_untracked, nerdfont)?;
@@ -437,199 +438,165 @@ impl StatusArgs {
 /// Displays a header when there is no other active operation (e.g. rebase/merge
 /// conflicts). Shows current branch, commit it points to, and upstream/base
 /// info if available. Unlike the others, this header takes up to 3 lines.
-fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<String> {
+fn display_normal_header(
+  repo: &Repository,
+  proj_config: &ProjectConfig,
+  user_config: &UserConfig,
+) -> Result<String> {
   let mut out = String::with_capacity(80);
   let nerdfont = user_config.nerdfont()?;
 
+  // intelligently find what head points to. if head is a direct ref, this finds a
+  // suitable ref that points to the same commit and uses that as a symbolic
+  // ref. if no suitable symref is found, then this will just stay as a direct
+  // reference. a value of None means that head points to a non-existent ref,
+  // e.g. the repo has no commits
   let head = match get_head_resolved(repo)? {
     // local branch
     Some(head) if head.is_branch() => Some(head),
 
-    // if head isn't a local branch, then it's detached (with git, you generally can't set head to
-    // be a symbolic ref other than a local branch)
+    // if head isn't a local branch, then it's detached, and also must be a direct reference. we
+    // have to search for a suitable symbolic ref
     Some(head) => {
       let id = head.peel_to_commit()?.id();
-
       let mut rf = None;
 
-      // find a matching remote (upstream) branch
-      let branches = repo
-        .branches(Some(git2::BranchType::Remote))?
-        .flatten()
-        .map(|(branch, _)| branch);
-
-      for branch in branches {
-        if id == branch.get().peel_to_commit()?.id() {
-          rf = Some(branch.into_reference());
+      // search tags first, this is generally more useful
+      let tags = repo.references_glob("refs/tags/*")?.flatten();
+      for tag in tags {
+        if id == tag.peel_to_commit()?.id() {
+          rf = Some(tag);
           break;
         }
       }
 
       if rf.is_none() {
-        // if that wasn't a match, find a tag
-        let tags = repo.references_glob("refs/tags/*")?.flatten();
+        // if not, search remote branches
+        let branches = repo
+          .branches(Some(git2::BranchType::Remote))?
+          .flatten()
+          .map(|(branch, _)| branch);
 
-        for tag in tags {
-          if id == tag.peel_to_commit()?.id() {
-            rf = Some(tag);
+        for branch in branches {
+          if id == branch.get().peel_to_commit()?.id() {
+            rf = Some(branch.into_reference());
             break;
           }
         }
       }
 
-      rf
+      if rf.is_some() {
+        // if alternative was found
+        rf
+      } else {
+        // default to head
+        Some(head)
+      }
     }
+
     None => None,
   };
 
-  /// Creates a vec of extra info that is displayed inside brackets and
-  /// separated by " | ". A vec is initialized and passed into `builder`. The
-  /// caller may push elements into the vec, and they will be joined after.
-  ///
-  /// The builder function must return a result, and any errors it returns will
-  /// be propagated by this function.
-  ///
-  /// # Returns
-  /// The joined string, or `None` if the vec was left empty.
-  fn build_extras<'builder>(
-    builder: impl FnOnce(&mut Vec<String>) -> Result<()> + 'builder,
-  ) -> Result<Option<String>> {
-    let mut extras: Vec<String> = Vec::new();
-    builder(&mut extras)?;
-
-    if extras.is_empty() {
-      Ok(None)
-    } else {
-      let sep = style(" | ").dim().to_string();
-      let s = extras.join(&sep);
-      Ok(Some(dim_brackets!("{}", s)))
-    }
-  }
-
+  // match against resolved head ref
   match head {
     Some(head) => {
+      let commit = head.peel_to_commit()?;
+
+      // small bites of supplementary info, displayed in brackets next to the
+      // name
+      //
+      // e.g. local branches:
+      // [up: +0 -0 | base: +0 -0 | ver: v1.0.0 +13 | wips: 2]
+      //
+      // with nerdfont:
+      // [ +0 -0 |  +0 -0 |  v1.0.0 +13 | 󱉚 2]
+      let mut extras = Vec::new();
+
+      // gets current version info
+      let version_extra = || -> Result<Option<String>> {
+        if let Some(version) = find_current_version(repo, proj_config, commit.id())? {
+          let (since, _) = repo.graph_ahead_behind(commit.id(), version.commit())?;
+          let mut version_extra = format!(
+            "{}",
+            style!("{} {}", if_nerdfont!(nerdfont, "", "ver:"), version.name()).yellow(),
+          );
+
+          if since > 0 {
+            version_extra.push_str(&style!(" +{}", since).green().to_string());
+          }
+
+          return Ok(Some(version_extra));
+        }
+
+        Ok(None)
+      };
+
+      // match against ref type
       if head.is_branch() {
         // local branch
         let branch = BranchInfo::from_reference(&head)?;
-        let commit = head.peel_to_commit()?;
-
         write!(out, "On branch {}", style(branch.name()).green())?;
 
-        // small bites of info related to the branch
-        //
-        // displayed as:
-        // [up: +0 -0 | base: +0 -0 | ver: 1.0.0 +13 | wips: 2]
-        //
-        // or with nerdfont:
-        // [ +0 -0 |  +0 -0 |  1.0.0 +13 | 󱉚 2]
-        let extras = build_extras(|extras| {
-          if let Some(upstream) = branch.upstream(repo)? {
-            let upstream_tip = upstream.get().peel_to_commit()?.id();
-            let (a, b) = repo.graph_ahead_behind(upstream_tip, commit.id())?;
+        if let Some(upstream) = branch.upstream(repo)? {
+          let upstream_tip = upstream.get().peel_to_commit()?.id();
+          let (a, b) = repo.graph_ahead_behind(upstream_tip, commit.id())?;
 
-            extras.push(format!(
-              "{} {}",
-              style(if_nerdfont!(nerdfont, "", "up:")).blue(),
-              display_plus_minus(a, b)
-            ));
-          }
-
-          if let Some(base) = user_config.branch_base(branch.name())? {
-            let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
-            let (a, b) = repo.graph_ahead_behind(base_tip, commit.id())?;
-
-            extras.push(format!(
-              "{} {}",
-              style(if_nerdfont!(nerdfont, "", "base:")).magenta(),
-              display_plus_minus(a, b)
-            ));
-          }
-
-          if let Some(semver) = find_current_semver(repo, commit.id())? {
-            let (since, _) = repo.graph_ahead_behind(commit.id(), semver.commit)?;
-
-            extras.push(format!(
-              "{} {}",
-              style!(
-                "{} {}",
-                if_nerdfont!(nerdfont, "", "ver:"),
-                &semver.name()[1..]
-              )
-              .yellow(),
-              style!("+{}", since).green(),
-            ));
-          }
-
-          let wips = WipList::from_branch(repo, branch.name().to_string())?;
-          if !wips.is_empty() {
-            extras.push(
-              style!("{} {}", if_nerdfont!(nerdfont, "󱉚", "wips:"), wips.len())
-                .cyan()
-                .to_string(),
-            );
-          }
-
-          Ok(())
-        })?;
-
-        if let Some(extras) = extras {
-          write!(out, " {}", extras)?;
+          extras.push(format!(
+            "{} {}",
+            style(if_nerdfont!(nerdfont, "", "up:")).blue(),
+            display_plus_minus(a, b)
+          ));
         }
 
-        let commit_line = display_commit_compact(&commit, user_config, true)?;
+        if let Some(base) = user_config.branch_base(branch.name())? {
+          let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
+          let (a, b) = repo.graph_ahead_behind(base_tip, commit.id())?;
 
-        write!(
-          out,
-          "\n{}",
-          trunc_term_width(&commit_line, &style("\u{2026}").dim().to_string())
-        )?;
+          extras.push(format!(
+            "{} {}",
+            style(if_nerdfont!(nerdfont, "", "base:")).magenta(),
+            display_plus_minus(a, b)
+          ));
+        }
+
+        if let Some(version) = version_extra()? {
+          extras.push(version);
+        }
+
+        let wips = WipList::from_branch(repo, branch.name().to_string())?;
+        if !wips.is_empty() {
+          extras.push(
+            style!("{} {}", if_nerdfont!(nerdfont, "󱉚", "wips:"), wips.len())
+              .cyan()
+              .to_string(),
+          );
+        }
       } else if head.is_remote() {
         // remote/upstream branch
         let upstream = BranchInfo::from_reference(&head)?;
-        let commit = head.peel_to_commit()?;
-
         write!(out, "On upstream {}", style(upstream.name()).green())?;
 
-        let extras = build_extras(|extras| {
-          if let Some(branch) = find_local_of_upstream(repo, &upstream)? {
-            let branch_tip = branch.get().peel_to_commit()?.id();
-            let (a, b) = repo.graph_ahead_behind(commit.id(), branch_tip)?;
+        if let Some(branch) = find_local_of_upstream(repo, &upstream)? {
+          let branch_tip = branch.get().peel_to_commit()?.id();
+          let (a, b) = repo.graph_ahead_behind(commit.id(), branch_tip)?;
 
-            // doesn't need a prefix, this could only be relative to the local branch
-            extras.push(display_plus_minus(a, b));
-          }
-
-          if let Some(semver) = find_current_semver(repo, commit.id())? {
-            extras.push(
-              style!("{} {}", if_nerdfont!(nerdfont, "", "ver:"), semver.name())
-                .yellow()
-                .to_string(),
-            );
-          }
-
-          Ok(())
-        })?;
-
-        if let Some(extras) = extras {
-          write!(out, " {}", extras)?;
+          // doesn't need a prefix, this could only be relative to the local branch
+          extras.push(display_plus_minus(a, b));
         }
 
-        let commit_line = display_commit_compact(&commit, user_config, true)?;
-
-        write!(
-          out,
-          "\n{}",
-          trunc_term_width(&commit_line, &style("\u{2026}").dim().to_string())
-        )?;
+        if let Some(version) = version_extra()? {
+          extras.push(version);
+        }
       } else if head.is_tag() {
         let tag_name = head.shorthand()?;
-        let commit = head.peel_to_commit()?;
-
         write!(out, "On tag {}", style(tag_name).green())?;
 
-        if let Ok(semver) = SemverTag::parse(tag_name) {
-          let semver = SemverTag::from_tuple(semver, commit.id())?;
-          if let Some((prev, since)) = since_prev_semver(repo, &semver)? {
+        if is_version_tag(repo, proj_config, tag_name)? {
+          // current tag is a version tag
+          println!("version tag");
+          let version = VersionTag::new(tag_name, commit.id());
+
+          if let Some((prev, since)) = since_prev_version(repo, proj_config, &version)? {
             write!(
               out,
               " {}{} since {}{}",
@@ -639,50 +606,36 @@ fn display_normal_header(repo: &Repository, user_config: &UserConfig) -> Result<
               style(")").dim(),
             )?;
           }
+        } else if let Some(version) = version_extra()? {
+          // not a version tag, find current version
+          println!("regular tag");
+          extras.push(version);
         }
-
-        let commit_line = display_commit_compact(&commit, user_config, true)?;
-
-        write!(
-          out,
-          "\n{}",
-          trunc_term_width(&commit_line, &style("\u{2026}").dim().to_string())
-        )?;
       } else {
-        // commit
-        let commit = head.peel_to_commit()?;
-
         write!(out, "On commit {}", display_hash(commit.as_object())?)?;
+      };
 
-        let extras = build_extras(|extras| {
-          if let Some(semver) = find_current_semver(repo, commit.id())? {
-            extras.push(
-              style!("{} {}", if_nerdfont!(nerdfont, "", "ver:"), semver.name())
-                .yellow()
-                .to_string(),
-            );
-          }
-
-          Ok(())
-        })?;
-
-        if let Some(extras) = extras {
-          write!(out, " {}", extras)?;
-        }
-
-        write!(
-          out,
-          "\n{}",
-          style!(
-            "{}{}, {} · {}",
-            style(if_nerdfont!(nerdfont, " ")).yellow(),
-            commit.author().name()?,
-            display_time(&commit.time(), &DisplayTimeOptions::try_from(user_config)?)?,
-            commit.summary()?.unwrap_or(commit.message()?)
-          )
-          .dim()
-        )?;
+      if !extras.is_empty() {
+        let sep = style(" | ").dim().to_string();
+        let s = extras.join(&sep);
+        write!(out, " {}", dim_brackets!("{}", s))?;
       }
+
+      let commit_line = if head.is_branch() || head.is_remote() || head.is_tag() {
+        display_commit_compact(&commit, user_config, true)?
+      } else {
+        format!(
+          "{}{}",
+          if_nerdfont!(nerdfont, " "),
+          display_commit_compact(&commit, user_config, false)?
+        )
+      };
+
+      write!(
+        out,
+        "\n{}",
+        trunc_term_width(&commit_line, &style("\u{2026}").dim().to_string())
+      )?;
     }
 
     // no commits yet

@@ -17,10 +17,10 @@ pub mod fetch;
 pub mod project;
 pub mod project_config;
 pub mod push;
-pub mod semver;
 pub mod status;
 pub mod string;
 pub mod user_config;
+pub mod version;
 pub mod wip;
 
 /// An extension trait to map non-existence errors into options, while
@@ -65,7 +65,7 @@ impl<T> NotFoundExt<T> for core::result::Result<T, git2::Error> {
 }
 
 /// Opens a repo given a `.git` dir. If the workdir is `None`, it's assumed to
-/// be the parent of repo_dir. If `Some`, the repo is assumed to be bare.
+/// be the parent of `repo_dir`. If `Some`, the repo is assumed to be bare.
 ///
 /// This is a useful way to open the same repo in multiple threads.
 /// ```
