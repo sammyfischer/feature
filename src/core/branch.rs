@@ -33,8 +33,8 @@ pub fn get_head_resolved<'rf>(repo: &'rf Repository) -> Result<Option<Reference<
 /// [get_head_resolved].
 ///
 /// [get_head_resolved]: crate::core::branch::get_head_resolved
-pub fn get_head<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {
-  repo.find_reference("HEAD").not_found_ok()
+pub fn get_head<'rf>(repo: &'rf Repository) -> Result<Reference<'rf>> {
+  Ok(repo.find_reference("HEAD")?)
 }
 
 pub fn get_merge_head<'rf>(repo: &'rf Repository) -> Result<Option<Reference<'rf>>> {

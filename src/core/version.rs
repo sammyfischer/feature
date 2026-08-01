@@ -62,11 +62,15 @@ pub fn get_version_tags(
 
 /// Find the current version tag for the given commit. This walks up the commit
 /// history from the commit until it finds a tag or history ends.
+///
+/// # Returns
+/// The version tag, along with the number of commits introduced since that
+/// version. If no tag is found, returns None.
 pub fn find_current_version(
   repo: &Repository,
   project_config: &ProjectConfig,
   commit: Oid,
-) -> Result<Option<VersionTag>> {
+) -> Result<Option<(VersionTag, usize)>> {
   let tags = get_version_tags(repo, project_config)?;
   let lookup_tag = tags
     .iter()
@@ -77,9 +81,9 @@ pub fn find_current_version(
   walk.push(commit)?;
 
   let mut closest = None;
-  for id in walk.flatten() {
+  for (i, id) in walk.flatten().enumerate() {
     if let Some(tag) = lookup_tag.get(&id) {
-      closest = Some((**tag).clone());
+      closest = Some(((**tag).clone(), i));
       break;
     }
   }
@@ -87,7 +91,9 @@ pub fn find_current_version(
   Ok(closest)
 }
 
-/// Get the name of the previous version and number of commits since
+/// Finds the previous version and number of commits since. This is like
+/// [find_current_version], but it begins the graph traversal from the commits
+/// first parent.
 pub fn since_prev_version(
   repo: &Repository,
   project_config: &ProjectConfig,
@@ -105,8 +111,7 @@ pub fn since_prev_version(
     return Ok(None);
   };
 
-  let (since, _) = repo.graph_ahead_behind(current.commit, prev.commit)?;
-  Ok(Some((prev, since)))
+  Ok(Some(prev))
 }
 
 /// Checks if the given tag name matches the configured version pattern

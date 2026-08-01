@@ -21,9 +21,10 @@ use crate::core::fetch::fetch_all;
 use crate::core::project::Project;
 use crate::core::project_config::ProjectConfig;
 use crate::core::string::ToStrLossyOwned;
+use crate::core::threading::ThreadedRepoHandle;
 use crate::core::user_config::UserConfig;
 use crate::core::wip::WipList;
-use crate::core::{NotFoundExt, delete_config_section, open_repo_from_dirs};
+use crate::core::{NotFoundExt, delete_config_section};
 
 const LONG_ABOUT: &str = r"Deletes all branches that:
 • have a known base branch
@@ -66,8 +67,8 @@ impl PruneArgs {
       );
     }
 
-    let repo_dir = state.repo.path().to_owned();
-    let work_dir = state.repo.workdir().to_owned();
+    let handle = ThreadedRepoHandle::from(&state.repo);
+
     let proj_config = &state.config;
     let user_config = UserConfig::new(&state.repo)?;
 
@@ -76,6 +77,9 @@ impl PruneArgs {
     let mut prefix_width: usize;
 
     let main_progress = {
+      let repo_dir = state.repo.path().to_owned();
+      let work_dir = state.repo.workdir();
+
       let name = work_dir
         .unwrap_or(&repo_dir)
         .file_name()
@@ -117,7 +121,7 @@ impl PruneArgs {
       // unlike sync, main repo can run concurrently, since projects won't be
       // reconfigured
       let repo_thread = scope.spawn(|| {
-        let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+        let repo = handle.open()?;
         let user_config = UserConfig::new(&repo)?;
         self.prune_repo(&repo, &user_config, proj_config, &main_progress.1)
       });
