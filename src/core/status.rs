@@ -2,10 +2,11 @@ use std::fmt::Display;
 
 use anyhow::{Context, Result};
 use console::style;
-use git2::{DiffOptions, Repository, Status, StatusOptions};
+use git2::{DiffOptions, Reference, Repository, RepositoryState, Status, StatusOptions};
 
-use crate::core::branch::get_head_resolved;
+use crate::core::branch::{get_head, get_head_resolved};
 use crate::core::diff::DiffSummary;
+use crate::core::rebase::RebaseInfo;
 use crate::core::string::ToStrLossyOwned;
 
 pub fn is_merge_active(repo: &Repository) -> bool {
@@ -230,4 +231,123 @@ pub fn has_index_changes(repo: &Repository) -> Result<bool> {
   }
 
   Ok(has_changes)
+}
+
+/// What type of status the repo is in.
+///
+/// At the top level is the [RepositoryState], in a simplified form.
+///
+/// If the state is clean, more detailed info about the checkout state is
+/// included.
+///
+/// If the state is rebase, info about the rebase is retrieved.
+pub enum StatusKind {
+  Clean {
+    head: CheckoutStatus,
+    refname: String,
+  },
+  Rebase(RebaseInfo),
+  Merge,
+  Pick,
+  Revert,
+  Bisect,
+}
+
+/// Where the user is checked out
+pub enum CheckoutStatus {
+  /// Checked out to a local branch
+  Branch,
+
+  /// Checked out to a remote branch
+  Remote,
+
+  /// Checked out to a tag
+  Tag,
+
+  /// Checked out to a commit
+  Commit,
+
+  /// Checked out to a branch that doesn't exist
+  NoCommits,
+}
+
+impl StatusKind {
+  /// Computes the display mode for the status command output
+  pub fn get(repo: &Repository) -> Result<StatusKind> {
+    let kind = match repo.state() {
+      // TODO: custom header/advice for git am
+      RepositoryState::ApplyMailbox | RepositoryState::Clean => {
+        let (location, rf): (CheckoutStatus, Reference) = match get_head_resolved(repo)? {
+          // local branch
+          Some(head) if head.is_branch() => (CheckoutStatus::Branch, head),
+
+          // if head isn't a local branch, then it's detached, and also must be a direct reference.
+          // we have to search for a suitable symbolic ref
+          Some(head) => {
+            let id = head.peel_to_commit()?.id();
+            let mut location = None;
+
+            // search tags first, this is generally more useful
+            let tags = repo.references_glob("refs/tags/*")?.flatten();
+            for tag in tags {
+              if id == tag.peel_to_commit()?.id() {
+                location = Some((CheckoutStatus::Tag, tag));
+                break;
+              }
+            }
+
+            if location.is_none() {
+              // if not, search remote branches
+              let branches = repo
+                .branches(Some(git2::BranchType::Remote))?
+                .flatten()
+                .map(|(branch, _)| branch);
+
+              for branch in branches {
+                if id == branch.get().peel_to_commit()?.id() {
+                  location = Some((CheckoutStatus::Remote, branch.into_reference()));
+                  break;
+                }
+              }
+            }
+
+            if let Some(location) = location {
+              // if alternative was found
+              location
+            } else {
+              // default to head
+              (CheckoutStatus::Commit, head)
+            }
+          }
+
+          None => {
+            // get head as a symbolic ref
+            let head = get_head(repo)?;
+            (CheckoutStatus::NoCommits, head)
+          }
+        };
+
+        StatusKind::Clean {
+          head: location,
+          refname: rf.name()?.to_string(),
+        }
+      }
+
+      RepositoryState::Rebase
+      | RepositoryState::RebaseInteractive
+      | RepositoryState::RebaseMerge
+      | RepositoryState::ApplyMailboxOrRebase => {
+        StatusKind::Rebase(RebaseInfo::get(repo)?.expect("Repository should be in a rebase state"))
+      }
+
+      RepositoryState::Merge => StatusKind::Merge,
+
+      RepositoryState::CherryPick | RepositoryState::CherryPickSequence => StatusKind::Pick,
+      RepositoryState::Revert | RepositoryState::RevertSequence => StatusKind::Revert,
+
+      RepositoryState::Bisect => StatusKind::Bisect,
+    };
+
+    Ok(kind)
+  }
 }

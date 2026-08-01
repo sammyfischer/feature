@@ -1,10 +1,9 @@
 use std::fmt::Write;
-use std::path::Path;
 use std::{fs, thread};
 
 use anyhow::{Context, Result};
 use console::{style, truncate_str};
-use git2::{Oid, Repository, RepositoryState};
+use git2::{Oid, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::advice::{
@@ -23,7 +22,6 @@ use crate::cli::term::{get_term_width, is_term, trunc_term_width};
 use crate::core::branch::{
   find_local_of_upstream,
   get_current_branch_or_commit,
-  get_head,
   get_head_resolved,
   get_merge_head,
   get_pick_head,
@@ -34,19 +32,23 @@ use crate::core::commit::find_branch_at_commit;
 use crate::core::diff::DiffSummary;
 use crate::core::project_config::ProjectConfig;
 use crate::core::project_config::projects::ProjectEntry;
+use crate::core::rebase::RebaseInfo;
 use crate::core::status::{
+  CheckoutStatus,
+  Conflict,
+  StatusKind,
   get_conflicts,
   get_staged_changes,
   get_unstaged_changes,
   has_workdir_changes,
   is_conflictable_active,
-  is_pick_active,
 };
 use crate::core::string::{ToStrLossy, ToStrLossyOwned, TrimPrefix};
+use crate::core::threading::ThreadedRepoHandle;
 use crate::core::user_config::UserConfig;
 use crate::core::version::{VersionTag, find_current_version, is_version_tag, since_prev_version};
 use crate::core::wip::WipList;
-use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
+use crate::core::{NotFoundExt, trim_hash};
 use crate::{App, dim_brackets, if_nerdfont, opt_advice, style};
 
 const LONG_ABOUT: &str = r#"View repo status.
@@ -78,8 +80,8 @@ pub struct StatusArgs {
 
 impl StatusArgs {
   pub fn run(&self, state: &App) -> Result<()> {
-    let repo_dir = state.repo.path().to_owned();
-    let work_dir = state.repo.workdir().to_owned();
+    let handle = ThreadedRepoHandle::from(&state.repo);
+
     let proj_config = &state.config;
     let user_config = UserConfig::new(&state.repo)?;
 
@@ -105,7 +107,7 @@ impl StatusArgs {
 
     thread::scope(|scope| -> Result<_> {
       let repo_thread = scope.spawn(|| {
-        let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+        let repo = handle.open()?;
         self.display_main_repo(&repo, proj_config)
       });
 
@@ -117,7 +119,7 @@ impl StatusArgs {
           .projects
           .par_iter()
           .map(|project| -> Result<String> {
-            let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+            let repo = handle.open()?;
             self.display_project(&repo, project)
           })
           .collect()
@@ -130,7 +132,7 @@ impl StatusArgs {
         mod_names
           .par_iter()
           .map(|name| -> Result<String> {
-            let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+            let repo = handle.open()?;
             self.display_module(&repo, name)
           })
           .collect()
@@ -172,45 +174,46 @@ impl StatusArgs {
   fn display_main_repo(&self, repo: &Repository, proj_config: &ProjectConfig) -> Result<String> {
     use std::fmt::Write;
     let mut out = String::new();
-    let user_config = UserConfig::new(repo)?;
 
-    let (header, advice) = match repo.state() {
+    let user_config = UserConfig::new(repo)?;
+    let nerdfont = user_config.nerdfont()?;
+
+    // StatusKind tells us how to display the status, and what additional info
+    // to get. It affects practically all subsequent info, so needs to be
+    // calculated first.
+    let kind = StatusKind::get(repo)?;
+
+    // TODO: run this and file statuses in parallel
+    let (header, advice) = match &kind {
       // TODO: custom header/advice for git am
-      RepositoryState::ApplyMailbox | RepositoryState::Clean => (
-        display_normal_header(repo, proj_config, &user_config)?,
+      StatusKind::Clean { head, refname } => (
+        display_normal_header(repo, proj_config, &user_config, head, refname)?,
         opt_advice!(user_config.advice_status()?, STATUS_ADVICE),
       ),
 
-      RepositoryState::Merge => (
+      StatusKind::Rebase(info) => (
+        display_rebase_header(repo, info)?,
+        opt_advice!(user_config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
+      ),
+
+      StatusKind::Merge => (
         display_merge_header(repo)?,
         opt_advice!(user_config.advice_conflict()?, MERGE_CONFLICT_ADVICE),
       ),
 
-      RepositoryState::Revert | RepositoryState::RevertSequence => (
-        display_revert_header(repo)?,
-        opt_advice!(user_config.advice_conflict()?, REVERT_CONFLICT_ADVICE),
-      ),
-
-      RepositoryState::CherryPick | RepositoryState::CherryPickSequence => (
+      StatusKind::Pick => (
         display_pick_header(repo)?,
         opt_advice!(user_config.advice_conflict()?, PICK_CONFLICT_ADVICE),
       ),
 
-      RepositoryState::Bisect => (
+      StatusKind::Revert => (
+        display_revert_header(repo)?,
+        opt_advice!(user_config.advice_conflict()?, REVERT_CONFLICT_ADVICE),
+      ),
+
+      StatusKind::Bisect => (
         display_bisect_header(repo)?,
         opt_advice!(user_config.advice_status()?, BISECT_ADVICE),
-      ),
-
-      RepositoryState::Rebase
-      | RepositoryState::RebaseInteractive
-      | RepositoryState::RebaseMerge => (
-        display_rebase_header(repo, &repo.path().join("rebase-merge"))?,
-        opt_advice!(user_config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
-      ),
-
-      RepositoryState::ApplyMailboxOrRebase => (
-        display_rebase_header(repo, &repo.path().join("rebase-apply"))?,
-        opt_advice!(user_config.advice_conflict()?, REBASE_CONFLICT_ADVICE),
       ),
     };
 
@@ -221,44 +224,45 @@ impl StatusArgs {
       write!(out, "\n\n{}", advice)?;
     }
 
-    let nerdfont = user_config.nerdfont()?;
+    // compute changes
+    match &kind {
+      StatusKind::Pick => {
+        // cherry picks are weird bc resolved conflicts are not stored in the main
+        // repository index. to show meaningful changes you have to diff with the picked
+        // commit
+        let pick_head = repo.find_reference("CHERRY_PICK_HEAD")?;
+        let pick_tree = pick_head.peel_to_tree()?;
 
-    if is_pick_active(repo) {
-      // cherry picks are weird bc they show no diff with head when you stage changes.
-      // to show meaningful changes you have to diff with the picked commit
-      let pick_head = repo.find_reference("CHERRY_PICK_HEAD")?;
-      let pick_tree = pick_head.peel_to_tree()?;
+        let diff = repo.diff_tree_to_index(Some(&pick_tree), None, None)?;
+        let summary = DiffSummary::new(&diff)?.non_conflicts();
 
-      let diff = repo.diff_tree_to_index(Some(&pick_tree), None, None)?;
-      let summary = DiffSummary::new(&diff)?.non_conflicts();
-
-      if summary.num_files != 0 {
-        write!(
-          out,
-          "\n\n{} - {}",
-          style("Resolved").green(),
-          display_summary(&summary, nerdfont)
-        )?;
+        if !summary.is_empty() {
+          write!(
+            out,
+            "\n\n{} - {}",
+            style("Resolved").green(),
+            display_summary(&summary, nerdfont)
+          )?;
+        }
       }
 
-      // cherry picked changes have no difference with head (except for conflicts), so
-      // the remaining diffs can be skipped
-      return Ok(out);
+      _ => {
+        let show_untracked = match self.no_untracked {
+          Some(hide) => !hide,
+          None => user_config.status_untracked()?,
+        };
+
+        let changes = display_file_statuses(repo, show_untracked, nerdfont)?;
+        if !changes.is_empty() {
+          write!(
+            out,
+            "\n\n{}",
+            display_file_statuses(repo, show_untracked, nerdfont)?
+          )?;
+        }
+      }
     }
 
-    let show_untracked = match self.no_untracked {
-      Some(hide) => !hide,
-      None => user_config.status_untracked()?,
-    };
-
-    let statuses = display_file_statuses(repo, show_untracked, nerdfont)?;
-    if !statuses.is_empty() {
-      write!(
-        out,
-        "\n\n{}",
-        display_file_statuses(repo, show_untracked, nerdfont)?
-      )?;
-    }
     Ok(out)
   }
 
@@ -442,65 +446,35 @@ fn display_normal_header(
   repo: &Repository,
   proj_config: &ProjectConfig,
   user_config: &UserConfig,
+  head: &CheckoutStatus,
+  head_refname: &str,
 ) -> Result<String> {
   let mut out = String::with_capacity(80);
   let nerdfont = user_config.nerdfont()?;
 
-  // intelligently find what head points to. if head is a direct ref, this finds a
-  // suitable ref that points to the same commit and uses that as a symbolic
-  // ref. if no suitable symref is found, then this will just stay as a direct
-  // reference. a value of None means that head points to a non-existent ref,
-  // e.g. the repo has no commits
-  let head = match get_head_resolved(repo)? {
-    // local branch
-    Some(head) if head.is_branch() => Some(head),
+  let handle = ThreadedRepoHandle::from(repo);
 
-    // if head isn't a local branch, then it's detached, and also must be a direct reference. we
-    // have to search for a suitable symbolic ref
-    Some(head) => {
-      let id = head.peel_to_commit()?.id();
-      let mut rf = None;
+  let rf = repo.find_reference(head_refname)?;
 
-      // search tags first, this is generally more useful
-      let tags = repo.references_glob("refs/tags/*")?.flatten();
-      for tag in tags {
-        if id == tag.peel_to_commit()?.id() {
-          rf = Some(tag);
-          break;
-        }
-      }
+  match head {
+    CheckoutStatus::NoCommits => {
+      let branch_name = rf
+        .symbolic_target()?
+        .context("Failed to get branch pointed to by HEAD")?
+        .trim_prefix_opt("refs/heads/");
 
-      if rf.is_none() {
-        // if not, search remote branches
-        let branches = repo
-          .branches(Some(git2::BranchType::Remote))?
-          .flatten()
-          .map(|(branch, _)| branch);
-
-        for branch in branches {
-          if id == branch.get().peel_to_commit()?.id() {
-            rf = Some(branch.into_reference());
-            break;
-          }
-        }
-      }
-
-      if rf.is_some() {
-        // if alternative was found
-        rf
-      } else {
-        // default to head
-        Some(head)
-      }
+      write!(out, "On branch {}", style(branch_name).green())?;
+      write!(
+        out,
+        "\n{}",
+        style!("{}No commits yet", if_nerdfont!(nerdfont, " ")).dim()
+      )?;
     }
 
-    None => None,
-  };
-
-  // match against resolved head ref
-  match head {
-    Some(head) => {
-      let commit = head.peel_to_commit()?;
+    _ => {
+      // all other types need some common info
+      let commit = rf.peel_to_commit()?;
+      let commit_id = commit.id();
 
       // small bites of supplementary info, displayed in brackets next to the
       // name
@@ -513,9 +487,8 @@ fn display_normal_header(
       let mut extras = Vec::new();
 
       // gets current version info
-      let version_extra = || -> Result<Option<String>> {
-        if let Some(version) = find_current_version(repo, proj_config, commit.id())? {
-          let (since, _) = repo.graph_ahead_behind(commit.id(), version.commit())?;
+      let version_extra = |repo: &Repository, id: Oid| -> Result<Option<String>> {
+        if let Some((version, since)) = find_current_version(repo, proj_config, id)? {
           let mut version_extra = format!(
             "{}",
             style!("{} {}", if_nerdfont!(nerdfont, "", "ver:"), version.name()).yellow(),
@@ -531,89 +504,145 @@ fn display_normal_header(
         Ok(None)
       };
 
-      // match against ref type
-      if head.is_branch() {
-        // local branch
-        let branch = BranchInfo::from_reference(&head)?;
-        write!(out, "On branch {}", style(branch.name()).green())?;
+      match head {
+        CheckoutStatus::Branch => {
+          let branch = BranchInfo::from_reference(&rf)?;
+          write!(out, "On branch {}", style(branch.name()).green())?;
 
-        if let Some(upstream) = branch.upstream(repo)? {
-          let upstream_tip = upstream.get().peel_to_commit()?.id();
-          let (a, b) = repo.graph_ahead_behind(upstream_tip, commit.id())?;
+          // run graph traversals in parallel. upstream, base, and version all do a single
+          // traversal
+          thread::scope(|scope| -> Result<_> {
+            let upstream = scope.spawn(|| -> Result<Option<_>> {
+              let repo = handle.open()?;
+              if let Some(upstream) = branch.upstream(&repo)? {
+                let upstream_tip = upstream.get().peel_to_commit()?.id();
+                Ok(Some(repo.graph_ahead_behind(upstream_tip, commit_id)?))
+              } else {
+                Ok(None)
+              }
+            });
 
-          extras.push(format!(
-            "{} {}",
-            style(if_nerdfont!(nerdfont, "", "up:")).blue(),
-            display_plus_minus(a, b)
-          ));
-        }
+            let base = scope.spawn(|| -> Result<Option<_>> {
+              let repo = handle.open()?;
+              let config = UserConfig::new(&repo)?;
 
-        if let Some(base) = user_config.branch_base(branch.name())? {
-          let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
-          let (a, b) = repo.graph_ahead_behind(base_tip, commit.id())?;
+              if let Some(base) = config.branch_base(branch.name())? {
+                let base_tip = base.resolve(&repo)?.peel_to_commit()?.id();
+                Ok(Some(repo.graph_ahead_behind(base_tip, commit_id)?))
+              } else {
+                Ok(None)
+              }
+            });
 
-          extras.push(format!(
-            "{} {}",
-            style(if_nerdfont!(nerdfont, "", "base:")).magenta(),
-            display_plus_minus(a, b)
-          ));
-        }
+            let version = scope.spawn(|| -> Result<Option<_>> {
+              let repo = handle.open()?;
+              version_extra(&repo, commit_id)
+            });
 
-        if let Some(version) = version_extra()? {
-          extras.push(version);
-        }
+            if let Some((a, b)) = upstream.join().unwrap()? {
+              extras.push(format!(
+                "{} {}",
+                style(if_nerdfont!(nerdfont, "", "up:")).blue(),
+                display_plus_minus(a, b)
+              ));
+            }
 
-        let wips = WipList::from_branch(repo, branch.name().to_string())?;
-        if !wips.is_empty() {
-          extras.push(
-            style!("{} {}", if_nerdfont!(nerdfont, "󱉚", "wips:"), wips.len())
-              .cyan()
-              .to_string(),
-          );
-        }
-      } else if head.is_remote() {
-        // remote/upstream branch
-        let upstream = BranchInfo::from_reference(&head)?;
-        write!(out, "On upstream {}", style(upstream.name()).green())?;
+            if let Some((a, b)) = base.join().unwrap()? {
+              extras.push(format!(
+                "{} {}",
+                style(if_nerdfont!(nerdfont, "", "base:")).magenta(),
+                display_plus_minus(a, b)
+              ));
+            }
 
-        if let Some(branch) = find_local_of_upstream(repo, &upstream)? {
-          let branch_tip = branch.get().peel_to_commit()?.id();
-          let (a, b) = repo.graph_ahead_behind(commit.id(), branch_tip)?;
+            if let Some(version) = version.join().unwrap()? {
+              extras.push(version);
+            }
 
-          // doesn't need a prefix, this could only be relative to the local branch
-          extras.push(display_plus_minus(a, b));
-        }
+            Ok(())
+          })?;
 
-        if let Some(version) = version_extra()? {
-          extras.push(version);
-        }
-      } else if head.is_tag() {
-        let tag_name = head.shorthand()?;
-        write!(out, "On tag {}", style(tag_name).green())?;
-
-        if is_version_tag(repo, proj_config, tag_name)? {
-          // current tag is a version tag
-          println!("version tag");
-          let version = VersionTag::new(tag_name, commit.id());
-
-          if let Some((prev, since)) = since_prev_version(repo, proj_config, &version)? {
-            write!(
-              out,
-              " {}{} since {}{}",
-              style("(").dim(),
-              style!("+{}", since).green(),
-              style(prev.name()).yellow(),
-              style(")").dim(),
-            )?;
+          // wip list doesn't require a traversal and isn't particularly slow
+          let wips = WipList::from_branch(repo, branch.name().to_string())?;
+          if !wips.is_empty() {
+            extras.push(
+              style!("{} {}", if_nerdfont!(nerdfont, "󱉚", "wips:"), wips.len())
+                .cyan()
+                .to_string(),
+            );
           }
-        } else if let Some(version) = version_extra()? {
-          // not a version tag, find current version
-          println!("regular tag");
-          extras.push(version);
         }
-      } else {
-        write!(out, "On commit {}", display_hash(commit.as_object())?)?;
-      };
+
+        CheckoutStatus::Remote => {
+          let upstream = BranchInfo::from_reference(&rf)?;
+          write!(out, "On upstream {}", style(upstream.name()).green())?;
+
+          thread::scope(|scope| -> Result<_> {
+            let ab = scope.spawn(|| -> Result<Option<_>> {
+              let repo = handle.open()?;
+
+              if let Some(branch) = find_local_of_upstream(&repo, &upstream)? {
+                let branch_tip = branch.get().peel_to_commit()?.id();
+                Ok(Some(repo.graph_ahead_behind(branch_tip, commit_id)?))
+              } else {
+                Ok(None)
+              }
+            });
+
+            let version = scope.spawn(|| -> Result<Option<_>> {
+              let repo = handle.open()?;
+              version_extra(&repo, commit_id)
+            });
+
+            if let Some((a, b)) = ab.join().unwrap()? {
+              extras.push(display_plus_minus(a, b));
+            }
+
+            if let Some(version) = version.join().unwrap()? {
+              extras.push(version);
+            }
+
+            Ok(())
+          })?;
+        }
+
+        CheckoutStatus::Tag => {
+          let tag_name = rf.shorthand()?;
+          write!(out, "On tag {}", style(tag_name).green())?;
+
+          if is_version_tag(repo, proj_config, tag_name)? {
+            // current tag is a version tag
+            let version = VersionTag::new(tag_name, commit.id());
+
+            // single graph traversal, no need to multithread
+            if let Some((prev, since)) = since_prev_version(repo, proj_config, &version)? {
+              write!(
+                out,
+                " {}{} since {}{}",
+                style("(").dim(),
+                style!("+{}", since).green(),
+                style(prev.name()).yellow(),
+                style(")").dim(),
+              )?;
+            }
+          } else if let Some(version) = version_extra(repo, commit_id)? {
+            // not a version tag, find current version
+            extras.push(version);
+          }
+        }
+
+        CheckoutStatus::Commit => {
+          write!(out, "On commit {}", display_hash(commit.as_object())?)?;
+
+          // single graph traversal
+          if let Some(version) = version_extra(repo, commit_id)? {
+            extras.push(version);
+          }
+        }
+
+        // we already matched NoCommits
+        _ => unreachable!(),
+      }
 
       if !extras.is_empty() {
         let sep = style(" | ").dim().to_string();
@@ -621,14 +650,14 @@ fn display_normal_header(
         write!(out, " {}", dim_brackets!("{}", s))?;
       }
 
-      let commit_line = if head.is_branch() || head.is_remote() || head.is_tag() {
-        display_commit_compact(&commit, user_config, true)?
-      } else {
+      let commit_line = if let CheckoutStatus::Commit = head {
         format!(
           "{}{}",
           if_nerdfont!(nerdfont, " "),
           display_commit_compact(&commit, user_config, false)?
         )
+      } else {
+        display_commit_compact(&commit, user_config, true)?
       };
 
       write!(
@@ -637,23 +666,7 @@ fn display_normal_header(
         trunc_term_width(&commit_line, &style("\u{2026}").dim().to_string())
       )?;
     }
-
-    // no commits yet
-    None => {
-      let head = get_head(repo)?.context("HEAD reference does not exist!")?;
-      let branch_name = head
-        .symbolic_target()?
-        .context("Failed to get branch pointed to by HEAD")?
-        .trim_prefix_opt("refs/heads/");
-
-      write!(out, "On branch {}", style(branch_name).green())?;
-      write!(
-        out,
-        "\n{}",
-        style!("{}No commits yet", if_nerdfont!(nerdfont, " ")).dim()
-      )?;
-    }
-  }
+  };
 
   if user_config.show_authorship()? {
     let sig = repo.signature()?;
@@ -670,38 +683,16 @@ fn display_normal_header(
 
 /// Displays a header line for an active rebase. Includes the source and
 /// destination branches, and the current progress.
-fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
-  let msgnum =
-    fs::read_to_string(dir.join("msgnum")).context("Failed to get current step number")?;
-  let current = msgnum.trim();
+fn display_rebase_header(repo: &Repository, info: &RebaseInfo) -> Result<String> {
+  let branch_ref = repo.resolve_reference_from_short_name(info.head().trim())?;
+  let branch_name = branch_ref.shorthand()?;
 
-  let end = fs::read_to_string(dir.join("end")).context("Failed to get total number of steps")?;
-  let total = end.trim();
-
-  let head_name_path = dir.join("head-name");
-  let head_name = fs::read_to_string(&head_name_path).context("Failed to get branch name")?;
-  let branch_ref = repo.resolve_reference_from_short_name(head_name.trim())?;
-  let branch_name = branch_ref.shorthand_bytes().to_str_lossy();
-
-  let onto_path = dir.join("onto");
-  let onto = fs::read_to_string(&onto_path).context("Failed to get base commit")?;
-  let onto = onto.trim();
-
-  // 'onto' must be parseable as an id
-  let base_commit = repo.find_commit(Oid::from_str(onto).with_context(|| {
-    format!(
-      "{} should contain a valid commit hash",
-      onto_path.to_string_lossy()
-    )
-  })?)?;
+  let base_commit = repo.find_commit(info.onto())?;
 
   // try to find a matching branch, but don't error
   let base = match find_branch_at_commit(repo, &base_commit.id()) {
     Ok(branch) => match branch {
-      Some(branch) => match branch.name_bytes() {
-        Ok(name) => Some(name.to_str_lossy_owned()),
-        Err(_) => None,
-      },
+      Some(branch) => branch.name()?.map(|it| it.to_string()),
       None => None,
     },
     Err(_) => None,
@@ -714,9 +705,9 @@ fn display_rebase_header(repo: &Repository, dir: &Path) -> Result<String> {
     out,
     "{} {} onto {} {}",
     style("Rebasing").yellow(),
-    style(&branch_name).blue(),
+    style(branch_name).blue(),
     style(&base).magenta(),
-    style!("({}/{})", current, total).dim()
+    style!("({}/{})", info.current(), info.total()).dim()
   )?;
 
   display_authorship(repo, &mut out, " as ")?;
@@ -842,14 +833,40 @@ fn display_authorship(repo: &Repository, buf: &mut String, prefix: &str) -> Resu
 /// output.
 ///
 /// # Params
-/// - `untracked` - whether to include untracked files in the unstaged section
+/// - `untracked` - whether to show untracked files
 /// - `nerdfont` - whether to use nerd font icons or regular characters
 pub fn display_file_statuses(repo: &Repository, untracked: bool, nerdfont: bool) -> Result<String> {
+  let handle = ThreadedRepoHandle::from(repo);
+
+  // calculate diffs in parallel
+  let (conflicts, staged, unstaged) = thread::scope(|scope| -> Result<_> {
+    let conflicts = scope.spawn(|| -> Result<Vec<Conflict>> {
+      let repo = handle.open()?;
+      get_conflicts(&repo)
+    });
+
+    let staged = scope.spawn(|| -> Result<DiffSummary> {
+      let repo = handle.open()?;
+      get_staged_changes(&repo)
+    });
+
+    let unstaged = scope.spawn(|| -> Result<DiffSummary> {
+      let repo = handle.open()?;
+      get_unstaged_changes(&repo, untracked)
+    });
+
+    let conflicts = conflicts.join().unwrap()?;
+    let staged = staged.join().unwrap()?;
+    let unstaged = unstaged.join().unwrap()?;
+
+    Ok((conflicts, staged, unstaged))
+  })?;
+
+  // build output
   use std::fmt::Write;
   let mut out = String::new();
   let mut first_paragraph = true;
 
-  let conflicts = get_conflicts(repo)?;
   if !conflicts.is_empty() {
     first_paragraph = false;
 
@@ -864,6 +881,8 @@ pub fn display_file_statuses(repo: &Repository, untracked: bool, nerdfont: bool)
       write!(out, "\n  {}", conflict)?;
     }
   } else if is_conflictable_active(repo) {
+    first_paragraph = false;
+
     // state that could have conflicts, but there are currently no conflicts
     write!(
       out,
@@ -873,8 +892,7 @@ pub fn display_file_statuses(repo: &Repository, untracked: bool, nerdfont: bool)
     )?;
   }
 
-  let staged = get_staged_changes(repo)?;
-  if staged.num_files != 0 {
+  if !staged.is_empty() {
     if first_paragraph {
       first_paragraph = false;
     } else {
@@ -888,8 +906,7 @@ pub fn display_file_statuses(repo: &Repository, untracked: bool, nerdfont: bool)
     )?;
   }
 
-  let unstaged = get_unstaged_changes(repo, untracked)?;
-  if unstaged.num_files != 0 {
+  if !unstaged.is_empty() {
     if !first_paragraph {
       write!(out, "\n\n")?;
     }

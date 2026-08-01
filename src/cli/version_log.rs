@@ -26,7 +26,7 @@ impl VersionLogArgs {
     let rev = self.rev.as_deref().unwrap_or("HEAD");
     let commit = repo.revparse_single(rev)?.peel_to_commit()?;
 
-    let version = find_current_version(repo, &state.config, commit.id())?
+    let (version, _) = find_current_version(repo, &state.config, commit.id())?
       .with_context(|| format!("Failed to find a version reachable from {}", rev))?;
 
     let status = git!("log", format!("{}..", version.name())).status()?;

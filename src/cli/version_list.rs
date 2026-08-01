@@ -11,9 +11,10 @@ use crate::cli::term::{get_term_width, is_term};
 use crate::core::diff::DiffSummary;
 use crate::core::project_config::ProjectConfig;
 use crate::core::string::ToStrLossyOwned;
+use crate::core::threading::ThreadedRepoHandle;
+use crate::core::trim_hash;
 use crate::core::user_config::UserConfig;
 use crate::core::version::{VersionTag, get_version_tags, since_prev_version};
-use crate::core::{open_repo_from_dirs, trim_hash};
 use crate::{App, if_nerdfont, style};
 
 const LONG_ABOUT: &str = r#"Lists version tags. Shows how many commits were added since the previous
@@ -67,8 +68,8 @@ struct Row {
 
 impl VersionListArgs {
   pub fn run(&self, state: &App) -> Result<()> {
-    let repo_dir = state.repo.path().to_owned();
-    let work_dir = state.repo.workdir().to_owned();
+    let handle = ThreadedRepoHandle::from(&state.repo);
+
     let proj_config = &state.config;
     let user_config = UserConfig::new(&state.repo)?;
 
@@ -94,7 +95,7 @@ impl VersionListArgs {
 
     let out = thread::scope(|scope| -> Result<String> {
       let repo_thead = scope.spawn(|| -> Result<_> {
-        let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+        let repo = handle.open()?;
 
         match &self.version {
           Some(name) => self.display_single_tag(&repo, proj_config, name),
@@ -136,7 +137,7 @@ impl VersionListArgs {
           mod_names
             .par_iter()
             .map(|name| -> Result<_> {
-              let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+              let repo = handle.open()?;
               let module = repo.find_submodule(name)?;
               let repo = module.open()?;
               let mut out = format!("\n{} {}\n", style("Module").bold(), style(name).cyan());
@@ -261,8 +262,7 @@ impl VersionListArgs {
   }
 
   fn build_table(&self, repo: &Repository, proj_config: &ProjectConfig) -> Result<Vec<Row>> {
-    let repo_dir = repo.path();
-    let work_dir = repo.workdir();
+    let handle = ThreadedRepoHandle::from(repo);
 
     let tags = get_version_tags(repo, proj_config)?;
 
@@ -270,7 +270,7 @@ impl VersionListArgs {
     let table = tags
       .par_iter()
       .map(|tag| {
-        let repo = open_repo_from_dirs(repo_dir, work_dir)?;
+        let repo = handle.open()?;
         let user_config = UserConfig::new(&repo)?;
         self.build_row(&repo, proj_config, &user_config, tag)
       })

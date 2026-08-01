@@ -13,9 +13,10 @@ use crate::cli::wip::display_wip;
 use crate::core::branch::{get_current_branch_name, get_worktree_branch_names};
 use crate::core::branch_info::BranchInfo;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
+use crate::core::threading::ThreadedRepoHandle;
 use crate::core::user_config::UserConfig;
 use crate::core::wip::WipList;
-use crate::core::{NotFoundExt, open_repo_from_dirs, trim_hash};
+use crate::core::{NotFoundExt, trim_hash};
 use crate::{App, if_nerdfont, style};
 
 const LONG_ABOUT: &str = r#"Lists branches.
@@ -65,9 +66,9 @@ struct Row {
 
 impl BranchListArgs {
   pub fn run(&self, state: &App) -> Result<()> {
-    let repo_dir = state.repo.path().to_owned();
-    let work_dir = state.repo.workdir().to_owned();
-    let app_config = &state.config;
+    let handle = ThreadedRepoHandle::from(&state.repo);
+
+    let proj_config = &state.config;
     let user_config = UserConfig::new(&state.repo)?;
 
     let hide_projects = match self.no_projects {
@@ -92,7 +93,7 @@ impl BranchListArgs {
 
     let out = thread::scope(|scope| -> Result<String> {
       let repo_thead = scope.spawn(|| -> Result<_> {
-        let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+        let repo = handle.open()?;
         let user_config = UserConfig::new(&repo)?;
 
         self.display_branches(&repo, &user_config, self.pattern.as_deref())
@@ -102,7 +103,7 @@ impl BranchListArgs {
         if hide_projects {
           Vec::new()
         } else {
-          app_config
+          proj_config
             .projects
             .par_iter()
             .map(|(name, project)| -> Result<_> {
@@ -125,7 +126,7 @@ impl BranchListArgs {
           mod_names
             .par_iter()
             .map(|name| -> Result<_> {
-              let repo = open_repo_from_dirs(&repo_dir, work_dir)?;
+              let repo = handle.open()?;
               let user_config = UserConfig::new(&repo)?;
               let module = repo.find_submodule(name)?;
               let repo = module.open()?;

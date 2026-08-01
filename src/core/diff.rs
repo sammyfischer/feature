@@ -100,6 +100,10 @@ impl DiffSummary {
     Ok(summary)
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.num_files == 0
+  }
+
   /// Creates a new diff summary out of the non-conflicted files in this
   /// summary.
   pub fn non_conflicts(&self) -> Self {
