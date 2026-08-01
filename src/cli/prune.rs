@@ -298,7 +298,7 @@ fn prune_branch(
   if !wips.is_empty() {
     return Ok(UpdateAction::DeleteSkip {
       name: info.name().to_string(),
-      reason: "has remaining wips".to_string(),
+      reason: "contains wips".to_string(),
     });
   }
 
