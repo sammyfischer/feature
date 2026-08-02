@@ -14,6 +14,7 @@ use crate::cli::completions::CompletionsArgs;
 use crate::cli::config::ConfigArgs;
 use crate::cli::end::EndArgs;
 use crate::cli::project::ProjectArgs;
+use crate::cli::protect::ProtectArgs;
 use crate::cli::prune::PruneArgs;
 use crate::cli::push::PushArgs;
 use crate::cli::show::ShowArgs;
@@ -37,6 +38,7 @@ mod config;
 mod display;
 mod end;
 mod project;
+mod protect;
 mod prune;
 mod push;
 mod show;
@@ -117,6 +119,7 @@ pub enum Command {
   // ==== REPO / MULTI BRANCH MANAGEMENT ====
   Sync(SyncArgs),
   Prune(PruneArgs),
+  Protect(ProtectArgs),
   Version(VersionArgs),
   Project(ProjectArgs),
 
@@ -146,6 +149,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
 
     Command::Sync(args) => args.run(&state),
     Command::Prune(args) => args.run(&state),
+    Command::Protect(args) => args.run(&state),
     Command::Version(args) => args.run(&state),
     Command::Project(args) => args.run(&state),
 

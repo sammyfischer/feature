@@ -8,7 +8,6 @@ use git2::{Config, ErrorClass, ErrorCode, Repository};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::core::NotFoundExt;
 use crate::core::branch_info::BranchInfo;
 use crate::core::project_config::PageWhen;
 
@@ -32,7 +31,7 @@ use crate::core::project_config::PageWhen;
 ///
 /// `key` is always a string.
 macro_rules! get_option {
-  ($config:expr, $getter:ident, $key:literal) => {
+  ($config:expr, $getter:ident, $key:expr) => {
     Ok(match $config.$getter($key) {
       Ok(it) => Some(it),
       Err(e) if e.class() == ErrorClass::Config && e.code() == ErrorCode::NotFound => None,
@@ -40,7 +39,7 @@ macro_rules! get_option {
     })
   };
 
-  ($config:expr, $getter:ident, $key:literal, $default:expr) => {
+  ($config:expr, $getter:ident, $key:expr, $default:expr) => {
     Ok(match $config.$getter($key) {
       Ok(it) => it,
       Err(e) if e.class() == ErrorClass::Config && e.code() == ErrorCode::NotFound => $default,
@@ -79,12 +78,28 @@ impl<'config> UserConfig<'config> {
   /// # Param
   /// - `branch_name` - the short name of the branch
   pub fn branch_base(&self, branch_name: &str) -> Result<Option<BranchInfo>> {
-    self
-      .config
-      .get_string(&format!("branch.{}.feature-base", &branch_name))
-      .not_found_ok()?
+    let opt: Result<_> = get_option!(
+      &self.config,
+      get_string,
+      &format!("branch.{}.feature-base", branch_name)
+    );
+
+    opt?
       .map(|refname| BranchInfo::from_refname(self.repo, &refname))
       .transpose()
+  }
+
+  /// Gets `feature-protect` from a branch's config. Defaults to `false`.
+  ///
+  /// # Params
+  /// - `branch_name` - the short name of the branch
+  pub fn branch_protect(&self, branch_name: &str) -> Result<bool> {
+    get_option!(
+      &self.config,
+      get_bool,
+      &format!("branch.{}.feature-protect", branch_name),
+      false
+    )
   }
 
   /// `feature.config`
@@ -216,14 +231,14 @@ impl<'config> UserConfig<'config> {
   }
 }
 
-/// Sets feature-base of a branch
+/// Sets `feature-base` of a branch
 /// # Params
 /// - `branch_name` - the shorthand name of the branch
 /// - `base_refname` - the full refname of the base branch
 pub fn set_feature_base(config: &mut Config, branch_name: &str, base_refname: &str) -> Result<()> {
   config
     .set_str(
-      &format!("branch.{}.feature-base", &branch_name),
+      &format!("branch.{}.feature-base", branch_name),
       base_refname,
     )
     .with_context(|| {
@@ -233,5 +248,16 @@ pub fn set_feature_base(config: &mut Config, branch_name: &str, base_refname: &s
       )
     })?;
 
+  Ok(())
+}
+
+/// Sets `feature-protect` of a branch, given its shorthand name
+pub fn set_feature_protect(config: &mut Config, branch_name: &str) -> Result<()> {
+  config.set_bool(&format!("branch.{}.feature-protect", branch_name), true)?;
+  Ok(())
+}
+
+pub fn unset_feature_protect(config: &mut Config, branch_name: &str) -> Result<()> {
+  config.remove(&format!("branch.{}.feature-protect", branch_name))?;
   Ok(())
 }

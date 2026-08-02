@@ -452,10 +452,6 @@ impl SyncArgs {
   /// Fast-forwards a branch to match upstream. Set `current` to true when
   /// fast-forwarding the currently checked-out branch, so that HEAD and the
   /// workdir are correctly updated.
-  ///
-  /// # Returns
-  /// If the branch was skipped for a reason determined to be irrelevant to the
-  /// user, returns `None`. Otherwise, returns the [UpdateAction].
   fn update_branch(
     &self,
     repo: &Repository,
