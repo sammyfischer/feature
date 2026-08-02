@@ -216,7 +216,11 @@ _feature() {
         cmd="end"
         ;;
 
-      feature,proj | feature,project)
+      feature,protect | feature,prot)
+        cmd="protect"
+        ;;
+
+      feature,project | feature,proj)
         cmd="project"
         ;;
       project,add)
@@ -300,8 +304,9 @@ _feature() {
   case "$cmd" in
     feature)
       local opts="-h --help -V --version --config --git-dir --work-tree --wt \
-        base branches check commit completions config end project proj \
-        prune push show start status st sync tag tags update version-log verlog wip"
+        base branches check commit completions config end protect prot project \
+        proj prune push show start status st sync tag tags update version-log \
+        verlog wip"
       case "$prev" in
         --config)
           COMPREPLY=( $(IFS='\n' compgen -f "${cur#=}") )
@@ -405,6 +410,11 @@ _feature() {
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
+      ;;
+
+    protect)
+      local opts="-h --help -u --unset"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
       ;;
 
     project)

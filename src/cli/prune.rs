@@ -267,8 +267,13 @@ fn prune_branch(
 ) -> Result<UpdateAction> {
   let info = BranchInfo::from_branch(branch)?;
 
-  // skip protected branches
+  // skip project-protected branches
   if proj_config.protect.iter().any(|it| it == info.name()) {
+    return Ok(UpdateAction::None);
+  }
+
+  // skip user-protected branches
+  if user_config.branch_protect(info.name())? {
     return Ok(UpdateAction::None);
   }
 
