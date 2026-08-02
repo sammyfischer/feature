@@ -15,6 +15,7 @@ suppress the skip messages when running prune or sync."#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
+  visible_alias = "prot",
   about = "Protects a branch from being pruned",
   long_about = LONG_ABOUT,
   disable_help_subcommand = true

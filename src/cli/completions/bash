@@ -216,7 +216,11 @@ _feature() {
         cmd="end"
         ;;
 
-      feature,proj | feature,project)
+      feature,protect | feature,prot)
+        cmd="protect"
+        ;;
+
+      feature,project | feature,proj)
         cmd="project"
         ;;
       project,add)
@@ -405,6 +409,11 @@ _feature() {
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
+      ;;
+
+    protect)
+      local opts="-h --help -u --unset"
+      COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
       ;;
 
     project)
