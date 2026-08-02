@@ -304,8 +304,9 @@ _feature() {
   case "$cmd" in
     feature)
       local opts="-h --help -V --version --config --git-dir --work-tree --wt \
-        base branches check commit completions config end project proj \
-        prune push show start status st sync tag tags update version-log verlog wip"
+        base branches check commit completions config end protect prot project \
+        proj prune push show start status st sync tag tags update version-log \
+        verlog wip"
       case "$prev" in
         --config)
           COMPREPLY=( $(IFS='\n' compgen -f "${cur#=}") )
