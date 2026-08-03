@@ -51,7 +51,7 @@ Commit
 
 ![Commit terminal output](screenshots/commit.png)
 
-Status
+Status (with `st` as an alias for `feature status`)
 
 ![Status terminal output](screenshots/status.png)
 
