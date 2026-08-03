@@ -7,6 +7,7 @@ use console::style;
 use git2::{Branch, ErrorClass, ErrorCode, PushOptions, Remote, RemoteCallbacks, Repository};
 use indicatif::{BinaryBytes, HumanCount, ProgressBar, ProgressStyle};
 
+use crate::cli::advice::NOT_ON_BRANCH_MSG;
 use crate::cli::display::diff::display_summary;
 use crate::cli::display::display_hash;
 use crate::cli::term::{PROGRESS_CHARS, TICK_STRINGS};
@@ -25,15 +26,12 @@ use crate::core::trim_hash;
 use crate::core::user_config::UserConfig;
 use crate::{App, style};
 
-const NO_BRANCH_MSG: &str = r#"You must be checked out to a branch or specify one manually as the last
-argument, e.g. "feature push my-branch".""#;
+const UPSTREAM_DIVERGED_MSG: &str = r#"Branch has diverged from its upstream.
 
-const UPSTREAM_DIVERGED_MSG: &str = r"Branch has diverged from its upstream. You must:
+If you amended or rebased, you'll likely have to force-push. Make sure you have
+all upstream changes first.
 
-1. Resolve the differences, for example:
-   • git pull [--merge | --rebase]
-2. Push again. You'll most likely need to force push if you've done any
-   cherry-picks or rebases.";
+If not, you'll have to merge or rebase the upstream changes with a git pull."#;
 
 const BASE_DIVERGED_MSG: &str = r"Branch has diverged from its base. You must:
 
@@ -71,7 +69,7 @@ impl PushArgs {
     let branch = match &self.branch {
       Some(branch_name) => BranchInfo::from_name_dwim(&state.repo, branch_name)?
         .ok_or(anyhow!("Branch not found: {}", branch_name))?,
-      None => BranchInfo::current(&state.repo)?.context(NO_BRANCH_MSG)?,
+      None => BranchInfo::current(&state.repo)?.context(NOT_ON_BRANCH_MSG)?,
     };
 
     // allow pushing protected branches, but as fast-forward only
