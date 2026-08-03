@@ -25,8 +25,6 @@ This is similar to calling `git switch -c`, except that:
 
 Using the `--stay` option is similar to calling `git branch …`.
 
-![Start terminal output](../screenshots/start.png)
-
 ## Commit
 
 ```bash
@@ -51,7 +49,7 @@ These are similar to `git commit` except that:
   - for an amend, it displays only the amended changes, not the total changes from its parent commit
   - for a merge commit, it displays all the changes brought into the target branch by the merge (i.e. diff against its first parent)
 
-![Commit terminal output](../screenshots/commit.png)
+![Commit output](../screenshots/commit.png)
 
 ## Base
 
@@ -97,9 +95,9 @@ This is similar to `git push` except that:
   - if the branches have diverged, feature stops and asks the user to bring in the changes manually
   - `--force` skips these checks
 
-![First-time push terminal outupt](../screenshots/push.png)
+![First-time push output](../screenshots/push.png)
 
-![Subsequent push terminal outupt](../screenshots/push2.png)
+![Subsequent push output](../screenshots/push2.png)
 
 ## Check
 
@@ -170,6 +168,8 @@ This is similar to `git stash`, except:
 
 > Note: feature calls them "wips" instead of "stashes" to reduce confusion. The `wip` command isn't just a more convenient frontend for git stashes, it uses a different underlying implementation that's fully incompatible with `git stash`.
 
+![Wip list output](../screenshots/wip-list.png)
+
 ## Sync
 
 ```bash
@@ -188,7 +188,7 @@ Feature only fast-forwards branches. It checks that the local copy is a direct a
 
 Feature won't update the current branch if there are changes in the working directory, but it will still attempt to sync other branches.
 
-![Sync terminal output](../screenshots/sync.png)
+![Sync output](../screenshots/sync.png)
 
 ## Prune
 
@@ -272,7 +272,7 @@ This similar to `git status`, except that:
 - it's more compact
 - it's more colorful
 
-![Status terminal output](../screenshots/status.png)
+![Status output](../screenshots/status.png)
 
 ## Branches
 
@@ -290,6 +290,8 @@ This is similar to `git branch` except:
 - it shows a compact list-view when multiple branches are matched, but shows a high-detail view when a single branch is matched
 - it's more colorful
 
+![Branch list output](../screenshots/branch-list.png)
+
 ## Versions
 
 ```bash
@@ -304,6 +306,8 @@ This is similar to `git tag`, except:
 - it only shows version tags that match the configured pattern
 - it shows more detailed info about each tag
 - it displays a high-detail view when a single tag is shown
+
+![Version list output](../screenshots/version-list.png)
 
 ## Version Log
 
@@ -343,6 +347,8 @@ For the stash commit (`feature show refs/stash`), the first parent is the HEAD a
 This command is similar to `git show` except:
 
 - the output is in the style of other feature commands
+
+![Show output](../screenshots/show.png)
 
 ## Config
 
