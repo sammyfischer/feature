@@ -669,12 +669,30 @@ fn display_normal_header(
   };
 
   if user_config.show_authorship()? {
-    let sig = repo.signature()?;
+    let name = user_config.user_name()?;
+    let email = user_config.user_email()?;
+
     write!(
       out,
-      "\n{} {}",
-      style!("{}{}", if_nerdfont!(nerdfont, " "), sig.name()?).cyan(),
-      style(sig.email()?).dim()
+      "\n{}{}",
+      style(if_nerdfont!(nerdfont, " ")).cyan(),
+      match (name, email) {
+        (None, None) => style("Name and email not configured").red().to_string(),
+
+        (None, Some(email)) => format!(
+          "{} {}",
+          style("Name not configured").red(),
+          style(email).dim()
+        ),
+
+        (Some(name), None) => format!(
+          "{} {}",
+          style(name).cyan(),
+          style("Email not configured").red()
+        ),
+
+        (Some(name), Some(email)) => format!("{} {}", style(name).cyan(), style(email).dim()),
+      }
     )?;
   }
 

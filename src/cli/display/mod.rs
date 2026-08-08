@@ -73,7 +73,7 @@ pub fn display_signature(signature: Option<&Signature>) -> String {
       let email = it.email_bytes().to_str_lossy();
       format!("{} {}", style(name).cyan(), style(email).dim())
     }
-    None => style("No user info").red().to_string(),
+    None => style("Signature not configured").red().to_string(),
   }
 }
 

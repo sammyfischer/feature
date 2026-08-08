@@ -73,6 +73,16 @@ impl<'config> UserConfig<'config> {
     Ok(Self { repo, config })
   }
 
+  /// `user.name`
+  pub fn user_name(&self) -> Result<Option<&str>> {
+    get_option!(&self.config, get_str, "user.name")
+  }
+
+  /// `user.email`
+  pub fn user_email(&self) -> Result<Option<&str>> {
+    get_option!(&self.config, get_str, "user.email")
+  }
+
   /// Gets a branch's base from its config: `branch.<branch_name>.feature-base`.
   ///
   /// # Param
