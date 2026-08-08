@@ -33,10 +33,11 @@
         "type": "string"
       }
     },
-    "tag": {
-      "description": "Semver tag options",
-      "$ref": "#/$defs/TagConfig",
+    "version": {
+      "description": "Version tag options",
+      "$ref": "#/$defs/VersionConfig",
       "default": {
+        "pattern": "v*.*.*",
         "require_annotated": false
       }
     }
@@ -74,16 +75,21 @@
         "path"
       ]
     },
-    "TagConfig": {
+    "VersionConfig": {
       "type": "object",
       "properties": {
+        "pattern": {
+          "description": "The pattern to match against version tags",
+          "type": "string"
+        },
         "require_annotated": {
-          "description": "Require semver tags to be annotated",
+          "description": "Require version tags to be annotated",
           "type": "boolean"
         }
       },
       "required": [
-        "require_annotated"
+        "require_annotated",
+        "pattern"
       ]
     }
   }
