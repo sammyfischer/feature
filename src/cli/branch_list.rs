@@ -38,6 +38,7 @@ info about that particular branch instead of using the default compact format."#
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
+  visible_alias = "branches",
   about = "Lists branches",
   long_about = LONG_ABOUT,
   disable_help_subcommand = true

@@ -28,7 +28,7 @@ come from the commit it points to."#;
 
 #[derive(clap::Args, Clone, Debug)]
 #[command(
-  visible_alias = "vers",
+  visible_aliases = ["versions", "vers"],
   about = "Lists version tags",
   long_about = LONG_ABOUT,
   disable_help_subcommand = true

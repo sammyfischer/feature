@@ -183,7 +183,7 @@ _feature() {
         cmd="base"
         ;;
 
-      feature,branches)
+      feature,branch-list | feature,branches)
         cmd="branches"
         ;;
 
@@ -260,12 +260,12 @@ _feature() {
         cmd="sync"
         ;;
 
-      feature,tag)
-        cmd="tag"
+      feature,version | feature,ver)
+        cmd="version"
         ;;
 
-      feature,tags)
-        cmd="tags"
+      feature,version-list | feature,versions | feature,vers)
+        cmd="versions"
         ;;
 
       feature,update)
@@ -304,9 +304,9 @@ _feature() {
   case "$cmd" in
     feature)
       local opts="-h --help -V --version --config --git-dir --work-tree --wt \
-        base branches check commit completions config end protect prot project \
-        proj prune push show start status st sync tag tags update version-log \
-        verlog wip"
+        base branch-list branches check commit completions config end protect \
+        prot project proj prune push show start status st sync version ver \
+        version-list versions vers update version-log verlog wip"
       case "$prev" in
         --config)
           COMPREPLY=( $(IFS='\n' compgen -f "${cur#=}") )
@@ -558,7 +558,7 @@ _feature() {
       esac
       ;;
 
-    tag)
+    version)
       local opts="-h --help --at -r --remote --push -m --message"
       case "$prev" in
         --at)
@@ -573,7 +573,7 @@ _feature() {
       esac
       ;;
 
-    tags)
+    versions)
       local opts="-h --help -P --no-projects -M --no-modules"
       case "$prev" in
         -P | --no-projects | -M | --no-modules)
