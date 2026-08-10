@@ -274,9 +274,10 @@ This similar to `git status`, except that:
 
 ![Status output](../screenshots/status.png)
 
-## Branches
+## Branch List
 
 ```bash
+feature branch-list
 feature branches
 feature branches frontend*
 ```
@@ -292,14 +293,16 @@ This is similar to `git branch` except:
 
 ![Branch list output](../screenshots/branch-list.png)
 
-## Versions
+## Version List
 
 ```bash
+feature version-list
+feature versions
 feature vers
 feature vers v1.1.0
 ```
 
-Lists all version tags, sorted by version.
+Lists all version tags, sorted by most recent. Optionally, you can specify a tag name to see high detail info about it.
 
 This is similar to `git tag`, except:
 

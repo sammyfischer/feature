@@ -38,10 +38,12 @@ impl Display for VersionTag {
   }
 }
 
-/// Gets a list of all version tags from the repo
+/// Gets a list of all version tags from the repo. Set `sort` to true to
+/// automatically sort by date.
 pub fn get_version_tags(
   repo: &Repository,
   project_config: &ProjectConfig,
+  sort: bool,
 ) -> Result<Vec<VersionTag>> {
   let names = repo.tag_names(Some(&project_config.version.pattern))?;
 
@@ -55,8 +57,10 @@ pub fn get_version_tags(
     versions.push((VersionTag::new(name, commit.id()), commit.time()));
   }
 
-  // sort by time (recent first), and unwrap the VersionTag (discarding the time)
-  versions.sort_by_key(|it| Reverse(it.1));
+  if sort {
+    // sort by time (recent first), and unwrap the VersionTag (discarding the time)
+    versions.sort_by_key(|it| Reverse(it.1));
+  }
   Ok(versions.into_iter().map(|(version, _)| version).collect())
 }
 
@@ -71,7 +75,9 @@ pub fn find_current_version(
   project_config: &ProjectConfig,
   commit: Oid,
 ) -> Result<Option<(VersionTag, usize)>> {
-  let tags = get_version_tags(repo, project_config)?;
+  // don't need to sort
+  let tags = get_version_tags(repo, project_config, false)?;
+
   let lookup_tag = tags
     .iter()
     .map(|tag| (tag.commit, tag))

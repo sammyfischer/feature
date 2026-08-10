@@ -125,8 +125,8 @@ pub enum Command {
 
   // ==== DISPLAY / INFO ====
   Status(StatusArgs),
-  Branches(BranchListArgs),
-  Versions(VersionListArgs),
+  BranchList(BranchListArgs),
+  VersionList(VersionListArgs),
   VersionLog(VersionLogArgs),
   Show(ShowArgs),
 
@@ -154,8 +154,8 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Project(args) => args.run(&state),
 
     Command::Status(args) => args.run(&state),
-    Command::Branches(args) => args.run(&state),
-    Command::Versions(args) => args.run(&state),
+    Command::BranchList(args) => args.run(&state),
+    Command::VersionList(args) => args.run(&state),
     Command::VersionLog(args) => args.run(&state),
     Command::Show(args) => args.run(&state),
 
@@ -163,4 +163,14 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Completions(args) => args.run(),
     Command::Complete(args) => args.run(&state),
   }
+}
+
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
+pub enum SortBy {
+  /// Sort by date (most recent first)
+  #[default]
+  Date,
+
+  /// Sort lexicographically by name
+  Name,
 }
