@@ -92,16 +92,17 @@ pub fn load_config(repo: &Repository) -> Result<ProjectConfig> {
 /// resolved from the parent repo's git config. The global config file cannot be
 /// changed.
 pub fn load_with_path(project_config: &Path, repo: &Repository) -> Result<ProjectConfig> {
-  // load defaults
-  let mut figment = Figment::new().merge(Serialized::defaults(ProjectConfig::default()));
+  let mut figment = Figment::new();
 
-  // override with global config
-  // ignore error, just don't load and move on
-  if let Ok(path) = global::path() {
-    figment = figment.merge(Toml::file(&path));
+  // local config
+  {
+    let path = project_config;
+    if path.exists() {
+      figment = figment.join(Toml::file(path));
+    }
   }
 
-  // override with parent config
+  // parent project
   {
     let metadata_file = repo.path().join(Project::METADATA_FILE);
     if metadata_file.exists() {
@@ -112,18 +113,23 @@ pub fn load_with_path(project_config: &Path, repo: &Repository) -> Result<Projec
         .config()?
         .unwrap_or_else(|| parent_root.join(local::FILE));
 
-      // subprojects should not inherit the parent's `[projects]` config
-      figment = figment.merge(WithoutKey::new("projects", Toml::file(&parent_config)));
+      // `WithoutKey` omits the entire "projects" key from the config. Child projects
+      // should not inherit the project config of their parent, this would create a
+      // link to itself.
+      //
+      // Adjoin is used to concatenate lists (e.g. protected branches). This is
+      // desirable if the local and parent both explicitly specify branch names.
+      figment = figment.adjoin(WithoutKey::new("projects", Toml::file(&parent_config)));
     }
   }
 
-  // override with local config
-  {
-    let path = project_config;
-    if path.exists() {
-      figment = figment.merge(Toml::file(path));
-    }
+  // global config
+  if let Ok(path) = global::path() {
+    figment = figment.join(Toml::file(&path));
   }
+
+  // defaults
+  figment = figment.join(Serialized::defaults(ProjectConfig::default()));
 
   let config: ProjectConfig = figment.extract()?;
   Ok(config)
