@@ -6,6 +6,7 @@ use console::{measure_text_width, style, truncate_str};
 use git2::{Branch, BranchType, Repository, Time};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::cli::SortBy;
 use crate::cli::display::display_plus_minus;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
@@ -44,6 +45,10 @@ info about that particular branch instead of using the default compact format."#
   disable_help_subcommand = true
 )]
 pub struct BranchListArgs {
+  /// How to sort the list
+  #[arg(short, long)]
+  sort: Option<SortBy>,
+
   /// Hides feature projects from output
   #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_projects: Option<bool>,
@@ -190,7 +195,14 @@ impl BranchListArgs {
     user_config: &UserConfig,
     glob: Option<&str>,
   ) -> Result<String> {
-    let mut branches: Vec<(Branch, Time)> = if let Some(glob) = glob {
+    /// A branch with its sort keys
+    struct SortableBranch<'branch> {
+      branch: Branch<'branch>,
+      time: Time,
+      name: String,
+    }
+
+    let mut branches: Vec<SortableBranch> = if let Some(glob) = glob {
       let refs = repo
         .references_glob(&format!("refs/heads/{}", glob))?
         .flatten();
@@ -198,7 +210,17 @@ impl BranchListArgs {
       let mut branches = Vec::new();
       for rf in refs {
         let commit = rf.peel_to_commit()?;
-        branches.push((Branch::wrap(rf), commit.time()));
+        let branch = Branch::wrap(rf);
+        let name = branch
+          .name()?
+          .expect("Branch names should be valid utf-8")
+          .to_string();
+
+        branches.push(SortableBranch {
+          branch,
+          name,
+          time: commit.time(),
+        });
       }
 
       branches
@@ -211,17 +233,29 @@ impl BranchListArgs {
       let mut branches = Vec::new();
       for branch in branch_iter {
         let commit = branch.get().peel_to_commit()?;
-        branches.push((branch, commit.time()));
+        let name = branch
+          .name()?
+          .expect("Branch names should be valid utf-8")
+          .to_string();
+
+        branches.push(SortableBranch {
+          branch,
+          name,
+          time: commit.time(),
+        });
       }
 
       branches
     };
 
-    // sort by most recent commit
-    // TODO: could include wip commit timestamps, since wips count as a form of
-    // activity on the branch
-    branches.sort_by_key(|it| Reverse(it.1));
-    let branches: Vec<Branch> = branches.into_iter().map(|(branch, _)| branch).collect();
+    match self.sort.unwrap_or_default() {
+      SortBy::Date => branches.sort_by_key(|it| Reverse(it.time)),
+
+      // can't use sort_by_key bc of weird borrowing reasons
+      SortBy::Name => branches.sort_by(|a, b| a.name.cmp(&b.name)),
+    }
+
+    let branches: Vec<Branch> = branches.into_iter().map(|it| it.branch).collect();
 
     if branches.len() == 1 {
       self.display_single_branch(repo, user_config, &branches[0])

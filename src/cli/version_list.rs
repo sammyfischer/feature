@@ -5,6 +5,7 @@ use console::{measure_text_width, style, truncate_str};
 use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::cli::SortBy;
 use crate::cli::display::diff::display_summary_header;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
@@ -34,6 +35,10 @@ come from the commit it points to."#;
   disable_help_subcommand = true
 )]
 pub struct VersionListArgs {
+  /// How to sort the list
+  #[arg(short, long)]
+  sort: Option<SortBy>,
+
   /// Hides feature projects from output
   #[arg(short = 'P', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_projects: Option<bool>,
@@ -264,7 +269,14 @@ impl VersionListArgs {
   fn build_table(&self, repo: &Repository, proj_config: &ProjectConfig) -> Result<Vec<Row>> {
     let handle = ThreadedRepoHandle::from(repo);
 
-    let tags = get_version_tags(repo, proj_config)?;
+    let tags = match self.sort.unwrap_or_default() {
+      SortBy::Date => get_version_tags(repo, proj_config, true)?,
+      SortBy::Name => {
+        let mut tags = get_version_tags(repo, proj_config, true)?;
+        tags.sort_by(|a, b| a.name().cmp(b.name()));
+        tags
+      }
+    };
 
     // each tag walks the commit graph to find the previous tag, which can be slow
     let table = tags

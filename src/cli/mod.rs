@@ -164,3 +164,13 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Complete(args) => args.run(&state),
   }
 }
+
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
+pub enum SortBy {
+  /// Sort by date (most recent first)
+  #[default]
+  Date,
+
+  /// Sort lexicographically by name
+  Name,
+}

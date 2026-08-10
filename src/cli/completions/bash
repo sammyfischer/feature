@@ -336,8 +336,11 @@ _feature() {
       ;;
 
     branches)
-      local opts="-h --help -P --no-projects -M --no-modules"
+      local opts="-h --help -s --sort -P --no-projects -M --no-modules"
       case "$prev" in
+        -s | --sort)
+          COMPREPLY=( $(compgen -W "date name" -- "$cur") )
+          ;;
         -P | --no-projects | -M | --no-modules)
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
@@ -574,8 +577,11 @@ _feature() {
       ;;
 
     versions)
-      local opts="-h --help -P --no-projects -M --no-modules"
+      local opts="-h --help -s --sort -P --no-projects -M --no-modules"
       case "$prev" in
+        -s | --sort)
+          COMPREPLY=( $(compgen -W "date name" -- "$cur") )
+          ;;
         -P | --no-projects | -M | --no-modules)
           COMPREPLY=( $(compgen -W "true false" -- "${cur#=}") )
           ;;
