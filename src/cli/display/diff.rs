@@ -35,6 +35,19 @@ pub fn display_summary(summary: &DiffSummary, nerdfont: bool) -> String {
   out
 }
 
+/// Display a diff summary with a custom header line
+pub fn display_summary_with_header(summary: &DiffSummary, header: &str, nerdfont: bool) -> String {
+  use std::fmt::Write;
+  let mut out = String::new();
+
+  write!(out, "{}", header).unwrap();
+  for file in &summary.files {
+    write!(out, "\n  {}", display_file_summary(file, nerdfont)).unwrap();
+  }
+
+  out
+}
+
 pub fn display_file_summary(file: &DiffFileSummary, nerdfont: bool) -> String {
   match file.status {
     Delta::Unmodified => format!("{} {}", style("=").dim(), file.name),

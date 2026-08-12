@@ -13,8 +13,6 @@ High priority
   - accurate pager resolution: GIT_PAGER -> core.pager -> PAGER -> less -FR -> stdout
   - all paged output goes through this, instead of manually filtering diffs through delta
   - respect git's `pager.<command>` options (e.g. show)
-- branch/version list sorting
-  - add option to sort by name
 - per-command config
   - add global feature options like `feature.relativeTime`, `feature.paging`
   - add override for each command like `feature.stash.relativeTime`, `feature.tags.paging`
@@ -41,8 +39,6 @@ Low priority
 
 ## Features
 
-- `squash`
-  - squashes all commits on a feature branch into one
 - auto merge/rebase
   - when branches have diverged, preventing a push, check if a merge/rebase would result in conflicts, then do it automatically
   - use default git push config to determine whether to merge or rebase

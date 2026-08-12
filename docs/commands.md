@@ -75,6 +75,20 @@ This is similar to `git rebase` except that:
 
 - it automatically detects the base branch when possible
 
+## Squash
+
+```bash
+feature squash implement feature
+feature squash -e
+feature squash --base main
+```
+
+Squashes all commits in the given branch into a single commit, stemming from the base branch.
+
+This is similar to `git merge --squash` except that:
+
+- it uses the configured base branch to create the squash commit
+
 ## Push
 
 ```bash
