@@ -18,6 +18,7 @@ use crate::cli::protect::ProtectArgs;
 use crate::cli::prune::PruneArgs;
 use crate::cli::push::PushArgs;
 use crate::cli::show::ShowArgs;
+use crate::cli::squash::SquashArgs;
 use crate::cli::start::StartArgs;
 use crate::cli::status::StatusArgs;
 use crate::cli::sync::SyncArgs;
@@ -42,6 +43,7 @@ mod protect;
 mod prune;
 mod push;
 mod show;
+mod squash;
 mod start;
 pub mod status;
 mod sync;
@@ -111,6 +113,7 @@ pub enum Command {
   Commit(CommitArgs),
   Base(BaseArgs),
   Update(UpdateArgs),
+  Squash(SquashArgs),
   Push(PushArgs),
   Check(CheckArgs),
   End(EndArgs),
@@ -142,6 +145,7 @@ pub fn run(state: App) -> anyhow::Result<()> {
     Command::Commit(args) => args.run(&state),
     Command::Base(args) => args.run(&state),
     Command::Update(args) => args.run(&state),
+    Command::Squash(args) => args.run(&state),
     Command::Push(args) => args.run(&state),
     Command::Check(args) => args.run(&state),
     Command::End(args) => args.run(&state),

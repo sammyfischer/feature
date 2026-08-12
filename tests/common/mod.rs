@@ -162,6 +162,12 @@ impl TestRepo {
     &self.dir
   }
 
+  /// Sets user.name and user.email in git config
+  pub fn set_user(&self, name: &str, email: &str) {
+    self.git(&["config", "user.name", name]).success();
+    self.git(&["config", "user.email", email]).success();
+  }
+
   /// Writes a file at the top level of the repo
   pub fn write_file(&self, file_name: &str, contents: &str) {
     fs::write(self.path().join(file_name), contents).unwrap();

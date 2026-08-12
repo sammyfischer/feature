@@ -488,11 +488,7 @@ impl CommitArgs {
       .status()?;
 
     if !status.success() {
-      return Err(if let Some(code) = status.code() {
-        anyhow!("Editor failed with code: {}", code)
-      } else {
-        anyhow!("Editor failed")
-      });
+      return Err(anyhow!("Editor failed with status: {}", status));
     }
 
     Ok(())
@@ -611,7 +607,7 @@ impl CommitArgs {
 }
 
 /// Finds the configured editor, matching git's search order
-fn get_editor(repo: &Repository) -> Result<String> {
+pub fn get_editor(repo: &Repository) -> Result<String> {
   // 1. GIT_EDITOR env var
   match env::var("GIT_EDITOR") {
     Ok(it) => return Ok(it),
