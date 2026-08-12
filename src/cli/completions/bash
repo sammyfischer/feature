@@ -248,6 +248,10 @@ _feature() {
         cmd="show"
         ;;
 
+      feature,squash)
+        cmd="squash"
+        ;;
+
       feature,start | feature,branch)
         cmd="start"
         ;;
@@ -305,8 +309,8 @@ _feature() {
     feature)
       local opts="-h --help -V --version --config --git-dir --work-tree --wt \
         base branch-list branches check commit completions config end protect \
-        prot project proj prune push show start status st sync version ver \
-        version-list versions vers update version-log verlog wip"
+        prot project proj prune push show squash start status st sync version \
+        ver version-list versions vers update version-log verlog wip"
       case "$prev" in
         --config)
           COMPREPLY=( $(IFS='\n' compgen -f "${cur#=}") )
@@ -524,6 +528,17 @@ _feature() {
           COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_revisions "$cur" "$git_dir" "$work_tree") )
           ;;
       esac
+      ;;
+
+    squash)
+      local opts="-h --help -e --edit --base --branch"
+      case "$prev" in
+        --base | --branch)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(_feature_compgen_branches "$cur" "$git_dir" "$work_tree") )
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+          ;;
       ;;
 
     start)
