@@ -37,9 +37,15 @@ pub trait NotFoundExt<T> {
   ///
   /// [NotFound]: git2::ErrorCode::NotFound
   fn repo_not_found_ok(self) -> Result<Option<T>, anyhow::Error>;
+
+  /// When used on one `Reference::peel_to_tag`, returns `Ok(None)` when the
+  /// reference cannot be peeled to a tag.
+  ///
+  /// [NotFound]: git2::ErrorCode::NotFound
+  fn tag_not_found_ok(self) -> Result<Option<T>, anyhow::Error>;
 }
 
-impl<T> NotFoundExt<T> for core::result::Result<T, git2::Error> {
+impl<T> NotFoundExt<T> for Result<T, git2::Error> {
   fn not_found_ok(self) -> Result<Option<T>, anyhow::Error> {
     match self {
       Ok(it) => Ok(Some(it)),
@@ -59,6 +65,14 @@ impl<T> NotFoundExt<T> for core::result::Result<T, git2::Error> {
       {
         Ok(None)
       }
+      Err(e) => Err(anyhow!(e)),
+    }
+  }
+
+  fn tag_not_found_ok(self) -> Result<Option<T>, anyhow::Error> {
+    match self {
+      Ok(it) => Ok(Some(it)),
+      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => Ok(None),
       Err(e) => Err(anyhow!(e)),
     }
   }
