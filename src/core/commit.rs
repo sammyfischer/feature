@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
-use git2::{Branch, Commit, ErrorCode, Oid, Repository, Tag};
+use git2::{Branch, Commit, ErrorCode, Oid, Reference, Repository, Tag};
 
+use crate::core::branch::get_head;
 use crate::core::string::ToStrLossyOwned;
 use crate::core::trim_hash;
 
@@ -71,4 +72,44 @@ pub fn resolve_commit_name(repo: &Repository, commit: &Commit) -> Result<String>
   }
 
   trim_hash(commit.as_object())
+}
+
+/// Gets a list of refs that point to the given commit.
+pub fn get_commit_decorations<'refs>(
+  repo: &'refs Repository,
+  commit: Oid,
+) -> Result<Vec<Reference<'refs>>> {
+  let mut decorations = Vec::new();
+  let refs = repo.references()?.flatten();
+  let head = get_head(repo)?;
+
+  let head_name = if let Some(kind) = head.kind() {
+    match kind {
+      git2::ReferenceType::Direct => Some(head.shorthand()?.to_string()),
+      git2::ReferenceType::Symbolic => head.symbolic_target()?.map(|it| it.to_string()),
+    }
+  } else {
+    None
+  };
+
+  for rf in refs {
+    if rf.is_note() {
+      continue;
+    }
+
+    if let Some(head_name) = &head_name
+      && head_name == rf.name()?
+    {
+      // need to get an owned copy of head ref
+      decorations.push(get_head(repo)?);
+      continue;
+    }
+
+    let other = rf.peel_to_commit()?;
+    if commit == other.id() {
+      decorations.push(rf);
+    }
+  }
+
+  Ok(decorations)
 }
