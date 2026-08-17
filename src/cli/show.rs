@@ -12,9 +12,10 @@ use crate::cli::version::display_tag;
 use crate::cli::wip::display_wip;
 use crate::core::branch::{get_current_branch_name, get_head_resolved, get_worktree_branch_names};
 use crate::core::branch_info::BranchInfo;
+use crate::core::commit::get_commit_decorations;
 use crate::core::diff::{DiffSummary, get_formatted_diff};
 use crate::core::project_config::{PageWhen, ProjectConfig};
-use crate::core::string::ToStrLossy;
+use crate::core::string::{ToStrLossy, TrimPrefix};
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
 use crate::core::version::{VersionTag, find_current_version, since_prev_version};
 use crate::core::wip::WipList;
@@ -600,6 +601,55 @@ impl ShowArgs {
   fn show_commit(&self, state: &App, config: &UserConfig, commit: &Commit) -> Result<Vec<u8>> {
     use std::io::Write;
     let mut buf: Vec<u8> = Vec::new();
+
+    // decorations like git log
+    let decorations = get_commit_decorations(&state.repo, commit.id())?;
+    if !decorations.is_empty() {
+      let mut first = true;
+      for rf in decorations {
+        let name = rf.shorthand()?;
+
+        let name = if name == "HEAD" {
+          match rf.symbolic_target()? {
+            Some(target) => style!(
+              "HEAD -> {}",
+              target
+                .trim_prefix_opt("refs/heads/")
+                .trim_prefix_opt("refs/remotes/")
+            )
+            .green()
+            .to_string(),
+
+            None => style("HEAD").green().to_string(),
+          }
+        } else {
+          if rf.is_branch() {
+            // local branch
+            style(name).cyan()
+          } else if rf.is_remote() {
+            // upstream branch
+            style(name).blue()
+          } else if rf.is_tag() {
+            // tag
+            style(name).yellow()
+          } else {
+            // default
+            style(name)
+          }
+          .to_string()
+        };
+
+        // print (comma separated)
+        if first {
+          first = false;
+          write!(buf, "{}", name)?;
+        } else {
+          write!(buf, "{} {}", style(",").dim(), name)?;
+        }
+      }
+
+      write!(buf, "\n\n")?;
+    }
 
     writeln!(
       buf,
