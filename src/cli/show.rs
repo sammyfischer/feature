@@ -16,7 +16,7 @@ use crate::core::diff::{DiffSummary, get_formatted_diff};
 use crate::core::project_config::{PageWhen, ProjectConfig};
 use crate::core::string::ToStrLossy;
 use crate::core::user_config::{CommitMessageLevel, UserConfig};
-use crate::core::version::{VersionTag, since_prev_version};
+use crate::core::version::{VersionTag, find_current_version, since_prev_version};
 use crate::core::wip::WipList;
 use crate::core::{NotFoundExt, trim_hash};
 use crate::{App, if_nerdfont, style};
@@ -25,11 +25,15 @@ const LONG_ABOUT: &str = r#"Show info about a commit
 
 The revision string will be used to determine the most useful display mode. If
 the determined mode isn't what you want, you can specify a display mode with
-"--display <mode>". Some important considerations:
-• the branch display mode is specifically for local branches, not remotes
-• the version mode only displays version tags
-• the tag mode displays the tag object, not the commit it points to
-• the commit mode is the default
+"--display <mode>".
+
+Some important details for each mode:
+• branch mode is specifically for local branches, not remotes
+• version mode only displays version tags
+  • it also never displays diff patches
+• tag mode is for displaying annotated tags, i.e. tag objects and the commit
+  they point to
+• commit mode is the fallback
 
 For the options "--no-summary", and "--no-patch", an equals sign must be used
 to specify a value. If no value is specified, "true" is assumed.
@@ -117,15 +121,13 @@ impl ShowArgs {
     };
 
     let buf = match self.resolve_mode(state, &rev)? {
-      ResolvedDisplayMode::Branch(branch) => self
-        .show_branch(&state.repo, &config, &branch)?
-        .into_bytes(),
+      ResolvedDisplayMode::Branch(branch) => self.show_branch(&state.repo, &config, &branch)?,
 
-      ResolvedDisplayMode::Version(version, tag) => self
-        .show_version(&state.repo, &state.config, &version, tag.as_ref())?
-        .into_bytes(),
+      ResolvedDisplayMode::Version(version, tag) => {
+        self.show_version(&state.repo, &state.config, &version, tag.as_ref())?
+      }
 
-      ResolvedDisplayMode::Tag(tag) => self.show_tag(&config, &tag)?,
+      ResolvedDisplayMode::Tag(tag) => self.show_tag(&state.repo, &config, &tag)?,
 
       ResolvedDisplayMode::Commit(commit) => self.show_commit(state, &config, &commit)?,
     };
@@ -250,9 +252,14 @@ impl ShowArgs {
     Ok(mode)
   }
 
-  fn show_branch(&self, repo: &Repository, config: &UserConfig, branch: &Branch) -> Result<String> {
-    use std::fmt::Write;
-    let mut out = String::with_capacity(100);
+  fn show_branch(
+    &self,
+    repo: &Repository,
+    config: &UserConfig,
+    branch: &Branch,
+  ) -> Result<Vec<u8>> {
+    use std::io::Write;
+    let mut buf: Vec<u8> = Vec::new();
 
     let info = BranchInfo::from_branch(branch)?;
 
@@ -261,11 +268,11 @@ impl ShowArgs {
     let wt_branches = get_worktree_branch_names(repo)?;
 
     if current.is_some_and(|it| it == info.name()) {
-      write!(out, "{}", style(info.name()).green())?;
+      write!(buf, "{}", style(info.name()).green())?;
     } else if wt_branches.iter().any(|it| it == info.name()) {
-      write!(out, "{}", style(info.name()).cyan())?;
+      write!(buf, "{}", style(info.name()).cyan())?;
     } else {
-      write!(out, "{}", info.name())?;
+      write!(buf, "{}", info.name())?;
     }
 
     // branch-name
@@ -295,7 +302,7 @@ impl ShowArgs {
 
     let nerdfont = config.nerdfont()?;
     write!(
-      out,
+      buf,
       "\n\n{}",
       style!(
         "{}{}",
@@ -306,14 +313,14 @@ impl ShowArgs {
     )?;
 
     write!(
-      out,
+      buf,
       " {}, {}",
       commit.author().name()?,
       display_time(&commit.time(), &DisplayTimeOptions::try_from(config)?)?
     )?;
 
     write!(
-      out,
+      buf,
       "\n{}",
       style!(
         "{}{}",
@@ -385,7 +392,7 @@ impl ShowArgs {
 
     if !branch_rows.is_empty() {
       // double space
-      writeln!(out)?;
+      writeln!(buf)?;
     }
 
     for row in &branch_rows {
@@ -400,13 +407,13 @@ impl ShowArgs {
       };
 
       let (a, b) = row.ab;
-      write!(out, "\n{} {} {}", label, name, display_plus_minus(a, b))?;
+      write!(buf, "\n{} {} {}", label, name, display_plus_minus(a, b))?;
     }
 
     let wips = WipList::from_branch(repo, info.name().to_string())?;
     if !wips.is_empty() {
       write!(
-        out,
+        buf,
         "\n\n{}{}",
         style(if_nerdfont!(nerdfont, "󱉚 ")).cyan(),
         style("Wips").cyan()
@@ -414,7 +421,7 @@ impl ShowArgs {
 
       for wip in wips.iter() {
         write!(
-          out,
+          buf,
           "\n{} {} {}",
           display_wip(&wip),
           style(display_time(
@@ -427,7 +434,55 @@ impl ShowArgs {
       }
     }
 
-    Ok(out)
+    if let Some(base) = &base {
+      let base_tip = base.resolve(repo)?.peel_to_commit()?;
+      let merge_base = repo.merge_base(commit.id(), base_tip.id())?;
+      let (ahead, _) = repo.graph_ahead_behind(commit.id(), merge_base)?;
+
+      let old_tree = repo.find_commit(merge_base)?.tree()?;
+
+      let mut diff = repo.diff_tree_to_tree(Some(&old_tree), Some(&commit.tree()?), None)?;
+      diff.find_similar(None)?;
+      let summary = DiffSummary::new(&diff)?;
+
+      let show_summary = match self.no_summary {
+        Some(hide) => !hide,
+        None => config.show_summary()?,
+      };
+      let show_patch = match self.no_patch {
+        Some(hide) => !hide,
+        None => config.show_patch()?,
+      };
+
+      if show_summary {
+        write!(
+          buf,
+          "\n\nSince {} - {} {}, {}",
+          style(base.name()).magenta(),
+          style(ahead).cyan(),
+          if ahead == 1 { "commit" } else { "commits" },
+          display_summary(&summary, nerdfont)
+        )?;
+      }
+
+      if show_patch {
+        if !show_summary {
+          // need to explain what this diff actually is, if the summary isn't shown
+          write!(
+            buf,
+            "\n\nSince {} - {} {}",
+            style(base.name()).magenta(),
+            style(ahead).cyan(),
+            if ahead == 1 { "commit" } else { "commits" }
+          )?;
+        }
+
+        writeln!(buf)?;
+        buf.extend_from_slice(&get_formatted_diff(&diff)?);
+      }
+    }
+
+    Ok(buf)
   }
 
   fn show_version(
@@ -436,13 +491,23 @@ impl ShowArgs {
     proj_config: &ProjectConfig,
     version: &VersionTag,
     tag: Option<&Tag>,
-  ) -> Result<String> {
-    use std::fmt::Write;
-    let mut out = String::new();
+  ) -> Result<Vec<u8>> {
+    use std::io::Write;
+    let mut buf: Vec<u8> = Vec::new();
 
     let config = UserConfig::new(repo)?;
 
-    write!(out, "{}", version.name())?;
+    let current = match get_head_resolved(repo)? {
+      Some(head) => find_current_version(repo, proj_config, head.peel_to_commit()?.id())?
+        .map(|(version, _)| version),
+      None => None,
+    };
+
+    if current.is_some_and(|current| current.name() == version.name()) {
+      write!(buf, "{}", style(version.name()).green())?;
+    } else {
+      write!(buf, "{}", version.name())?;
+    }
 
     let nerdfont = config.nerdfont()?;
     let time_opts = DisplayTimeOptions::try_from(&config)?;
@@ -451,7 +516,7 @@ impl ShowArgs {
       && let Some(sig) = obj.tagger()
     {
       write!(
-        out,
+        buf,
         "\n\n{}{}, {}",
         style(if_nerdfont!(nerdfont, " ")).yellow(),
         sig.name()?,
@@ -460,7 +525,7 @@ impl ShowArgs {
 
       if let Some(msg) = obj.message()? {
         write!(
-          out,
+          buf,
           "\n{}",
           style!("{}{}", if_nerdfont!(nerdfont, " "), msg).dim()
         )?
@@ -469,7 +534,7 @@ impl ShowArgs {
 
     let commit = repo.find_commit(version.commit())?;
     write!(
-      out,
+      buf,
       "\n\n{}",
       style!(
         "{}{}",
@@ -480,14 +545,14 @@ impl ShowArgs {
     )?;
 
     write!(
-      out,
+      buf,
       " {}, {}",
       commit.author().name()?,
       display_time(&commit.time(), &DisplayTimeOptions::try_from(&config)?)?
     )?;
 
     write!(
-      out,
+      buf,
       "\n{}",
       style!(
         "{}{}",
@@ -498,11 +563,11 @@ impl ShowArgs {
     )?;
 
     let old_tree = if let Some((prev, _)) = since_prev_version(repo, proj_config, version)? {
-      write!(out, "\n\nSince {}", style(prev.name()).yellow())?;
+      write!(buf, "\n\nSince {}", style(prev.name()).yellow())?;
 
       let (ahead, _) = repo.graph_ahead_behind(commit.id(), prev.commit())?;
       write!(
-        out,
+        buf,
         " - {} {}, ",
         style(ahead).cyan(),
         if ahead == 1 { "commit" } else { "commits" }
@@ -510,7 +575,7 @@ impl ShowArgs {
 
       Some(repo.find_commit(prev.commit())?.tree()?)
     } else {
-      write!(out, "\n\nInitial release - ")?;
+      write!(buf, "\n\nInitial release - ")?;
       None
     };
 
@@ -518,9 +583,18 @@ impl ShowArgs {
     diff.find_similar(None)?;
     let summary = DiffSummary::new(&diff)?;
 
-    write!(out, "{}", display_summary_header(&summary))?;
+    let show_summary = match self.no_summary {
+      Some(hide) => !hide,
+      None => config.show_summary()?,
+    };
 
-    Ok(out)
+    if show_summary {
+      write!(buf, "{}", display_summary(&summary, nerdfont))?;
+    } else {
+      write!(buf, "{}", display_summary_header(&summary))?;
+    }
+
+    Ok(buf)
   }
 
   fn show_commit(&self, state: &App, config: &UserConfig, commit: &Commit) -> Result<Vec<u8>> {
@@ -568,7 +642,7 @@ impl ShowArgs {
     Ok(buf)
   }
 
-  fn show_tag(&self, config: &UserConfig, tag: &Tag) -> Result<Vec<u8>> {
+  fn show_tag(&self, repo: &Repository, config: &UserConfig, tag: &Tag) -> Result<Vec<u8>> {
     use std::io::Write;
     let mut buf: Vec<u8> = Vec::new();
 
@@ -590,7 +664,29 @@ impl ShowArgs {
           let commit = obj.as_commit().unwrap();
           write!(buf, "\n\n{}", display_commit(commit, &opts)?)?;
 
-          // TODO: show diff (first parent?)
+          let parent = commit.parent(0).not_found_ok()?;
+
+          let new_tree = commit.tree()?;
+          let old_tree = match parent {
+            Some(it) => Some(it.tree()?),
+            None => None,
+          };
+
+          let mut diff = repo.diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), None)?;
+          diff.find_similar(None)?;
+
+          let show_summary = !self.no_summary.unwrap_or(!config.show_summary()?);
+          if show_summary {
+            let summary = DiffSummary::new(&diff)?;
+            if summary.num_files != 0 {
+              writeln!(buf, "\n{}", display_summary(&summary, config.nerdfont()?))?;
+            }
+          }
+
+          let show_patch = !self.no_patch.unwrap_or(!config.show_patch()?);
+          if show_patch {
+            buf.extend_from_slice(&get_formatted_diff(&diff)?);
+          }
         }
 
         // else show nothing
