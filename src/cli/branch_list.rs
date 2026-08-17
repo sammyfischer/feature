@@ -10,15 +10,13 @@ use crate::cli::SortBy;
 use crate::cli::display::display_plus_minus;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
-use crate::cli::wip::display_wip;
+use crate::core::NotFoundExt;
 use crate::core::branch::{get_current_branch_name, get_worktree_branch_names};
-use crate::core::branch_info::BranchInfo;
 use crate::core::string::{ToStrLossy, ToStrLossyOwned};
 use crate::core::threading::ThreadedRepoHandle;
 use crate::core::user_config::UserConfig;
 use crate::core::wip::WipList;
-use crate::core::{NotFoundExt, trim_hash};
-use crate::{App, if_nerdfont, style};
+use crate::{App, style};
 
 const LONG_ABOUT: &str = r#"Lists branches.
 
@@ -257,17 +255,13 @@ impl BranchListArgs {
 
     let branches: Vec<Branch> = branches.into_iter().map(|it| it.branch).collect();
 
-    if branches.len() == 1 {
-      self.display_single_branch(repo, user_config, &branches[0])
-    } else {
-      let mut table = Vec::with_capacity(branches.len());
-      for branch in branches {
-        let row = self.build_row(repo, user_config, &branch)?;
-        table.push(row);
-      }
-
-      self.display_table(table, user_config)
+    let mut table = Vec::with_capacity(branches.len());
+    for branch in branches {
+      let row = self.build_row(repo, user_config, &branch)?;
+      table.push(row);
     }
+
+    self.display_table(table, user_config)
   }
 
   /// Create a row in the table from a branch
@@ -432,185 +426,6 @@ impl BranchListArgs {
       ab_buf.clear();
 
       write!(out, " {}", &row.commit)?;
-    }
-
-    Ok(out)
-  }
-
-  /// If a single branch is matched, display in high detail
-  fn display_single_branch(
-    &self,
-    repo: &Repository,
-    config: &UserConfig,
-    branch: &Branch,
-  ) -> Result<String> {
-    use std::fmt::Write;
-    let mut out = String::with_capacity(100);
-
-    let info = BranchInfo::from_branch(branch)?;
-
-    // highlight name the same way as list mode
-    let current = get_current_branch_name(repo)?;
-    let wt_branches = get_worktree_branch_names(repo)?;
-
-    if current.is_some_and(|it| it == info.name()) {
-      write!(out, "{}", style(info.name()).green())?;
-    } else if wt_branches.iter().any(|it| it == info.name()) {
-      write!(out, "{}", style(info.name()).cyan())?;
-    } else {
-      write!(out, "{}", info.name())?;
-    }
-
-    // branch-name
-    //
-    //  355daf4 Author Name, 15 hours ago
-    //  fix(stash): add status output after stash pop
-    //
-    //  Base     origin/branch-status +0 -4
-    //  Upstream origin/main          +0 -0
-    //
-    // no nerd font:
-    // branch-name
-    //
-    // 355daf4 Author Name, 15 hours ago
-    // fix(stash): add status output after stash pop
-    //
-    // Base     origin/branch-status +0 -4
-    // Upstream origin/main          +0 -0
-
-    let commit = branch.get().peel_to_commit()?;
-
-    let nerdfont = config.nerdfont()?;
-    write!(
-      out,
-      "\n\n{}",
-      style!(
-        "{}{}",
-        if nerdfont { " " } else { "" },
-        trim_hash(commit.as_object())?
-      )
-      .yellow()
-    )?;
-
-    write!(
-      out,
-      " {}, {}",
-      commit.author().name()?,
-      display_time(&commit.time(), &DisplayTimeOptions::try_from(config)?)?
-    )?;
-
-    write!(
-      out,
-      "\n{}",
-      style!(
-        "{}{}",
-        if nerdfont { " " } else { "" },
-        commit.summary()?.expect("Commit should have a summary")
-      )
-      .dim()
-    )?;
-
-    /// Branch ahead/behind is printed as a table:
-    ///  Upstream origin/main          +0 -0
-    ///  Base     origin/branch-status +0 -4
-    ///
-    /// This represents a row in that table
-    struct BranchRow {
-      /// Upstream or base, possibly with the icon
-      label: String,
-
-      /// Branch name
-      name: String,
-
-      /// Ahead/behind this branch (upstream/base) vs. the branch being listed
-      ab: (usize, usize),
-    }
-
-    let mut branch_rows = Vec::with_capacity(2);
-
-    if let Some(upstream) = branch.upstream().not_found_ok()? {
-      let upstream_tip = upstream.get().peel_to_commit()?.id();
-      let ab = repo.graph_ahead_behind(upstream_tip, commit.id())?;
-
-      let upstream_row = BranchRow {
-        label: style!("{}{}", if nerdfont { " " } else { "" }, "Upstream")
-          .blue()
-          .to_string(),
-        name: upstream
-          .name()?
-          .expect("Upstream should have a name")
-          .to_string(),
-        ab,
-      };
-
-      branch_rows.push(upstream_row);
-    }
-
-    if let Some(base) = config.branch_base(info.name())? {
-      let base_tip = base.resolve(repo)?.peel_to_commit()?.id();
-      let ab = repo.graph_ahead_behind(base_tip, commit.id())?;
-
-      let base_row = BranchRow {
-        label: style!("{}{}", if nerdfont { " " } else { "" }, "Base")
-          .magenta()
-          .to_string(),
-        name: base.name().to_string(),
-        ab,
-      };
-
-      branch_rows.push(base_row);
-    }
-
-    let mut label_width = 0usize;
-    let mut name_width = 0usize;
-
-    for row in &branch_rows {
-      label_width = label_width.max(measure_text_width(&row.label));
-      name_width = name_width.max(measure_text_width(&row.name));
-    }
-
-    if !branch_rows.is_empty() {
-      // double space
-      writeln!(out)?;
-    }
-
-    for row in &branch_rows {
-      let label = {
-        let padding = label_width - measure_text_width(&row.label);
-        format!("{}{}", row.label, " ".repeat(padding))
-      };
-
-      let name = {
-        let padding = name_width - measure_text_width(&row.name);
-        format!("{}{}", row.name, " ".repeat(padding))
-      };
-
-      let (a, b) = row.ab;
-      write!(out, "\n{} {} {}", label, name, display_plus_minus(a, b))?;
-    }
-
-    let wips = WipList::from_branch(repo, info.name().to_string())?;
-    if !wips.is_empty() {
-      write!(
-        out,
-        "\n\n{}{}",
-        style(if_nerdfont!(nerdfont, "󱉚 ")).cyan(),
-        style("Wips").cyan()
-      )?;
-
-      for wip in wips.iter() {
-        write!(
-          out,
-          "\n{} {} {}",
-          display_wip(&wip),
-          style(display_time(
-            &wip.time(),
-            &DisplayTimeOptions::try_from(config)?
-          )?)
-          .magenta(),
-          truncate_str(wip.message(), 72, &style("\u{2026}").dim().to_string())
-        )?;
-      }
     }
 
     Ok(out)

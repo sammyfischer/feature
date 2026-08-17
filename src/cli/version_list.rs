@@ -6,20 +6,20 @@ use git2::{ErrorClass, ErrorCode, Repository};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::SortBy;
-use crate::cli::display::diff::display_summary_header;
 use crate::cli::display::time::{DisplayTimeOptions, display_time};
 use crate::cli::term::{get_term_width, is_term};
-use crate::core::diff::DiffSummary;
 use crate::core::project_config::ProjectConfig;
 use crate::core::string::ToStrLossyOwned;
 use crate::core::threading::ThreadedRepoHandle;
-use crate::core::trim_hash;
 use crate::core::user_config::UserConfig;
 use crate::core::version::{VersionTag, get_version_tags, since_prev_version};
-use crate::{App, if_nerdfont, style};
+use crate::{App, style};
 
-const LONG_ABOUT: &str = r#"Lists version tags. Shows how many commits were added since the previous
-version.
+const LONG_ABOUT: &str = r#"Lists version tags.
+
+The green number is how many commits there were since the last version. The
+last version is the most recent version reachable on the commit graph, and is
+not necessarily the following version tag in the list (when sorting by date).
 
 If the tag is annotated, the name is shown in cyan and the author/timestamp/
 message come from the tag object.
@@ -46,10 +46,6 @@ pub struct VersionListArgs {
   /// Hides git submodules from output
   #[arg(short = 'M', long, value_name = "HIDE", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
   no_modules: Option<bool>,
-
-  /// View detailed info about a particular version tag
-  #[arg(value_name = "NAME")]
-  version: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -102,13 +98,8 @@ impl VersionListArgs {
       let repo_thead = scope.spawn(|| -> Result<_> {
         let repo = handle.open()?;
 
-        match &self.version {
-          Some(name) => self.display_single_tag(&repo, proj_config, name),
-          None => {
-            let table = self.build_table(&repo, proj_config)?;
-            self.display_table(table)
-          }
-        }
+        let table = self.build_table(&repo, proj_config)?;
+        self.display_table(table)
       });
 
       let proj_thread = scope.spawn(|| {
@@ -122,14 +113,9 @@ impl VersionListArgs {
               let mut out = format!("\n{} {}\n", style("Project").bold(), style(name).cyan());
               let repo = Repository::open(&project.path)?;
 
-              match &self.version {
-                Some(name) => self.display_single_tag(&repo, proj_config, name),
-                None => {
-                  let table = self.build_table(&repo, proj_config)?;
-                  out.push_str(&self.display_table(table)?);
-                  Ok(out)
-                }
-              }
+              let table = self.build_table(&repo, proj_config)?;
+              out.push_str(&self.display_table(table)?);
+              Ok(out)
             })
             .collect()
         }
@@ -147,14 +133,9 @@ impl VersionListArgs {
               let repo = module.open()?;
               let mut out = format!("\n{} {}\n", style("Module").bold(), style(name).cyan());
 
-              match &self.version {
-                Some(name) => self.display_single_tag(&repo, proj_config, name),
-                None => {
-                  let table = self.build_table(&repo, proj_config)?;
-                  out.push_str(&self.display_table(table)?);
-                  Ok(out)
-                }
-              }
+              let table = self.build_table(&repo, proj_config)?;
+              out.push_str(&self.display_table(table)?);
+              Ok(out)
             })
             .collect()
         }
@@ -340,112 +321,6 @@ impl VersionListArgs {
         style!("{}, {} · {}", row.author, row.time, row.msg).dim()
       )?;
     }
-
-    Ok(out)
-  }
-
-  fn display_single_tag(
-    &self,
-    repo: &Repository,
-    proj_config: &ProjectConfig,
-    name: &str,
-  ) -> Result<String> {
-    use std::fmt::Write;
-    let mut out = String::new();
-
-    let config = UserConfig::new(repo)?;
-    let rf = repo.resolve_reference_from_short_name(name)?;
-
-    if !rf.is_tag() {
-      return Err(anyhow!(format!("{} is not a tag", name)));
-    }
-
-    write!(out, "{}", style(name).green())?;
-
-    let nerdfont = config.nerdfont()?;
-    let time_opts = DisplayTimeOptions::try_from(&config)?;
-
-    match rf.peel_to_tag() {
-      // annotated tag
-      Ok(obj) => {
-        if let Some(sig) = obj.tagger() {
-          write!(
-            out,
-            "\n\n{}{}, {}",
-            style(if_nerdfont!(nerdfont, " ")).yellow(),
-            sig.name()?,
-            display_time(&sig.when(), &time_opts)?
-          )?;
-
-          if let Some(msg) = obj.message()? {
-            write!(
-              out,
-              "\n{}",
-              style!("{}{}", if_nerdfont!(nerdfont, " "), msg).dim()
-            )?
-          };
-        };
-      }
-
-      // lightweight tag
-      Err(e) if e.class() == ErrorClass::Object && e.code() == ErrorCode::InvalidSpec => {}
-
-      Err(e) => return Err(anyhow!(e)),
-    }
-
-    let commit = rf.peel_to_commit()?;
-    write!(
-      out,
-      "\n\n{}",
-      style!(
-        "{}{}",
-        if nerdfont { " " } else { "" },
-        trim_hash(commit.as_object())?
-      )
-      .yellow()
-    )?;
-
-    write!(
-      out,
-      " {}, {}",
-      commit.author().name()?,
-      display_time(&commit.time(), &DisplayTimeOptions::try_from(&config)?)?
-    )?;
-
-    write!(
-      out,
-      "\n{}",
-      style!(
-        "{}{}",
-        if_nerdfont!(nerdfont, " "),
-        commit.summary()?.unwrap_or(commit.message()?)
-      )
-      .dim()
-    )?;
-
-    let tag = VersionTag::new(name, commit.id());
-    let old_tree = if let Some((prev, _)) = since_prev_version(repo, proj_config, &tag)? {
-      write!(out, "\n\nSince {}", style(prev.name()).yellow())?;
-
-      let (ahead, _) = repo.graph_ahead_behind(commit.id(), prev.commit())?;
-      write!(
-        out,
-        " - {} {}, ",
-        style(ahead).cyan(),
-        if ahead == 1 { "commit" } else { "commits" }
-      )?;
-
-      Some(repo.find_commit(prev.commit())?.tree()?)
-    } else {
-      write!(out, "\n\nInitial release - ")?;
-      None
-    };
-
-    let mut diff = repo.diff_tree_to_tree(old_tree.as_ref(), Some(&commit.tree()?), None)?;
-    diff.find_similar(None)?;
-    let summary = DiffSummary::new(&diff)?;
-
-    write!(out, "{}", display_summary_header(&summary))?;
 
     Ok(out)
   }

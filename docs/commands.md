@@ -296,13 +296,13 @@ feature branches
 feature branches frontend*
 ```
 
-Lists all local branches (not just feature branches). Takes an optional glob pattern to filter down the results. If a single branch is matched, it will display high-detailed info about the branch.
+Lists all local branches (not just feature branches). Takes an optional glob pattern to filter down the results.
 
 This is similar to `git branch` except:
 
 - it shows how many commits ahead/behind the base and upstream branch are
+- it shows feature wips
 - it shows more commit info
-- it shows a compact list-view when multiple branches are matched, but shows a high-detail view when a single branch is matched
 - it's more colorful
 
 ![Branch list output](../screenshots/branch-list.png)
@@ -313,10 +313,10 @@ This is similar to `git branch` except:
 feature version-list
 feature versions
 feature vers
-feature vers v1.1.0
+feature vers --sort name
 ```
 
-Lists all version tags, sorted by most recent. Optionally, you can specify a tag name to see high detail info about it.
+Lists all version tags. By default, sorts by most recent.
 
 This is similar to `git tag`, except:
 
@@ -349,21 +349,25 @@ This is similar to `git log`, except:
 
 ```bash
 feature show
-feature show main --no-summary
-feature show 9fe6b04 --message=subject
+feature show --no-patch main
+feature show -d commit main
+feature show --message=subject 9fe6b04
 ```
 
-View details of a particular commit. You can disable different parts of the output with the command line options and config file options, e.g. hiding the patch diff. You can customize the timestamp formatting with `feature.format.date` in git config.
+Intelligently displays info about the revision specified. Attempts to resolve it as a branch, version tag, annotated tag, and then defaults to displaying as a commit.
 
-By default, shows HEAD. You can pass in anything that can be resolved to a commit, e.g. branch names, tag names, and `HEAD^1`.
+You can specify the display mode manually. This is useful if, for example, the mode resolves incorrectly or you want to view the commit a branch points to.
+
+By default, shows HEAD. The display mode resolution order is still the same.
 
 For commits with multiple parents, the diff output will be against the first parent. For merge commits, the first parent is always the branch being merged into (i.e. the current branch at the time of the merge). In other words, the diff shows the changes that were brought into the branch by the merge, rather than the changes made specifically in that commit.
 
-For the stash commit (`feature show refs/stash`), the first parent is the HEAD at the time the stash was created. In other words, the diff shows all the changes that were stashed.
+For the stash commit (`feature show refs/stash`), the first parent is the HEAD at the time the stash was created. In other words, the diff shows all the changes that were stashed. Although, you should use `git stash show` for stashes instead.
 
 This command is similar to `git show` except:
 
-- the output is in the style of other feature commands
+- it intelligently displays the specified revision based on what it can be resolved as
+- it shows much more info
 
 ![Show output](../screenshots/show.png)
 
