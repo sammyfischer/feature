@@ -480,3 +480,33 @@ fn cleans_up_wips() {
     "Wip ref should be deleted"
   );
 }
+
+/// Sync should skip branches in cycles
+#[test]
+fn skips_cycles() {
+  let repo = TestRepo::new();
+  repo.init_commit();
+
+  repo.feature(&["start", "feature1"]).success();
+  repo.feature(&["start", "feature2"]).success();
+
+  // create cycle
+  repo
+    .git(&[
+      "config",
+      "branch.feature1.feature-base",
+      "refs/heads/feature2",
+    ])
+    .success();
+
+  let cmd = repo.feature(&["sync"]).success();
+  let stdout = get_stdout!(cmd);
+  assert!(
+    stdout.contains("Skipped updating feature1"),
+    "feature1 should be skipped"
+  );
+  assert!(
+    stdout.contains("Skipped updating feature2"),
+    "feature2 should be skipped"
+  );
+}

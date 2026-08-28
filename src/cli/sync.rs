@@ -3,17 +3,19 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use console::style;
-use git2::{Branch, BranchType, FetchOptions, RemoteCallbacks, Repository, SubmoduleUpdateOptions};
+use git2::{Branch, FetchOptions, RemoteCallbacks, Repository, SubmoduleUpdateOptions};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::display::diff::display_summary_header;
+use crate::cli::display::display_branch_graph_error;
 use crate::cli::prune::prune_branches;
 use crate::cli::term::TICK_STRINGS;
 use crate::core::NotFoundExt;
 use crate::core::branch::{get_current_branch_name, hard_reset};
+use crate::core::branch_graph::{BranchGraph, BranchGraphError};
 use crate::core::branch_info::BranchInfo;
 use crate::core::diff::DiffSummary;
 use crate::core::fetch::{fetch_all, get_credentials_cb};
@@ -294,23 +296,63 @@ impl SyncArgs {
 
     progress.set_message("Updating branches");
     let current_branch = get_current_branch_name(repo)?;
-    let branches = repo.branches(Some(BranchType::Local))?;
 
-    let mut updates: Vec<UpdateAction> = branches
-      .flatten()
-      .map(|(mut branch, _)| -> UpdateAction {
+    let mut updates = Vec::new();
+
+    // traverse branches in topological order. this guarantees that base
+    // branches are updated first
+    let mut graph = BranchGraph::load(repo)?;
+    let branches = match graph.iter_from_root() {
+      Ok(it) => it,
+
+      Err(BranchGraphError::CycleExists { .. }) => {
+        // get and remove cycles
+        let removed = graph.remove_cycles();
+
+        for branch in removed {
+          updates.push(UpdateAction::UpdateSkip {
+            name: branch,
+            reason: "circular dependency".to_string(),
+          });
+        }
+
+        graph
+          .iter_from_root()
+          .map_err(|e| anyhow!(display_branch_graph_error(e)))?
+      }
+
+      Err(e) => return Err(anyhow!(display_branch_graph_error(e))),
+    };
+
+    for branch_name in branches {
+      let rf = match repo.resolve_reference_from_short_name(branch_name) {
+        Ok(it) => it,
+        Err(e) => {
+          updates.push(UpdateAction::Err {
+            name: branch_name.to_string(),
+            e: e.to_string(),
+          });
+          continue;
+        }
+      };
+
+      if !rf.is_branch() {
+        continue;
+      }
+
+      let mut branch = Branch::wrap(rf);
+
+      let update =
         match self.update_branch(repo, &mut branch, current_branch.as_deref(), self.dry_run) {
           Ok(action) => action,
           Err(e) => UpdateAction::Err {
-            name: branch
-              .name_bytes()
-              .map(|name| name.to_str_lossy_owned())
-              .unwrap_or("<unknown>".to_string()),
+            name: branch_name.to_string(),
             e: e.to_string(),
           },
-        }
-      })
-      .collect();
+        };
+
+      updates.push(update);
+    }
 
     let skip_prune = match self.no_prune {
       Some(it) => it,
@@ -319,7 +361,7 @@ impl SyncArgs {
 
     if !skip_prune {
       progress.set_message("Pruning branches");
-      let results = prune_branches(repo, user_config, proj_config, self.dry_run)?;
+      let results = prune_branches(repo, user_config, proj_config, &mut graph, self.dry_run)?;
       for action in results {
         updates.push(action);
       }
@@ -460,6 +502,10 @@ impl SyncArgs {
     dry_run: bool,
   ) -> Result<UpdateAction> {
     let branch_info = BranchInfo::from_branch(branch)?;
+    if branch_info.is_remote() {
+      return Ok(UpdateAction::None);
+    }
+
     let is_current = current_branch
       .as_ref()
       .is_some_and(|it| *it == branch_info.name());

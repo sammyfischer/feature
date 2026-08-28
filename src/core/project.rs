@@ -172,6 +172,7 @@ impl Project {
     &self.url
   }
 
+  /// Gets the already opened repo of this project
   pub fn repo(&self) -> &Repository {
     &self.repo
   }

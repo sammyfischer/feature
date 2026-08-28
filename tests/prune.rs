@@ -412,3 +412,57 @@ fn preserves_branches_with_wips() {
     "Wip ref should not be deleted"
   );
 }
+
+/// Feature should skip pruning branches that are a dependency of another
+#[test]
+fn preserves_dependencies() {
+  let (local, _remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.feature(&["push"]).success();
+
+  // start new branch, push immediately
+  local.feature(&["start", "bugfix"]).success();
+  local.feature(&["push"]).success();
+
+  // start newer dependent branch that won't be pruned
+  local.feature(&["start", "topic"]).success();
+
+  local.git(&["switch", "main"]).success();
+
+  local.feature(&["prune"]).success();
+
+  assert_eq!(
+    local.list_branches_and_upstreams(),
+    r#"refs/heads/bugfix refs/remotes/origin/bugfix
+refs/heads/main refs/remotes/origin/main
+refs/heads/topic 
+"#
+  );
+}
+
+/// Feature should start from leaf branches, then move up the dependency graph.
+#[test]
+fn prunes_in_order() {
+  let (local, _remote) = TestRepo::new_with_remote();
+  local.init_commit();
+  local.feature(&["push"]).success();
+
+  // start new branch, push immediately
+  local.feature(&["start", "bugfix"]).success();
+  local.feature(&["push"]).success();
+
+  // start newer dependent branch that will be pruned, bugfix should be
+  // subsequently pruned
+  local.feature(&["start", "topic"]).success();
+  local.feature(&["push"]).success();
+
+  local.git(&["switch", "main"]).success();
+
+  local.feature(&["prune"]).success();
+
+  assert_eq!(
+    local.list_branches_and_upstreams(),
+    r#"refs/heads/main refs/remotes/origin/main
+"#
+  );
+}
