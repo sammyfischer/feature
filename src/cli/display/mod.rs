@@ -4,6 +4,7 @@ use anyhow::Result;
 use console::style;
 use git2::{Object, Signature};
 
+use crate::core::branch_graph::BranchGraphError;
 use crate::core::string::ToStrLossy;
 use crate::core::trim_hash;
 
@@ -87,4 +88,25 @@ pub fn display_plus_minus(plus: usize, minus: usize) -> String {
     style!("+{}", plus).green(),
     style!("-{}", minus).red()
   )
+}
+
+pub fn display_branch_graph_error(e: BranchGraphError) -> String {
+  match e {
+    BranchGraphError::CycleExists { cycles } => {
+      use std::fmt::Write;
+      let mut out = String::with_capacity(100 * cycles.len());
+
+      write!(out, "Detected circular branch dependencies:").unwrap();
+
+      for cycle in cycles {
+        write!(out, "\n  {}", cycle.join(" -> ")).unwrap();
+      }
+
+      out
+    }
+
+    BranchGraphError::CycleCreated { branch, base } => {
+      format!("Setting base '{base}' of branch '{branch}' would create a circular dependency")
+    }
+  }
 }

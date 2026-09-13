@@ -5,8 +5,9 @@ use clap::ValueHint;
 use git2::Branch;
 
 use crate::App;
+use crate::cli::display::display_branch_graph_error;
+use crate::core::branch_graph::BranchGraph;
 use crate::core::branch_info::BranchInfo;
-use crate::core::string::ToStrLossyOwned;
 use crate::core::{NotFoundExt, user_config};
 
 const LONG_ABOUT: &str = r#"Tells feature which base corresponds to a branch.
@@ -46,7 +47,13 @@ impl BaseArgs {
     let base = BranchInfo::from_name_dwim(&state.repo, &self.base)?
       .ok_or(anyhow!("Branch not found: {}", self.base))?;
 
-    let feature_base_name = {
+    // test if this would create a cycle
+    let mut graph = BranchGraph::load(&state.repo)?;
+    graph
+      .add_dependency(base.name(), branch.name())
+      .map_err(|e| anyhow!(display_branch_graph_error(e)))?;
+
+    let base_refname = {
       // we want the upstream of the base, e.g. refs/remotes/origin/main
       let base_upstream = Branch::wrap(base.resolve(&state.repo)?)
         .upstream()
@@ -54,16 +61,16 @@ impl BaseArgs {
         .with_context(|| format!("Failed to check if {} has an upstream", &self.base))?;
 
       match base_upstream {
-        Some(upstream) => upstream.get().name_bytes().to_str_lossy_owned(),
+        Some(upstream) => upstream.get().name()?.to_string(),
 
         // if there is no upstream, we can just use the actual base branch
         None => base.refname().to_string(),
       }
     };
 
-    // get again as writable config
+    // get config again as writable (not a snapshot)
     let mut config = state.repo.config()?;
-    user_config::set_feature_base(&mut config, branch.name(), &feature_base_name)?;
+    user_config::set_feature_base(&mut config, branch.name(), &base_refname)?;
 
     Ok(())
   }

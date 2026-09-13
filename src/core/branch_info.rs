@@ -1,8 +1,9 @@
+use std::hash::Hash;
+
 use anyhow::{Result, anyhow};
 use git2::{Branch, BranchType, Reference, Repository};
 
 use crate::core::NotFoundExt;
-use crate::core::string::ToStrLossyOwned;
 
 /// Collected metadata for a branch
 pub struct BranchInfo {
@@ -84,7 +85,7 @@ impl BranchInfo {
 
   /// Creates a [BranchInfo] from a [Reference]
   pub fn from_reference<'branch>(reference: &Reference<'branch>) -> Result<Self> {
-    let refname = reference.name_bytes().to_str_lossy_owned();
+    let refname = reference.name()?.to_string();
     if !refname.starts_with("refs/heads/") && !refname.starts_with("refs/remotes/") {
       return Err(anyhow!(
         "Reference is not a local or remote branch: {}",
@@ -92,7 +93,7 @@ impl BranchInfo {
       ));
     }
 
-    let name = reference.shorthand_bytes().to_str_lossy_owned();
+    let name = reference.shorthand()?.to_string();
     let ty = get_branch_type(&refname);
 
     Ok(Self { refname, name, ty })
@@ -102,7 +103,7 @@ impl BranchInfo {
   /// search for the matching branch.
   pub fn from_refname(repo: &Repository, refname: &str) -> Result<Self> {
     let reference = repo.find_reference(refname)?;
-    let name = reference.shorthand_bytes().to_str_lossy_owned();
+    let name = reference.shorthand()?.to_string();
     let ty = get_branch_type(refname);
 
     Ok(Self {
@@ -144,6 +145,22 @@ impl BranchInfo {
     }
 
     Ok(Some(Self::from_reference(&head)?))
+  }
+}
+
+// impl eq and hash from refname alone
+
+impl PartialEq for BranchInfo {
+  fn eq(&self, other: &Self) -> bool {
+    self.refname == other.refname
+  }
+}
+
+impl Eq for BranchInfo {}
+
+impl Hash for BranchInfo {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.refname.hash(state);
   }
 }
 

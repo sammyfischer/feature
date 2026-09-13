@@ -8,6 +8,7 @@ use crate::core::string::ToStrLossyOwned;
 use crate::{await_child, git};
 
 pub mod branch;
+pub mod branch_graph;
 pub mod branch_info;
 pub mod commit;
 pub mod diff;

@@ -1,13 +1,14 @@
 use std::thread;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use console::style;
-use git2::{Branch, BranchType, Repository};
+use git2::{Branch, Repository};
 use indicatif::{MultiProgress, ProgressBar};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::App;
+use crate::cli::display::display_branch_graph_error;
 use crate::cli::sync::{
   SyncAction,
   UpdateAction,
@@ -16,6 +17,7 @@ use crate::cli::sync::{
   set_sync_spinner_style,
 };
 use crate::core::branch::{get_current_branch_name, is_merged};
+use crate::core::branch_graph::{BranchGraph, BranchGraphError};
 use crate::core::branch_info::BranchInfo;
 use crate::core::fetch::fetch_all;
 use crate::core::project::Project;
@@ -123,7 +125,15 @@ impl PruneArgs {
       let repo_thread = scope.spawn(|| {
         let repo = handle.open()?;
         let user_config = UserConfig::new(&repo)?;
-        self.prune_repo(&repo, &user_config, proj_config, &main_progress.1)
+        let mut graph = BranchGraph::load(&repo)?;
+
+        self.prune_repo(
+          &repo,
+          &user_config,
+          proj_config,
+          &mut graph,
+          &main_progress.1,
+        )
       });
 
       let proj_thread = scope.spawn(|| {
@@ -134,11 +144,18 @@ impl PruneArgs {
             .par_iter()
             .map(|(name, progress)| {
               let project = Project::open_existing(name, proj_config)?;
+              let mut graph = BranchGraph::load(project.repo())?;
 
               let proj_config = project.load_project_config()?;
               let user_config = project.load_user_config()?;
 
-              self.prune_repo(project.repo(), &user_config, &proj_config, progress)
+              self.prune_repo(
+                project.repo(),
+                &user_config,
+                &proj_config,
+                &mut graph,
+                progress,
+              )
             })
             .collect()
         }
@@ -190,6 +207,7 @@ impl PruneArgs {
     repo: &Repository,
     user_config: &UserConfig,
     proj_config: &ProjectConfig,
+    graph: &mut BranchGraph,
     progress: &ProgressBar,
   ) -> Result<SyncAction> {
     progress.enable_steady_tick(Duration::from_millis(100));
@@ -205,7 +223,7 @@ impl PruneArgs {
     }
 
     progress.set_message("Pruning");
-    let updates = prune_branches(repo, user_config, proj_config, self.dry_run)?;
+    let updates = prune_branches(repo, user_config, proj_config, graph, self.dry_run)?;
 
     progress.finish_with_message("Pruned");
     Ok(SyncAction::Sync(updates))
@@ -216,35 +234,80 @@ pub fn prune_branches(
   repo: &Repository,
   user_config: &UserConfig,
   proj_config: &ProjectConfig,
+  graph: &mut BranchGraph,
   dry_run: bool,
 ) -> Result<Vec<UpdateAction>> {
-  let branches = repo.branches(Some(BranchType::Local))?;
+  let mut updates = Vec::new();
   let current_name = get_current_branch_name(repo)?;
 
-  let results: Vec<_> = branches
-    .flatten()
-    .map(|(mut branch, _)| {
-      match prune_branch(
-        repo,
-        user_config,
-        proj_config,
-        &mut branch,
-        current_name.as_deref(),
-        dry_run,
-      ) {
-        Ok(action) => action,
-        Err(e) => UpdateAction::Err {
-          name: branch
-            .name_bytes()
-            .map(|name| name.to_str_lossy_owned())
-            .unwrap_or("<unknown>".to_string()),
-          e: e.to_string(),
-        },
-      }
-    })
-    .collect();
+  let branches = match graph.iter_from_leaves() {
+    Ok(it) => it,
 
-  Ok(results)
+    Err(BranchGraphError::CycleExists { .. }) => {
+      // get and remove cycles
+      let removed = graph.remove_cycles();
+
+      for branch in removed {
+        updates.push(UpdateAction::UpdateSkip {
+          name: branch,
+          reason: "circular dependency".to_string(),
+        });
+      }
+
+      graph
+        .iter_from_leaves()
+        .map_err(|e| anyhow!(display_branch_graph_error(e)))?
+    }
+
+    Err(e) => return Err(anyhow!(display_branch_graph_error(e))),
+  };
+
+  // names need to be owned to avoid mutable borrow issues
+  let branches: Vec<String> = branches.map(ToString::to_string).collect();
+
+  for branch_name in &branches {
+    let rf = match repo.resolve_reference_from_short_name(branch_name) {
+      Ok(rf) => rf,
+
+      Err(e) => {
+        updates.push(UpdateAction::Err {
+          name: branch_name.to_string(),
+          e: e.to_string(),
+        });
+        continue;
+      }
+    };
+
+    if !rf.is_branch() {
+      updates.push(UpdateAction::None);
+      continue;
+    }
+
+    let mut branch = Branch::wrap(rf);
+
+    let update = match prune_branch(
+      repo,
+      user_config,
+      proj_config,
+      graph,
+      &mut branch,
+      current_name.as_deref(),
+      dry_run,
+    ) {
+      Ok(action) => action,
+      Err(e) => UpdateAction::Err {
+        name: branch
+          .name_bytes()
+          .map(|name| name.to_str_lossy_owned())
+          .unwrap_or("<unknown>".to_string()),
+        e: e.to_string(),
+      },
+    };
+
+    updates.push(update);
+  }
+
+  Ok(updates)
 }
 
 /// Deletes a branch if:
@@ -261,6 +324,7 @@ fn prune_branch(
   repo: &Repository,
   user_config: &UserConfig,
   proj_config: &ProjectConfig,
+  graph: &mut BranchGraph,
   branch: &mut Branch,
   current_branch_name: Option<&str>,
   dry_run: bool,
@@ -277,13 +341,21 @@ fn prune_branch(
     return Ok(UpdateAction::None);
   }
 
+  // skip branches with children
+  if graph.has_child(info.name()) {
+    return Ok(UpdateAction::None);
+  }
+
   // skip branches that have never been pushed
-  match repo.branch_upstream_remote(info.refname()).not_found_ok()? {
-    Some(_) => {}
-    None => return Ok(UpdateAction::None),
+  if repo
+    .branch_upstream_remote(info.refname())
+    .not_found_ok()?
+    .is_none()
+  {
+    return Ok(UpdateAction::None);
   };
 
-  // find base branch from db, else skip
+  // skip branches with no base
   let base = match user_config.branch_base(info.name())? {
     Some(base) => base,
     None => return Ok(UpdateAction::None),
@@ -326,6 +398,8 @@ fn prune_branch(
     let key = format!("branch.{}", &info.name());
     let _ = delete_config_section(&key);
   }
+
+  graph.remove_branch(info.name())?;
 
   Ok(UpdateAction::Delete {
     name: info.name().to_string(),
