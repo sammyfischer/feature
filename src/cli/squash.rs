@@ -1,5 +1,4 @@
 use std::fs;
-#[cfg(unix)]
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
